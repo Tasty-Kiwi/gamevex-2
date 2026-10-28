@@ -194,6 +194,7 @@ pub struct RenderOptions {
     pub crt: bool,
     pub curvature: f32,
     pub vignette: f32,
+    pub chromatic_aberration: f32,
 }
 
 impl Default for RenderOptions {
@@ -206,12 +207,13 @@ impl Default for RenderOptions {
             crt: true,
             curvature: 0.5,
             vignette: 0.45,
+            chromatic_aberration: 0.35,
         }
     }
 }
 
-/// Bevy plugin that renders batched geometry into a scene texture, composites
-/// it with the CRT shader, then draws pooled text at the window's resolution.
+/// Renders batched geometry and high-resolution pooled text into separate
+/// textures, then composites both through the CRT shader.
 pub struct ArcadeRenderPlugin;
 
 impl Plugin for ArcadeRenderPlugin {
@@ -310,7 +312,7 @@ fn setup_renderer(
         source: scene_image.clone(),
         params: Vec4::new(0.16, 0.08, 1.0, 0.0),
         text_source: text_image.clone(),
-        monitor: Vec4::new(0.06, 0.45, 0.0, 0.0),
+        monitor: Vec4::new(0.06, 0.45, 1.05, 0.0),
     });
     let _shader: Handle<Shader> =
         bevy::asset::load_embedded_asset!(asset_server.as_ref(), "crt.wgsl");
@@ -530,7 +532,13 @@ fn render_frame(
             } else {
                 0.0
             },
-            0.0,
+            if options.crt {
+                // At full strength, separate each outer channel by up to three
+                // logical pixels at the edge, independent of DPI or preset.
+                options.chromatic_aberration.clamp(0.0, 1.0) * 3.0 * options.scale_factor.max(0.5)
+            } else {
+                0.0
+            },
             0.0,
         );
         if material.monitor != monitor {

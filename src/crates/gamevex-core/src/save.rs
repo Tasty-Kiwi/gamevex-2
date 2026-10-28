@@ -24,6 +24,9 @@ fn default_curvature() -> f32 {
 fn default_vignette() -> f32 {
     0.45
 }
+fn default_chromatic_aberration() -> f32 {
+    0.35
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
@@ -34,6 +37,8 @@ pub struct Settings {
     pub curvature: f32,
     #[serde(default = "default_vignette")]
     pub vignette: f32,
+    #[serde(default = "default_chromatic_aberration")]
+    pub chromatic_aberration: f32,
     pub bloom: f32,
     pub scanlines: f32,
     pub crt: bool,
@@ -49,6 +54,7 @@ impl Default for Settings {
             color_scheme: ColorScheme::Cyan,
             curvature: default_curvature(),
             vignette: default_vignette(),
+            chromatic_aberration: default_chromatic_aberration(),
             bloom: 0.35,
             scanlines: 0.2,
             crt: true,
@@ -64,6 +70,7 @@ impl Settings {
         for (name, value) in [
             ("curvature", self.curvature),
             ("vignette", self.vignette),
+            ("chromatic_aberration", self.chromatic_aberration),
             ("bloom", self.bloom),
             ("scanlines", self.scanlines),
             ("volume", self.volume),
@@ -202,7 +209,12 @@ mod tests {
     #[test]
     fn previous_v1_saves_load_with_monitor_and_palette_defaults() {
         let mut old = serde_json::to_value(Save::default()).unwrap();
-        for key in ["color_scheme", "curvature", "vignette"] {
+        for key in [
+            "color_scheme",
+            "curvature",
+            "vignette",
+            "chromatic_aberration",
+        ] {
             old["settings"].as_object_mut().unwrap().remove(key);
         }
         let loaded = Save::from_json(&old.to_string()).unwrap();
@@ -211,12 +223,18 @@ mod tests {
         amber.settings.color_scheme = ColorScheme::Amber;
         amber.settings.curvature = 0.8;
         amber.settings.vignette = 0.6;
+        amber.settings.chromatic_aberration = 0.8;
         assert_eq!(Save::from_json(&amber.to_json().unwrap()).unwrap(), amber);
         amber.settings.curvature = 1.1;
         assert!(amber.validate().is_err());
         amber.settings.curvature = 0.5;
         amber.settings.vignette = -0.1;
         assert!(amber.validate().is_err());
+        amber.settings.vignette = 0.45;
+        for invalid in [-0.1, 1.1, f32::NAN, f32::INFINITY] {
+            amber.settings.chromatic_aberration = invalid;
+            assert!(amber.validate().is_err());
+        }
     }
 
     #[test]

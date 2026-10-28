@@ -67,7 +67,7 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 37,693,566 | 6,105,227 |
+| WASM | 37,695,015 | 6,106,212 |
 | Generated JavaScript | 107,369 | 17,328 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
@@ -78,9 +78,17 @@ The native Metal runtime rendered the curved screen and vignette with both cyan 
 
 Chrome/WebGPU rendered the final composite and restored amber after reload. Pixel CRT retained sharp text while its geometry used the reduced resolution. Curvature and vignette steppers updated their saved strengths, and disabling CRT removed the curve and edge darkening. Curved-board secondary click flagged cell 0 and primary click revealed cell 10; the header logo returned to the lobby. At 390×650, the settings list scrolled to Volume/Sound while Reset saved data remained visible. The confirmation dialog fit the narrow viewport and Escape cancelled it. The temporary viewport override was removed after checking.
 
+## Chromatic aberration update
+
+Added radial red/blue channel separation to both geometry and high-resolution text. The saved 0–100% setting defaults to 35%; existing version-1 saves receive that default. Zero strength or disabling CRT bypasses the extra samples. Strength uses logical pixels consistently across display density and both presets.
+
+All 28 tests and Clippy passed after this update. Save validation covers the added field, old-save defaults, round trips, out-of-range strengths, NaN, and infinity. The native Metal release rendered the effect, its strength control saved correctly, and CRT-off removed the color fringes. Chrome/WebGPU rendered the effect in Pixel CRT, loaded the default from an older save, disabled separation at zero strength while keeping the screen curve, and restored a changed strength after reload. At 390×650 the full setting label and controls fit without overlap; the viewport override was removed after checking.
+
 ## Screenshots
 
-Actual native render captures, excluding window chrome. The first two show the monitor update; the remaining captures are from the initial demo:
+Actual native render captures, excluding window chrome. The first shows chromatic aberration at its default 35%; the next two show the earlier monitor update, followed by the initial demo:
+
+![Chromatic aberration settings](screenshots/chromatic-settings.png)
 
 ![Amber monitor](screenshots/amber-monitor.png)
 

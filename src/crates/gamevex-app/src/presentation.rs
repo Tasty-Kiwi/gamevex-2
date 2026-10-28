@@ -36,6 +36,7 @@ pub enum Action {
     Palette,
     Curvature(f32),
     Vignette(f32),
+    ChromaticAberration(f32),
     Bloom(f32),
     Scanlines(f32),
     Volume(f32),
@@ -112,6 +113,7 @@ pub fn paint(
     options.crt = state.save.settings.crt;
     options.curvature = state.save.settings.curvature;
     options.vignette = state.save.settings.vignette;
+    options.chromatic_aberration = state.save.settings.chromatic_aberration;
     frame.palette = state.save.settings.color_scheme;
     platform::publish_monitor(if options.crt {
         options.curvature * 0.12
@@ -899,6 +901,7 @@ fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
         "Scanlines",
         "Curvature",
         "Vignette",
+        "Chromatic aberration",
         "CRT effects",
         "Reduced motion",
         "Volume",
@@ -927,7 +930,11 @@ fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
         f.text(
             Vec2::new(m, y + 8.0),
             *label,
-            if w < 400.0 { 12.0 } else { 16.0 },
+            if w < 400.0 {
+                if i == 6 { 11.0 } else { 12.0 }
+            } else {
+                16.0
+            },
             INK,
         );
         f.line(
@@ -1007,7 +1014,18 @@ fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
                 Action::Vignette(-0.1),
                 Action::Vignette(0.1),
             ),
-            6 => button(
+            6 => stepper(
+                f,
+                s,
+                l,
+                right,
+                y,
+                usable,
+                s.save.settings.chromatic_aberration,
+                Action::ChromaticAberration(-0.1),
+                Action::ChromaticAberration(0.1),
+            ),
+            7 => button(
                 f,
                 s,
                 l,
@@ -1020,7 +1038,7 @@ fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
                 Action::Crt,
                 s.save.settings.crt,
             ),
-            7 => button(
+            8 => button(
                 f,
                 s,
                 l,
@@ -1033,7 +1051,7 @@ fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
                 Action::Motion,
                 s.save.settings.reduced_motion,
             ),
-            8 => stepper(
+            9 => stepper(
                 f,
                 s,
                 l,

@@ -257,6 +257,11 @@ impl Arcade {
                 self.save.settings.vignette = (self.save.settings.vignette + delta).clamp(0.0, 1.0);
                 self.persist();
             }
+            Action::ChromaticAberration(delta) => {
+                self.save.settings.chromatic_aberration =
+                    (self.save.settings.chromatic_aberration + delta).clamp(0.0, 1.0);
+                self.persist();
+            }
             Action::Bloom(delta) => {
                 self.save.settings.bloom = (self.save.settings.bloom + delta).clamp(0.0, 1.0);
                 self.persist();

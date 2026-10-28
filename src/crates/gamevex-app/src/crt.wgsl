@@ -11,6 +11,10 @@ fn sample_source(uv: vec2<f32>) -> vec3<f32> {
     return textureSample(source_texture, source_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0))).rgb;
 }
 
+fn sample_text(uv: vec2<f32>) -> vec4<f32> {
+    return textureSample(text_texture, text_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)));
+}
+
 @fragment
 fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     // Warp both layers together, preserving high-resolution text in Pixel CRT.
@@ -22,6 +26,23 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let coverage = smoothstep(0.0, 0.002, edge);
     let texel = 1.0 / vec2<f32>(textureDimensions(source_texture));
     var color = sample_source(uv);
+    // Split the outer channels radially. Keep the center sharp, and use the
+    // full-resolution target so the strength is consistent in both presets.
+    let radial = clamp(dot(q,q)*0.5, 0.0, 1.0);
+    let text = sample_text(uv);
+    var text_rgb = text.rgb;
+    var text_alpha = vec3<f32>(text.a);
+    if monitor.z > 0.0 {
+        let offset = q * radial * monitor.z / vec2<f32>(textureDimensions(text_texture));
+        color.r = sample_source(uv + offset).r;
+        color.b = sample_source(uv - offset).b;
+        let red_text = sample_text(uv + offset);
+        let blue_text = sample_text(uv - offset);
+        text_rgb.r = red_text.r;
+        text_rgb.b = blue_text.b;
+        text_alpha.r = red_text.a;
+        text_alpha.b = blue_text.a;
+    }
     if params.z > 0.5 {
         if params.x > 0.0 {
             var neighborhood = vec3<f32>(0.0);
@@ -39,9 +60,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         color *= 1.0 - clamp(params.y, 0.0, 0.8) * (0.5 + 0.5 * cos(row * 3.14159265));
     }
     // The transparent text target contains premultiplied RGB from alpha blending.
-    let text = textureSample(text_texture, text_sampler, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)));
-    color = text.rgb + color * (1.0 - text.a);
-    let radial = clamp(dot(q,q)*0.5, 0.0, 1.0);
+    color = text_rgb + color * (vec3<f32>(1.0) - text_alpha);
     color *= 1.0 - monitor.y * 0.7 * pow(radial,1.2);
     return vec4<f32>(color * coverage, 1.0);
 }
