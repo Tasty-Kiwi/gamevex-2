@@ -31,6 +31,7 @@ pub(crate) struct Arcade {
     pub cell: usize,
     pub flag_mode: bool,
     pub pan: Vec2,
+    pub settings_scroll: f32,
     pub cursor: Option<Vec2>,
     pub card_positions: [Vec2; 5],
     pub drag_offset: Vec2,
@@ -91,6 +92,7 @@ impl Arcade {
             cell: 0,
             flag_mode: false,
             pan: Vec2::ZERO,
+            settings_scroll: 0.0,
             cursor: None,
             card_positions: [Vec2::splat(-1000.0); 5],
             drag_offset: Vec2::ZERO,
@@ -132,11 +134,12 @@ impl Arcade {
 
     fn open(&mut self, screen: Screen) {
         if screen == Screen::Settings {
+            self.settings_scroll = 0.0;
             self.settings_return = self.screen;
             self.settings_return_focus = self.focus;
         }
         self.screen = screen;
-        self.focus = if screen == Screen::Mines { 8 } else { 0 };
+        self.focus = if screen == Screen::Mines { 9 } else { 0 };
         self.keyboard = false;
         self.lab.cancel_drag();
         self.last_active = false;
@@ -157,7 +160,7 @@ impl Arcade {
         self.pan = Vec2::ZERO;
         self.cell = 0;
         self.fractional_ms = 0.0;
-        self.focus = 8;
+        self.focus = 9;
         self.message = "Ready. Reveal a cell to begin; the first area is safe.".into();
         self.modal = None;
         self.persist();
@@ -223,10 +226,8 @@ impl Arcade {
             Action::Confirm => match self.modal.take() {
                 Some(Pending::New(difficulty, repeat)) => self.new_game(difficulty, repeat),
                 Some(Pending::Recover) => {
-                    self.save = Save::new(fresh_seed());
-                    self.protected_save = false;
+                    self.reset_saved_data();
                     self.persist();
-                    self.restore_modal_focus();
                 }
                 None => {}
             },
@@ -238,6 +239,22 @@ impl Arcade {
                     DisplayPreset::VectorCrt => DisplayPreset::PixelCrt,
                     DisplayPreset::PixelCrt => DisplayPreset::VectorCrt,
                 };
+                self.persist();
+            }
+            Action::Palette => {
+                self.save.settings.color_scheme = match self.save.settings.color_scheme {
+                    ColorScheme::Cyan => ColorScheme::Amber,
+                    ColorScheme::Amber => ColorScheme::Cyan,
+                };
+                self.persist();
+            }
+            Action::Curvature(delta) => {
+                self.save.settings.curvature =
+                    (self.save.settings.curvature + delta).clamp(0.0, 1.0);
+                self.persist();
+            }
+            Action::Vignette(delta) => {
+                self.save.settings.vignette = (self.save.settings.vignette + delta).clamp(0.0, 1.0);
                 self.persist();
             }
             Action::Bloom(delta) => {
@@ -285,6 +302,23 @@ impl Arcade {
                 }
             }
         }
+    }
+
+    fn reset_saved_data(&mut self) {
+        self.save = Save::new(fresh_seed());
+        self.protected_save = false;
+        self.lab.reset();
+        self.modal = None;
+        self.screen = Screen::Lobby;
+        self.settings_return = Screen::Lobby;
+        self.focus = 0;
+        self.cell = 0;
+        self.flag_mode = false;
+        self.pan = Vec2::ZERO;
+        self.settings_scroll = 0.0;
+        self.fractional_ms = 0.0;
+        self.last_active = false;
+        self.message = "Your first reveal is always safe.".into();
     }
 
     fn open_modal(&mut self, pending: Pending) {
@@ -466,6 +500,20 @@ fn handle_input(
     } else {
         window.cursor_position()
     };
+    let size = platform::canvas_metrics()
+        .map(|[w, h, _]| Vec2::new(w, h))
+        .unwrap_or(Vec2::new(window.width(), window.height()));
+    state.cursor = state.cursor.and_then(|p| {
+        rendering::screen_to_surface(
+            p,
+            size,
+            if state.save.settings.crt {
+                state.save.settings.curvature
+            } else {
+                0.0
+            },
+        )
+    });
     if !window.focused || !platform::visible() {
         wheel.clear();
         return;
@@ -603,7 +651,24 @@ fn handle_input(
             state.act(Action::ReturnCard);
         }
     }
+    if state.screen == Screen::Settings {
+        if keys.just_pressed(KeyCode::PageDown) {
+            state.settings_scroll += 180.0;
+        }
+        if keys.just_pressed(KeyCode::PageUp) {
+            state.settings_scroll -= 180.0;
+        }
+    }
     for event in wheel.read() {
+        if state.screen == Screen::Settings {
+            let scale = if event.unit == MouseScrollUnit::Line {
+                36.0
+            } else {
+                1.0
+            };
+            state.settings_scroll =
+                (state.settings_scroll - event.y * scale).clamp(0.0, layout.settings_max_scroll);
+        }
         if state.screen == Screen::Mines
             && layout
                 .board
@@ -752,6 +817,7 @@ mod tests {
             cell: 0,
             flag_mode: false,
             pan: Vec2::ZERO,
+            settings_scroll: 0.0,
             cursor: None,
             card_positions: [Vec2::ZERO; 5],
             drag_offset: Vec2::ZERO,
@@ -774,7 +840,7 @@ mod tests {
     fn modal_cancel_restores_focus_and_confirm_starts_new_game_on_board() {
         let mut state = test_arcade();
         state.screen = Screen::Mines;
-        state.focus = 8;
+        state.focus = 9;
         state.save.game.command(GameCommand::Reveal(40));
         let original_game = state.save.game.clone();
 
@@ -783,7 +849,7 @@ mod tests {
         assert_eq!(state.focus, 0); // Cancel is the first modal control.
         state.act(Action::Cancel);
         assert!(state.modal.is_none());
-        assert_eq!(state.focus, 8);
+        assert_eq!(state.focus, 9);
         assert_eq!(state.save.game, original_game);
 
         state.act(Action::New(Difficulty::Intermediate, false));
@@ -791,22 +857,41 @@ mod tests {
         assert!(state.modal.is_none());
         assert_eq!(state.save.game.difficulty, Difficulty::Intermediate);
         assert_eq!(state.save.game.status, Status::Ready);
-        assert_eq!(state.focus, 8);
+        assert_eq!(state.focus, 9);
     }
 
     #[test]
     fn returning_from_settings_restores_the_previous_screen_focus() {
         let mut state = test_arcade();
         state.screen = Screen::Mines;
-        state.focus = 8;
+        state.focus = 9;
         state.act(Action::Open(Screen::Settings));
         assert_eq!(state.settings_return, Screen::Mines);
-        assert_eq!(state.settings_return_focus, 8);
+        assert_eq!(state.settings_return_focus, 9);
         assert_eq!(state.screen, Screen::Settings);
 
         state.act(Action::Back);
         assert_eq!(state.screen, Screen::Mines);
-        assert_eq!(state.focus, 8);
+        assert_eq!(state.focus, 9);
+    }
+
+    #[test]
+    fn saved_data_reset_clears_game_records_settings_and_transient_state() {
+        let mut state = test_arcade();
+        state.save.settings.color_scheme = ColorScheme::Amber;
+        state.save.records.beginner = Some(5000);
+        state.save.game.command(GameCommand::Reveal(40));
+        state.lab.pick(0);
+        state.lab.drop_in(Some(0));
+        state.flag_mode = true;
+        state.reset_saved_data();
+        assert_eq!(state.save.settings, Settings::default());
+        assert_eq!(state.save.records, Records::default());
+        assert_eq!(state.save.game.status, Status::Ready);
+        assert_eq!(state.screen, Screen::Lobby);
+        assert_eq!(state.lab, CardLab::default());
+        assert!(!state.flag_mode);
+        assert!(state.save.validate().is_ok());
     }
 
     #[test]

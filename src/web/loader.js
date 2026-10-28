@@ -35,8 +35,12 @@ canvas.addEventListener("contextmenu", (event) => {
   if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite)) return;
   const rect = canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
-  const x = event.clientX - rect.left;
-  const y = event.clientY - rect.top;
+  const px = (event.clientX - rect.left) / rect.width * 2 - 1;
+  const py = (event.clientY - rect.top) / rect.height * 2 - 1;
+  const curvature = Number(canvas.dataset.curvature || 0);
+  const warp = 1 + curvature * (px * px + py * py);
+  const x = (px * warp + 1) * 0.5 * rect.width;
+  const y = (py * warp + 1) * 0.5 * rect.height;
   const [left, top, width, height] = bounds;
   if (x >= left && x < left + width && y >= top && y < top + height) event.preventDefault();
 });

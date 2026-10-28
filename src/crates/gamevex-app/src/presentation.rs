@@ -33,6 +33,9 @@ pub enum Action {
     FlagMode,
     Board,
     Preset,
+    Palette,
+    Curvature(f32),
+    Vignette(f32),
     Bloom(f32),
     Scanlines(f32),
     Volume(f32),
@@ -75,6 +78,7 @@ pub struct ViewLayout {
     pub cards: [Rect; 5],
     pub slots: [Rect; 3],
     pub card_order: Vec<usize>,
+    pub settings_max_scroll: f32,
 }
 
 pub fn paint(
@@ -99,12 +103,21 @@ pub fn paint(
     layout.hits.clear();
     layout.board = None;
     layout.card_order.clear();
+    layout.settings_max_scroll = 0.0;
     options.scale_factor = metrics.map(|[_, _, d]| d).unwrap_or(window.scale_factor());
     options.pixel = state.save.settings.display_preset == DisplayPreset::PixelCrt;
     frame.min_stroke = if options.pixel { 2.0 } else { 0.0 };
     options.bloom = state.save.settings.bloom;
     options.scanlines = state.save.settings.scanlines;
     options.crt = state.save.settings.crt;
+    options.curvature = state.save.settings.curvature;
+    options.vignette = state.save.settings.vignette;
+    frame.palette = state.save.settings.color_scheme;
+    platform::publish_monitor(if options.crt {
+        options.curvature * 0.12
+    } else {
+        0.0
+    });
     frame.rect(Vec2::ZERO, size, BG);
     let margin = (size.x * 0.04).clamp(16.0, 52.0);
     let w = size.x - 2.0 * margin;
@@ -142,7 +155,7 @@ pub fn paint(
             w,
             time.delta_secs(),
         ),
-        Screen::Settings => settings(&mut frame, &state, &mut layout, margin, w),
+        Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
     }
     let status = if state.protected_save || state.persistence.starts_with("Playing") {
         GOLD
@@ -170,7 +183,22 @@ pub fn paint(
 }
 
 fn header(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
+    let logo = rect(m - 4.0, 20.0, 128.0, 42.0);
+    let index = l.hits.len();
+    if (s.keyboard && s.focus == index) || s.cursor.is_some_and(|p| logo.contains(p)) {
+        f.rounded_outline(
+            logo.min,
+            logo.size(),
+            4.0,
+            1.0,
+            if s.keyboard { GOLD } else { CYAN },
+        );
+    }
     f.text(Vec2::new(m, 24.0), "GAMEVEX", 25.0, CYAN);
+    l.hits.push(Hit {
+        rect: logo,
+        action: Action::Open(Screen::Lobby),
+    });
     let width = f.size.x;
     if width > 720.0 {
         f.text(
@@ -854,38 +882,52 @@ fn card_face(
     }
 }
 
-fn settings(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
     f.text(
         Vec2::new(m, 102.0),
         "Tune the cabinet",
         if w < 600.0 { 29.0 } else { 42.0 },
         INK,
     );
-    f.text(
-        Vec2::new(m, 154.0),
-        "Settings save automatically on this device.",
-        13.0,
-        MUTED,
-    );
-    let row_h = if f.size.y < 700.0 { 42.0 } else { 53.0 };
-    let label_width = if w < 600.0 { w * 0.43 } else { 230.0 };
-    let right = m + label_width;
-    let usable = (w - label_width).min(440.0);
+    let top = 184.0;
+    let bottom = f.size.y - 94.0;
+    let row_h = 46.0;
     let labels = [
         "Display",
+        "Color scheme",
         "Bloom",
         "Scanlines",
+        "Curvature",
+        "Vignette",
         "CRT effects",
         "Reduced motion",
         "Volume",
         "Sound",
     ];
+    l.settings_max_scroll = (labels.len() as f32 * row_h + 30.0 - (bottom - top)).max(0.0);
+    s.settings_scroll = s.settings_scroll.clamp(0.0, l.settings_max_scroll);
+    f.text(
+        Vec2::new(m, 154.0),
+        if l.settings_max_scroll > 0.0 {
+            "Scroll or PgUp/PgDn for more settings."
+        } else {
+            "Settings save automatically on this device."
+        },
+        if w < 400.0 { 11.0 } else { 13.0 },
+        MUTED,
+    );
+    let label_width = if w < 600.0 { w * 0.43 } else { 230.0 };
+    let right = m + label_width;
+    let usable = (w - label_width).min(440.0);
     for (i, label) in labels.iter().enumerate() {
-        let y = 189.0 + i as f32 * row_h;
+        let y = top + i as f32 * row_h - s.settings_scroll;
+        if y < top - 0.5 || y + row_h > bottom + 0.5 {
+            continue;
+        }
         f.text(
-            Vec2::new(m, y + 9.0),
+            Vec2::new(m, y + 8.0),
             *label,
-            if w < 400.0 { 13.0 } else { 16.0 },
+            if w < 400.0 { 12.0 } else { 16.0 },
             INK,
         );
         f.line(
@@ -908,7 +950,20 @@ fn settings(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
                 Action::Preset,
                 true,
             ),
-            1 => stepper(
+            1 => button(
+                f,
+                s,
+                l,
+                rect(right, y, usable, 31.0),
+                if s.save.settings.color_scheme == ColorScheme::Cyan {
+                    "Cyan"
+                } else {
+                    "Amber"
+                },
+                Action::Palette,
+                true,
+            ),
+            2 => stepper(
                 f,
                 s,
                 l,
@@ -919,7 +974,7 @@ fn settings(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
                 Action::Bloom(-0.1),
                 Action::Bloom(0.1),
             ),
-            2 => stepper(
+            3 => stepper(
                 f,
                 s,
                 l,
@@ -930,7 +985,29 @@ fn settings(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
                 Action::Scanlines(-0.1),
                 Action::Scanlines(0.1),
             ),
-            3 => button(
+            4 => stepper(
+                f,
+                s,
+                l,
+                right,
+                y,
+                usable,
+                s.save.settings.curvature,
+                Action::Curvature(-0.1),
+                Action::Curvature(0.1),
+            ),
+            5 => stepper(
+                f,
+                s,
+                l,
+                right,
+                y,
+                usable,
+                s.save.settings.vignette,
+                Action::Vignette(-0.1),
+                Action::Vignette(0.1),
+            ),
+            6 => button(
                 f,
                 s,
                 l,
@@ -943,7 +1020,7 @@ fn settings(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
                 Action::Crt,
                 s.save.settings.crt,
             ),
-            4 => button(
+            7 => button(
                 f,
                 s,
                 l,
@@ -956,7 +1033,7 @@ fn settings(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
                 Action::Motion,
                 s.save.settings.reduced_motion,
             ),
-            5 => stepper(
+            8 => stepper(
                 f,
                 s,
                 l,
@@ -978,43 +1055,41 @@ fn settings(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
             ),
         }
     }
-    let y = 189.0 + 7.0 * row_h + 10.0;
-    button(f, s, l, rect(m, y, 94.0, 34.0), "Back", Action::Back, false);
+    if l.settings_max_scroll > 0.0 {
+        let track = bottom - top;
+        let thumb = track * (track / (labels.len() as f32 * row_h + 30.0));
+        let y = top + (track - thumb) * s.settings_scroll / l.settings_max_scroll;
+        f.rect(Vec2::new(m + w - 2.0, y), Vec2::new(2.0, thumb), CYAN);
+    }
+    let storage_y = top + labels.len() as f32 * row_h - s.settings_scroll;
+    if storage_y >= top && storage_y + 22.0 <= bottom {
+        f.text(
+            Vec2::new(m, storage_y + 4.0),
+            compact(&platform::description(), (w / 7.4) as usize),
+            11.0,
+            MUTED,
+        );
+    }
+    let y = f.size.y - 80.0;
+    button(f, s, l, rect(m, y, 70.0, 34.0), "Back", Action::Back, false);
     button(
         f,
         s,
         l,
-        rect(m + 102.0, y, 110.0, 34.0),
+        rect(m + 78.0, y, 90.0, 34.0),
         "Retry save",
         Action::Retry,
         false,
     );
-    if s.protected_save {
-        button(
-            f,
-            s,
-            l,
-            rect(m, y + 44.0, w.min(340.0), 34.0),
-            "Reset damaged save",
-            Action::Recover,
-            true,
-        );
-    } else if y + 70.0 < f.size.y - 40.0 {
-        f.text(
-            Vec2::new(m, y + 53.0),
-            compact(&s.backend, (w / 7.4) as usize),
-            12.0,
-            MUTED,
-        );
-        if y + 100.0 < f.size.y - 40.0 {
-            f.text(
-                Vec2::new(m, y + 76.0),
-                compact(&platform::description(), (w / 7.4) as usize),
-                12.0,
-                MUTED,
-            );
-        }
-    }
+    button(
+        f,
+        s,
+        l,
+        rect(m + 176.0, y, (w - 176.0).min(190.0), 34.0),
+        "Reset saved data",
+        Action::Recover,
+        false,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1059,7 +1134,7 @@ fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
     f.text(
         r.min + Vec2::new(22.0, 24.0),
         if recover {
-            "Reset the damaged save?"
+            "Reset saved data?"
         } else {
             "Replace this run?"
         },
@@ -1091,7 +1166,7 @@ fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
         s,
         l,
         rect(r.min.x + 36.0 + bw, r.max.y - 65.0, bw, 40.0),
-        if recover { "Reset save" } else { "Replace run" },
+        if recover { "Reset data" } else { "Replace run" },
         Action::Confirm,
         true,
     );

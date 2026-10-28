@@ -12,7 +12,8 @@ use bevy::{
 };
 
 const SCENE_LAYER: usize = 0;
-const COMPOSITE_LAYER: usize = 1;
+const TEXT_LAYER: usize = 1;
+const COMPOSITE_LAYER: usize = 2;
 const LOGICAL_PIXEL_SCALE: f32 = 0.5;
 
 /// Immediate-mode, top-left-origin drawing commands for one logical frame.
@@ -20,6 +21,7 @@ const LOGICAL_PIXEL_SCALE: f32 = 0.5;
 pub struct Frame {
     pub size: Vec2,
     pub min_stroke: f32,
+    pub palette: gamevex_core::ColorScheme,
     vertices: Vec<[f32; 3]>,
     colors: Vec<[f32; 4]>,
     indices: Vec<u32>,
@@ -151,13 +153,15 @@ impl Frame {
             pos,
             text: text.into(),
             font_size: font_size.max(1.0),
-            color,
+            color: palette_color(color, self.palette),
         });
     }
 
     fn push_quad(&mut self, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color) {
         let base = self.vertices.len() as u32;
-        let color = color.to_linear().to_f32_array();
+        let color = palette_color(color, self.palette)
+            .to_linear()
+            .to_f32_array();
         for point in [a, b, c, d] {
             self.vertices.push([
                 point.x - self.size.x * 0.5,
@@ -188,6 +192,8 @@ pub struct RenderOptions {
     pub bloom: f32,
     pub scanlines: f32,
     pub crt: bool,
+    pub curvature: f32,
+    pub vignette: f32,
 }
 
 impl Default for RenderOptions {
@@ -198,6 +204,8 @@ impl Default for RenderOptions {
             bloom: 0.16,
             scanlines: 0.08,
             crt: true,
+            curvature: 0.5,
+            vignette: 0.45,
         }
     }
 }
@@ -224,6 +232,11 @@ struct CrtMaterial {
     source: Handle<Image>,
     #[uniform(2)]
     params: Vec4,
+    #[texture(3)]
+    #[sampler(4)]
+    text_source: Handle<Image>,
+    #[uniform(5)]
+    monitor: Vec4,
 }
 
 impl Material2d for CrtMaterial {
@@ -239,6 +252,9 @@ impl Material2d for CrtMaterial {
 #[derive(Resource)]
 struct RendererState {
     scene_image: Handle<Image>,
+    text_image: Handle<Image>,
+    text_camera: Entity,
+    last_text_size: UVec2,
     crt_material: Handle<CrtMaterial>,
     scene_mesh: Handle<Mesh>,
     scene_camera: Entity,
@@ -282,12 +298,19 @@ fn setup_renderer(
     image.texture_descriptor.usage |= TextureUsages::COPY_DST;
     image.sampler = ImageSampler::linear();
     let scene_image = images.add(image);
+    let text_image = images.add(Image::new_target_texture(
+        initial_size.x,
+        initial_size.y,
+        TextureFormat::Rgba8UnormSrgb,
+    ));
 
     let scene_mesh = meshes.add(empty_triangle_mesh());
     let scene_material = color_materials.add(ColorMaterial::default());
     let crt_material = crt_materials.add(CrtMaterial {
         source: scene_image.clone(),
         params: Vec4::new(0.16, 0.08, 1.0, 0.0),
+        text_source: text_image.clone(),
+        monitor: Vec4::new(0.06, 0.45, 0.0, 0.0),
     });
     let _shader: Handle<Shader> =
         bevy::asset::load_embedded_asset!(asset_server.as_ref(), "crt.wgsl");
@@ -296,7 +319,7 @@ fn setup_renderer(
         .spawn((
             Camera2d,
             Camera {
-                order: -1,
+                order: -2,
                 target: scene_image.clone().into(),
                 clear_color: ClearColorConfig::Custom(Color::BLACK),
                 ..default()
@@ -319,6 +342,26 @@ fn setup_renderer(
         MeshMaterial2d(scene_material.clone()),
         RenderLayers::layer(SCENE_LAYER),
     ));
+    let text_camera = commands
+        .spawn((
+            Camera2d,
+            Camera {
+                order: -1,
+                target: text_image.clone().into(),
+                clear_color: ClearColorConfig::Custom(Color::NONE),
+                ..default()
+            },
+            Projection::Orthographic(OrthographicProjection {
+                scaling_mode: ScalingMode::Fixed {
+                    width: initial_size.x as f32,
+                    height: initial_size.y as f32,
+                },
+                ..OrthographicProjection::default_2d()
+            }),
+            Msaa::Off,
+            RenderLayers::layer(TEXT_LAYER),
+        ))
+        .id();
     let composite_camera = commands
         .spawn((
             Camera2d,
@@ -350,6 +393,9 @@ fn setup_renderer(
 
     commands.insert_resource(RendererState {
         scene_image,
+        text_image,
+        text_camera,
+        last_text_size: initial_size,
         crt_material,
         scene_mesh,
         scene_camera,
@@ -398,9 +444,29 @@ fn render_frame(
     let width = (frame.size.x * render_scale).round().max(1.0) as u32;
     let height = (frame.size.y * render_scale).round().max(1.0) as u32;
     let scene_size = UVec2::new(width, height);
+    let text_size = (frame.size * options.scale_factor.max(0.5))
+        .round()
+        .as_uvec2()
+        .max(UVec2::ONE);
+    let text_size_changed = text_size != state.last_text_size;
+    if text_size_changed {
+        if let Some(image) = images.get_mut(&state.text_image) {
+            image.resize(Extent3d {
+                width: text_size.x,
+                height: text_size.y,
+                depth_or_array_layers: 1,
+            });
+            image.sampler = ImageSampler::linear();
+        }
+        state.last_text_size = text_size;
+    }
     let logical_size_changed = frame.size != state.last_logical_size;
     let pixel_mode_changed = options.pixel != state.last_pixel;
-    if scene_size != state.last_scene_size || logical_size_changed || pixel_mode_changed {
+    if scene_size != state.last_scene_size
+        || logical_size_changed
+        || pixel_mode_changed
+        || text_size_changed
+    {
         if let Some(image) = images.get_mut(&state.scene_image) {
             if scene_size != state.last_scene_size {
                 image.resize(Extent3d {
@@ -415,7 +481,11 @@ fn render_frame(
                 ImageSampler::linear()
             };
         }
-        for camera in [state.scene_camera, state.composite_camera] {
+        for camera in [
+            state.scene_camera,
+            state.text_camera,
+            state.composite_camera,
+        ] {
             if let Ok(mut projection) = projections.get_mut(camera)
                 && let Projection::Orthographic(orthographic) = &mut *projection
             {
@@ -449,6 +519,23 @@ fn render_frame(
         if material.params != params {
             material.params = params;
         }
+        let monitor = Vec4::new(
+            if options.crt {
+                options.curvature.clamp(0.0, 1.0) * 0.12
+            } else {
+                0.0
+            },
+            if options.crt {
+                options.vignette.clamp(0.0, 1.0)
+            } else {
+                0.0
+            },
+            0.0,
+            0.0,
+        );
+        if material.monitor != monitor {
+            material.monitor = monitor;
+        }
     }
     if let Ok(mut transform) = transforms.get_mut(state.composite_quad) {
         let scale = Vec3::new(frame.size.x, frame.size.y, 1.0);
@@ -471,7 +558,7 @@ fn render_frame(
                 Anchor::TOP_LEFT,
                 Transform::default(),
                 Visibility::Hidden,
-                RenderLayers::layer(COMPOSITE_LAYER),
+                RenderLayers::layer(TEXT_LAYER),
             ))
             .id();
         state.text_entities.push(entity);
@@ -523,5 +610,70 @@ fn update_mesh(mesh: &mut Mesh, frame: &Frame) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0, 0.0]; frame.vertices.len()]);
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, frame.colors.clone());
         mesh.insert_indices(Indices::U32(frame.indices.clone()));
+    }
+}
+
+/// The same screen-to-surface transform used by the final fragment pass.
+/// Bezel pixels outside the curved display deliberately have no interaction target.
+pub fn screen_to_surface(point: Vec2, size: Vec2, curvature: f32) -> Option<Vec2> {
+    if !valid_size(size) || !point.is_finite() {
+        return None;
+    }
+    let p = point / size * 2.0 - Vec2::ONE;
+    let q = p * (1.0 + curvature.clamp(0.0, 1.0) * 0.12 * p.length_squared());
+    let surface = (q + Vec2::ONE) * 0.5 * size;
+    (surface.cmpge(Vec2::ZERO).all() && surface.cmplt(size).all()).then_some(surface)
+}
+
+fn palette_color(color: Color, scheme: gamevex_core::ColorScheme) -> Color {
+    if scheme == gamevex_core::ColorScheme::Cyan {
+        return color;
+    }
+    let c = color.to_srgba();
+    let peak = c.red.max(c.green).max(c.blue);
+    let rgb = if c.red > 0.7 && c.green > 0.7 && c.blue > 0.7 {
+        [peak, peak * 0.92, peak * 0.72]
+    } else if c.red > 0.8 && c.green < 0.35 && c.blue < 0.5 {
+        [1.0, 0.33, 0.18] // Keep losses and wrong flags distinct from amber accents.
+    } else if c.red > 0.8 && c.green < 0.3 && c.blue > 0.5 {
+        [1.0, 0.53, 0.16]
+    } else if c.red > 0.8 && c.green > 0.5 && c.blue < 0.2 {
+        [1.0, 0.88, 0.56]
+    } else {
+        [peak, peak * 0.73, peak * 0.26]
+    };
+    Color::srgba(rgb[0], rgb[1], rgb[2], c.alpha)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn monitor_picking_matches_shader_at_center_edges_and_resizes() {
+        for size in [Vec2::new(1280.0, 800.0), Vec2::new(390.0, 844.0)] {
+            for strength in [0.0, 0.5, 1.0] {
+                for target in [
+                    size * 0.5,
+                    Vec2::new(22.0, 30.0),
+                    size - Vec2::new(22.0, 40.0),
+                ] {
+                    let q = target / size * 2.0 - Vec2::ONE;
+                    let k = strength * 0.12;
+                    let mut p = q;
+                    for _ in 0..30 {
+                        p = q / (1.0 + k * p.length_squared());
+                    }
+                    let screen = (p + Vec2::ONE) * 0.5 * size;
+                    assert!(
+                        screen_to_surface(screen, size, strength)
+                            .unwrap()
+                            .distance(target)
+                            < 0.01
+                    );
+                }
+            }
+            assert!(screen_to_surface(Vec2::ZERO, size, 0.5).is_none());
+            assert_eq!(screen_to_surface(size * 0.5, size, 1.0), Some(size * 0.5));
+        }
     }
 }

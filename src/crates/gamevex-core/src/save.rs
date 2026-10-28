@@ -11,9 +11,29 @@ pub enum DisplayPreset {
     PixelCrt,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ColorScheme {
+    #[default]
+    Cyan,
+    Amber,
+}
+
+fn default_curvature() -> f32 {
+    0.5
+}
+fn default_vignette() -> f32 {
+    0.45
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub display_preset: DisplayPreset,
+    #[serde(default)]
+    pub color_scheme: ColorScheme,
+    #[serde(default = "default_curvature")]
+    pub curvature: f32,
+    #[serde(default = "default_vignette")]
+    pub vignette: f32,
     pub bloom: f32,
     pub scanlines: f32,
     pub crt: bool,
@@ -26,6 +46,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             display_preset: DisplayPreset::VectorCrt,
+            color_scheme: ColorScheme::Cyan,
+            curvature: default_curvature(),
+            vignette: default_vignette(),
             bloom: 0.35,
             scanlines: 0.2,
             crt: true,
@@ -39,6 +62,8 @@ impl Default for Settings {
 impl Settings {
     fn validate(&self) -> Result<(), String> {
         for (name, value) in [
+            ("curvature", self.curvature),
+            ("vignette", self.vignette),
             ("bloom", self.bloom),
             ("scanlines", self.scanlines),
             ("volume", self.volume),
@@ -172,6 +197,26 @@ mod tests {
         let mut save = Save::default();
         save.settings.volume = f32::NAN;
         assert!(save.validate().unwrap_err().contains("volume"));
+    }
+
+    #[test]
+    fn previous_v1_saves_load_with_monitor_and_palette_defaults() {
+        let mut old = serde_json::to_value(Save::default()).unwrap();
+        for key in ["color_scheme", "curvature", "vignette"] {
+            old["settings"].as_object_mut().unwrap().remove(key);
+        }
+        let loaded = Save::from_json(&old.to_string()).unwrap();
+        assert_eq!(loaded.settings, Settings::default());
+        let mut amber = loaded;
+        amber.settings.color_scheme = ColorScheme::Amber;
+        amber.settings.curvature = 0.8;
+        amber.settings.vignette = 0.6;
+        assert_eq!(Save::from_json(&amber.to_json().unwrap()).unwrap(), amber);
+        amber.settings.curvature = 1.1;
+        assert!(amber.validate().is_err());
+        amber.settings.curvature = 0.5;
+        amber.settings.vignette = -0.1;
+        assert!(amber.validate().is_err());
     }
 
     #[test]

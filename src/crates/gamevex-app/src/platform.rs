@@ -404,3 +404,11 @@ pub fn canvas_metrics() -> Option<[f32; 3]> {
         None
     }
 }
+
+/// Publish the exact shader warp coefficient for scoped browser secondary clicks.
+pub fn publish_monitor(_curvature: f32) {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(canvas) = canvas_element() {
+        let _ = canvas.set_attribute("data-curvature", &_curvature.to_string());
+    }
+}
