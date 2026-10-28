@@ -1,0 +1,6 @@
+/target/
+/.cache/
+/web/pkg/
+/web/assets/
+*.log
+.DS_Store
