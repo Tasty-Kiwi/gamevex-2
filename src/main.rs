@@ -56,6 +56,7 @@ pub(crate) struct Arcade {
 pub(crate) enum Pending {
     New(Difficulty, bool),
     Recover,
+    LeaveBlackjack(Screen),
 }
 
 impl Arcade {
@@ -75,7 +76,7 @@ impl Arcade {
             }
             Err(error) => (format!("Playing in memory · {error}"), false),
         };
-        let message = match save.game.status {
+        let message = match save.minesweeper.game.status {
             Status::Ready => "Your first reveal is always safe.",
             Status::Playing => "Saved field restored. The timer resumes during active play.",
             Status::Won => "Field cleared. Start a new run when ready.",
@@ -130,19 +131,31 @@ impl Arcade {
     }
 
     fn unfinished(&self) -> bool {
-        self.save.game.status == Status::Playing
-            || (self.save.game.status == Status::Ready
-                && self.save.game.cells.iter().any(|c| c.flagged))
+        self.save.minesweeper.game.status == Status::Playing
+            || (self.save.minesweeper.game.status == Status::Ready
+                && self.save.minesweeper.game.cells.iter().any(|c| c.flagged))
     }
 
     fn open(&mut self, screen: Screen) {
+        if self.screen == Screen::Blackjack
+            && !matches!(screen, Screen::Blackjack | Screen::Settings)
+            && self.save.blackjack.legal(blackjack::Command::Abandon)
+        {
+            self.open_modal(Pending::LeaveBlackjack(screen));
+            return;
+        }
         if screen == Screen::Settings {
             self.settings_scroll = 0.0;
             self.settings_return = self.screen;
             self.settings_return_focus = self.focus;
         }
         self.screen = screen;
-        self.focus = if screen == Screen::Mines { 9 } else { 0 };
+        self.focus = match screen {
+            Screen::Mines => 9,
+            Screen::Blackjack if self.save.blackjack.phase == blackjack::Phase::Betting => 7,
+            Screen::Blackjack => 3,
+            _ => 0,
+        };
         self.keyboard = false;
         self.lab.cancel_drag();
         self.last_active = false;
@@ -155,11 +168,11 @@ impl Arcade {
 
     fn new_game(&mut self, difficulty: Difficulty, repeat: bool) {
         let seed = if repeat {
-            self.save.game.seed
+            self.save.minesweeper.game.seed
         } else {
             fresh_seed()
         };
-        self.save.game = Game::new(difficulty, seed);
+        self.save.minesweeper.game = Game::new(difficulty, seed);
         self.pan = Vec2::ZERO;
         self.cell = 0;
         self.fractional_ms = 0.0;
@@ -170,7 +183,7 @@ impl Arcade {
     }
 
     fn command(&mut self, command: GameCommand) {
-        let events = self.save.game.command(command);
+        let events = self.save.minesweeper.game.command(command);
         if events.is_empty() {
             return;
         }
@@ -178,7 +191,11 @@ impl Arcade {
         for event in events {
             match event {
                 DomainEvent::Won => {
-                    let record = self.save.records.record(&self.save.game);
+                    let record = self
+                        .save
+                        .minesweeper
+                        .records
+                        .record(&self.save.minesweeper.game);
                     self.message = if record {
                         "Field cleared. A new personal best!"
                     } else {
@@ -232,9 +249,26 @@ impl Arcade {
                     self.reset_saved_data();
                     self.persist();
                 }
+                Some(Pending::LeaveBlackjack(target)) => {
+                    self.save.blackjack.command(blackjack::Command::Abandon);
+                    self.open(target);
+                }
                 None => {}
             },
             Action::Cancel => self.restore_modal_focus(),
+            Action::Blackjack(command) => {
+                let phase = self.save.blackjack.phase;
+                if self.save.blackjack.command(command) {
+                    if self.save.blackjack.phase != phase {
+                        self.focus = if self.save.blackjack.phase == blackjack::Phase::Betting {
+                            7
+                        } else {
+                            3
+                        };
+                    }
+                    self.persist();
+                }
+            }
             Action::FlagMode => self.flag_mode = !self.flag_mode,
             Action::Board => {}
             Action::Preset => {
@@ -457,7 +491,7 @@ fn lifecycle(
         transitioned,
         &mut state.fractional_ms,
     );
-    state.save.game.advance_elapsed(millis, active);
+    state.save.minesweeper.game.advance_elapsed(millis, active);
     if !foreground || transitioned {
         state.lab.cancel_drag();
     }
@@ -466,7 +500,9 @@ fn lifecycle(
     if (state.last_active && !active)
         || transitioned
         || close.read().count() > 0
-        || (active && state.save.game.status == Status::Playing && state.save_age >= 5.0)
+        || (active
+            && state.save.minesweeper.game.status == Status::Playing
+            && state.save_age >= 5.0)
     {
         state.persist();
     }
@@ -519,7 +555,7 @@ fn handle_pointer_input(
         .map(|[_, _, density]| window.scale_factor() / density)
         .unwrap_or(1.0);
     let mut layout_valid = layout.size == size;
-    let difficulty = state.save.game.difficulty;
+    let difficulty = state.save.minesweeper.game.difficulty;
     for event in events.read() {
         match event {
             WindowEvent::CursorMoved(event) => *pointer = Some(event.position * to_css),
@@ -558,7 +594,7 @@ fn handle_pointer_input(
             // A preceding event may have navigated or opened a dialog. Wait for
             // paint to build the new surface before accepting another action.
             if !layout_valid
-                || state.save.game.difficulty != difficulty
+                || state.save.minesweeper.game.difficulty != difficulty
                 || layout.surface != Some(state.screen)
                 || layout.modal != state.modal.is_some()
             {
@@ -607,14 +643,18 @@ fn pointer_pressed(state: &mut Arcade, layout: &ViewLayout, button: MouseButton)
         state.focus = index;
         if let Action::Board = hit.action {
             if let Some(board) = &layout.board
-                && let Some(i) = state
-                    .cursor
-                    .and_then(|p| board.index(p, state.save.game.cols(), state.save.game.rows()))
+                && let Some(i) = state.cursor.and_then(|p| {
+                    board.index(
+                        p,
+                        state.save.minesweeper.game.cols(),
+                        state.save.minesweeper.game.rows(),
+                    )
+                })
             {
                 state.cell = i;
                 let command = if button == MouseButton::Right || state.flag_mode {
                     GameCommand::ToggleFlag(i)
-                } else if state.save.game.cells[i].revealed {
+                } else if state.save.minesweeper.game.cells[i].revealed {
                     GameCommand::Chord(i)
                 } else {
                     GameCommand::Reveal(i)
@@ -666,6 +706,20 @@ fn handle_input(
     if keys.get_just_pressed().next().is_some() {
         state.keyboard = true;
     }
+    if [
+        KeyCode::SuperLeft,
+        KeyCode::SuperRight,
+        KeyCode::ControlLeft,
+        KeyCode::ControlRight,
+        KeyCode::AltLeft,
+        KeyCode::AltRight,
+    ]
+    .iter()
+    .any(|key| keys.pressed(*key))
+    {
+        wheel.clear();
+        return;
+    }
     if keys.just_pressed(KeyCode::Escape) {
         if state.modal.is_some() {
             state.act(Action::Cancel);
@@ -707,9 +761,25 @@ fn handle_input(
         wheel.clear();
         return;
     }
+    if state.screen == Screen::Blackjack {
+        use blackjack::Command as Bj;
+        for (key, command) in [
+            (KeyCode::KeyH, Bj::Hit),
+            (KeyCode::KeyS, Bj::Stand),
+            (KeyCode::KeyD, Bj::Double),
+            (KeyCode::KeyP, Bj::Split),
+            (KeyCode::KeyR, Bj::Surrender),
+            (KeyCode::KeyY, Bj::Insure),
+            (KeyCode::KeyN, Bj::DeclineInsurance),
+        ] {
+            if keys.just_pressed(key) {
+                state.act(Action::Blackjack(command));
+            }
+        }
+    }
     if state.screen == Screen::Mines && board_focused {
-        let cols = state.save.game.cols();
-        let rows = state.save.game.rows();
+        let cols = state.save.minesweeper.game.cols();
+        let rows = state.save.minesweeper.game.rows();
         let mut row = state.cell / cols;
         let mut col = state.cell % cols;
         if keys.just_pressed(KeyCode::ArrowLeft) {
@@ -981,10 +1051,17 @@ mod tests {
         move_pointer(&mut app, window, 200.0, 200.0);
         app.update();
         let state = app.world().resource::<Arcade>();
-        assert!(state.save.game.cells[0].flagged);
-        assert!(state.save.game.cells[2].flagged);
+        assert!(state.save.minesweeper.game.cells[0].flagged);
+        assert!(state.save.minesweeper.game.cells[2].flagged);
         assert_eq!(
-            state.save.game.cells.iter().filter(|c| c.flagged).count(),
+            state
+                .save
+                .minesweeper
+                .game
+                .cells
+                .iter()
+                .filter(|c| c.flagged)
+                .count(),
             2
         );
     }
@@ -1068,12 +1145,54 @@ mod tests {
     }
 
     #[test]
+    fn blackjack_leave_requires_confirmation_and_settings_preserve_the_hand() {
+        let mut state = test_arcade();
+        state.save.blackjack = blackjack::Blackjack::with_shoe(
+            1,
+            gamevex_core::cards::Shoe::from_cards(
+                [10, 7, 10, 8]
+                    .into_iter()
+                    .map(|rank| {
+                        gamevex_core::cards::Card::new(
+                            rank,
+                            gamevex_core::cards::Suit::Spades,
+                            true,
+                        )
+                    })
+                    .collect(),
+            ),
+        );
+        state.open(Screen::Blackjack);
+        state.act(Action::Blackjack(blackjack::Command::Deal));
+        assert!(state.save.blackjack.legal(blackjack::Command::Abandon));
+        {
+            let round = state.save.blackjack.clone();
+            state.open(Screen::Settings);
+            state.act(Action::Back);
+            assert_eq!(state.screen, Screen::Blackjack);
+            assert_eq!(state.save.blackjack, round);
+            state.open(Screen::Lobby);
+            assert!(matches!(
+                state.modal,
+                Some(Pending::LeaveBlackjack(Screen::Lobby))
+            ));
+            state.act(Action::Cancel);
+            assert_eq!(state.save.blackjack, round);
+            state.open(Screen::Lobby);
+            state.act(Action::Confirm);
+            assert_eq!(state.screen, Screen::Lobby);
+            assert_eq!(state.save.blackjack.balance, round.balance);
+            assert!(!state.save.blackjack.legal(blackjack::Command::Abandon));
+        }
+    }
+
+    #[test]
     fn modal_cancel_restores_focus_and_confirm_starts_new_game_on_board() {
         let mut state = test_arcade();
         state.screen = Screen::Mines;
         state.focus = 9;
-        state.save.game.command(GameCommand::Reveal(40));
-        let original_game = state.save.game.clone();
+        state.save.minesweeper.game.command(GameCommand::Reveal(40));
+        let original_game = state.save.minesweeper.game.clone();
 
         state.act(Action::New(Difficulty::Intermediate, false));
         assert!(matches!(state.modal, Some(Pending::New(_, _))));
@@ -1081,13 +1200,16 @@ mod tests {
         state.act(Action::Cancel);
         assert!(state.modal.is_none());
         assert_eq!(state.focus, 9);
-        assert_eq!(state.save.game, original_game);
+        assert_eq!(state.save.minesweeper.game, original_game);
 
         state.act(Action::New(Difficulty::Intermediate, false));
         state.act(Action::Confirm);
         assert!(state.modal.is_none());
-        assert_eq!(state.save.game.difficulty, Difficulty::Intermediate);
-        assert_eq!(state.save.game.status, Status::Ready);
+        assert_eq!(
+            state.save.minesweeper.game.difficulty,
+            Difficulty::Intermediate
+        );
+        assert_eq!(state.save.minesweeper.game.status, Status::Ready);
         assert_eq!(state.focus, 9);
     }
 
@@ -1110,15 +1232,18 @@ mod tests {
     fn saved_data_reset_clears_game_records_settings_and_transient_state() {
         let mut state = test_arcade();
         state.save.settings.color_scheme = ColorScheme::Amber;
-        state.save.records.beginner = Some(5000);
-        state.save.game.command(GameCommand::Reveal(40));
+        state.save.minesweeper.records.beginner = Some(5000);
+        state.save.minesweeper.game.command(GameCommand::Reveal(40));
+        state.save.blackjack.command(blackjack::Command::Deal);
         state.lab.pick(0);
         state.lab.drop_in(Some(0));
         state.flag_mode = true;
         state.reset_saved_data();
         assert_eq!(state.save.settings, Settings::default());
-        assert_eq!(state.save.records, Records::default());
-        assert_eq!(state.save.game.status, Status::Ready);
+        assert_eq!(state.save.minesweeper.records, Records::default());
+        assert_eq!(state.save.minesweeper.game.status, Status::Ready);
+        assert_eq!(state.save.blackjack.balance, 1000);
+        assert_eq!(state.save.blackjack.phase, blackjack::Phase::Betting);
         assert_eq!(state.screen, Screen::Lobby);
         assert_eq!(state.lab, CardLab::default());
         assert!(!state.flag_mode);
@@ -1184,6 +1309,7 @@ fn capture_tools(
                 Screen::Mines => "minesweeper",
                 Screen::Cards => "card-lab",
                 Screen::Settings => "settings",
+                Screen::Blackjack => "blackjack",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

@@ -247,7 +247,7 @@ fn qa_mode() -> Option<&'static str> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn diagnostics_enabled() -> bool {
+pub fn diagnostics_enabled() -> bool {
     query_parts()
         .map(|query| {
             query
@@ -424,5 +424,20 @@ pub fn publish_cards(_bounds: Option<[[f32; 4]; 5]>) {
         } else {
             let _ = canvas.remove_attribute("data-card-bounds");
         }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn diagnostics_enabled() -> bool {
+    false
+}
+
+/// Opt-in state/layout inspection for browser regression checks.
+pub fn diagnostics_attribute(_name: &str, _json: &str) {
+    #[cfg(target_arch = "wasm32")]
+    if diagnostics_enabled()
+        && let Some(canvas) = canvas_element()
+    {
+        let _ = canvas.set_attribute(_name, _json);
     }
 }

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 1;
+pub const SAVE_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -130,11 +130,24 @@ impl Records {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MinesweeperSave {
+    pub game: Game,
+    pub records: Records,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Save {
     pub version: u32,
     pub settings: Settings,
-    pub game: Game,
-    pub records: Records,
+    pub minesweeper: MinesweeperSave,
+    pub blackjack: crate::blackjack::Blackjack,
+}
+
+#[derive(Deserialize)]
+struct LegacySave {
+    settings: Settings,
+    game: Game,
+    records: Records,
 }
 
 impl Default for Save {
@@ -148,8 +161,11 @@ impl Save {
         Self {
             version: SAVE_VERSION,
             settings: Settings::default(),
-            game: Game::new(Difficulty::Beginner, seed),
-            records: Records::default(),
+            minesweeper: MinesweeperSave {
+                game: Game::new(Difficulty::Beginner, seed),
+                records: Records::default(),
+            },
+            blackjack: crate::blackjack::Blackjack::new(seed ^ 0x424c_4143_4b4a_4143),
         }
     }
 
@@ -158,8 +174,9 @@ impl Save {
             return Err(format!("unsupported save version {}", self.version));
         }
         self.settings.validate()?;
-        self.game.validate()?;
-        self.records.validate()?;
+        self.minesweeper.game.validate()?;
+        self.minesweeper.records.validate()?;
+        self.blackjack.validate()?;
         Ok(())
     }
 
@@ -167,8 +184,27 @@ impl Save {
         if json.len() > MAX_SAVE_BYTES {
             return Err("save exceeds 256 KiB limit".into());
         }
-        let save: Self =
+        let value: serde_json::Value =
             serde_json::from_str(json).map_err(|e| format!("invalid save JSON: {e}"))?;
+        let version = value
+            .get("version")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| "missing or invalid save version".to_owned())?;
+        let save = match version {
+            1 => {
+                let old: LegacySave = serde_json::from_value(value)
+                    .map_err(|e| format!("invalid version-1 save: {e}"))?;
+                let mut migrated = Self::new(old.game.seed);
+                migrated.settings = old.settings;
+                migrated.minesweeper = MinesweeperSave {
+                    game: old.game,
+                    records: old.records,
+                };
+                migrated
+            }
+            2 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            _ => return Err(format!("unsupported save version {version}")),
+        };
         save.validate()?;
         Ok(save)
     }
@@ -191,8 +227,8 @@ mod tests {
     #[test]
     fn default_save_round_trips_and_starts_beginner() {
         let save = Save::default();
-        assert_eq!(save.game.difficulty, Difficulty::Beginner);
-        assert_eq!(save.game.status, Status::Ready);
+        assert_eq!(save.minesweeper.game.difficulty, Difficulty::Beginner);
+        assert_eq!(save.minesweeper.game.status, Status::Ready);
         assert_eq!(Save::from_json(&save.to_json().unwrap()).unwrap(), save);
     }
 
@@ -208,7 +244,9 @@ mod tests {
 
     #[test]
     fn previous_v1_saves_load_with_monitor_and_palette_defaults() {
-        let mut old = serde_json::to_value(Save::default()).unwrap();
+        let seed_save = Save::default();
+        let mut old = serde_json::json!({"version":1,"settings":seed_save.settings,
+            "game":seed_save.minesweeper.game,"records":seed_save.minesweeper.records});
         for key in [
             "color_scheme",
             "curvature",
@@ -235,6 +273,27 @@ mod tests {
             amber.settings.chromatic_aberration = invalid;
             assert!(amber.validate().is_err());
         }
+    }
+
+    #[test]
+    fn migration_preserves_progress_and_v2_keeps_both_cabinets() {
+        let mut save = Save::default();
+        save.minesweeper.game.command(crate::Command::Reveal(40));
+        save.minesweeper.records.beginner = Some(1234);
+        save.settings.color_scheme = ColorScheme::Amber;
+        let legacy = serde_json::json!({"version":1,"settings":save.settings,
+            "game":save.minesweeper.game,"records":save.minesweeper.records});
+        let mut migrated = Save::from_json(&legacy.to_string()).unwrap();
+        assert_eq!(migrated.minesweeper, save.minesweeper);
+        assert_eq!(migrated.settings, save.settings);
+        assert_eq!(migrated.blackjack.balance, 1000);
+        migrated.blackjack.command(crate::blackjack::Command::Deal);
+        let restored = Save::from_json(&migrated.to_json().unwrap()).unwrap();
+        assert_eq!(restored, migrated);
+        assert_eq!(restored.version, 2);
+        let mut corrupt = serde_json::to_value(restored).unwrap();
+        corrupt["blackjack"]["hand_count"] = 0.into();
+        assert!(Save::from_json(&corrupt.to_string()).is_err());
     }
 
     #[test]

@@ -56,6 +56,81 @@ impl Card {
 
 const RANK_LABELS: [&str; 9] = ["2", "3", "4", "5", "6", "7", "8", "9", "10"];
 
+/// A deterministic, serializable shoe. Cards are dealt from the end of `cards`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Shoe {
+    pub cards: Vec<Card>,
+    pub rng_state: u64,
+    pub reshuffle_when_low: bool,
+}
+
+impl Shoe {
+    pub fn shuffled(seed: u64) -> Self {
+        let mut shoe = Self {
+            cards: Vec::with_capacity(52),
+            rng_state: seed.max(1),
+            reshuffle_when_low: true,
+        };
+        for suit in [Suit::Hearts, Suit::Diamonds, Suit::Clubs, Suit::Spades] {
+            for rank in 2..=14 {
+                shoe.cards.push(Card::new(rank, suit, true));
+            }
+        }
+        for i in (1..shoe.cards.len()).rev() {
+            let j = (shoe.next_u64() as usize) % (i + 1);
+            shoe.cards.swap(i, j);
+        }
+        shoe
+    }
+
+    /// Construct a fixed shoe in draw order: the first supplied card is drawn first.
+    pub fn from_cards(draw_order: Vec<Card>) -> Self {
+        Self {
+            cards: draw_order.into_iter().rev().collect(),
+            rng_state: 1,
+            reshuffle_when_low: false,
+        }
+    }
+
+    pub fn draw(&mut self) -> Option<Card> {
+        self.cards.pop()
+    }
+    pub fn len(&self) -> usize {
+        self.cards.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.cards.is_empty()
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        // xorshift64*, with a non-zero state established by constructors.
+        let mut x = self.rng_state;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.rng_state = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+}
+
+pub fn blackjack_value(cards: &[Card]) -> u8 {
+    let mut total = 0u32;
+    let mut aces = 0;
+    for card in cards {
+        if card.rank == 14 {
+            total = total.saturating_add(11);
+            aces += 1;
+        } else {
+            total = total.saturating_add(u32::from(card.rank.min(10)));
+        }
+    }
+    while total > 21 && aces > 0 {
+        total -= 10;
+        aces -= 1;
+    }
+    total.min(u32::from(u8::MAX)) as u8
+}
+
 /// Small engine-independent state model for the interactive Card Lab.
 ///
 /// Cards remain in hand order. A card's index is its stable identity for the
@@ -201,6 +276,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn large_ace_hands_stay_bust_instead_of_wrapping_to_a_playable_total() {
+        assert_eq!(
+            blackjack_value(&[Card::new(14, Suit::Spades, true); 52]),
+            52
+        );
+    }
+
+    #[test]
+    fn seeded_shoes_contain_each_card_once_and_replay_the_same_draws() {
+        for seed in [0, 1, 42, u64::MAX] {
+            let mut first = Shoe::shuffled(seed);
+            let mut second = Shoe::shuffled(seed);
+            let unique: std::collections::HashSet<_> =
+                first.cards.iter().map(|c| (c.rank, c.suit)).collect();
+            assert_eq!(unique.len(), 52);
+            assert_eq!(first.len(), 52);
+            while !first.is_empty() {
+                assert_eq!(first.draw(), second.draw());
+            }
+            assert!(second.is_empty());
+        }
+    }
+
+    #[test]
     fn reset_restores_repeatable_five_card_hand_and_clears_state() {
         let mut lab = CardLab::default();
         let initial = lab.cards.clone();
@@ -297,5 +396,40 @@ mod tests {
         assert!(!Suit::Clubs.is_red());
         assert!(Suit::Hearts.is_red());
         assert!(Suit::Diamonds.is_red());
+    }
+
+    #[test]
+    fn blackjack_values_aces_as_eleven_then_softens_without_underflow() {
+        assert_eq!(
+            blackjack_value(&[
+                Card::new(14, Suit::Spades, true),
+                Card::new(6, Suit::Hearts, true)
+            ]),
+            17
+        );
+        assert_eq!(
+            blackjack_value(&[
+                Card::new(14, Suit::Spades, true),
+                Card::new(14, Suit::Hearts, true),
+                Card::new(9, Suit::Clubs, true)
+            ]),
+            21
+        );
+        assert_eq!(
+            blackjack_value(&[
+                Card::new(14, Suit::Spades, true),
+                Card::new(14, Suit::Hearts, true),
+                Card::new(10, Suit::Clubs, true)
+            ]),
+            12
+        );
+        assert_eq!(
+            blackjack_value(&[
+                Card::new(13, Suit::Spades, true),
+                Card::new(12, Suit::Hearts, true),
+                Card::new(11, Suit::Clubs, true)
+            ]),
+            30
+        );
     }
 }
