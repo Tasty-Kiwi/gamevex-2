@@ -5,7 +5,7 @@ Verified locally on 29 October 2026. Implementation and artifacts live in `gamev
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 88 tests passed (60 core, 28 application/platform).
+- `cargo test --workspace --locked`: 98 tests passed (60 core, 38 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
@@ -67,8 +67,8 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 37,907,639 | 6,159,338 |
-| Generated JavaScript | 107,369 | 17,327 |
+| WASM | 37,979,527 | 6,183,698 |
+| Generated JavaScript | 108,170 | 17,529 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
 
@@ -130,9 +130,25 @@ Actual browser WebGPU checks migrated the existing isolated version-2 save to ve
 
 The native Metal / Apple M4 package ran an isolated fixed-shoe natural fixture: Player A+7 = 8, Banker A+8 = 9, Banker stake 20 returned 39 after commission and saved balance 1,019. The screenshot below is an actual native capture. Both release builds succeeded. Seven Playwright specs are discoverable and their JavaScript syntax checks pass; the Playwright runner and hosted CI remain unexecuted. No additional performance claim is made.
 
+## Casino outcome effects and audio — 29 October 2026
+
+Added shared outcome panels, green win sparks and rings, gold natural/8:1 celebrations, red loss sweeps, cyan push diamonds, hand/lane outcome outlines, action badges, net-credit labels, and bankruptcy feedback. Effects finish within two seconds and pause with the cabinet presentation. Reduced motion draws static feedback. Reloaded completed rounds show a static result and do not replay cues. The rules and save schema remain unchanged.
+
+Sixteen deterministic synthesized WAV cues cover bets, deal, card arrival, reveal, Hit, Stand, Double, Split, Surrender, Insurance, Bust, Win, Natural, Push, Loss, and GameOver. Playback follows the visible card/settlement sequence. Both backends cache cues, bound concurrency to four voices, prioritize outcome sounds, and apply mute/volume immediately. Browser testing exposed a suspended Bevy audio path that retained four voices; the browser now uses a directly gesture-unlocked Web Audio context with cached buffers and explicit voice cleanup. Native playback retains Bevy audio.
+
+All 98 Rust tests, formatting, and warning-free workspace Clippy passed. New tests cover cue timing and one-shot settlement, silent restore, bust/loss deduplication, odd-credit/refund/insurance net calculations, Tie celebration and bankruptcy, valid/deterministic/distinct PCM cues, bounded sample peaks, WAV decoding, gesture gating, bounded voices, cache reuse, and immediate mute/zero volume. The maximum synthesized sample peak is 0.432; the casino gain of 0.5 and four-voice limit bound the worst-case summed peak to 0.864 before master volume. This is a signal-bound check, not a subjective loudness assessment.
+
+Actual native Metal captures exercised a natural Blackjack returning a net +15 credits and a Banker win returning a net +19 after commission. Actual browser WebGPU checks exercised win/loss panels and mixed Blackjack hand outcomes. Web Audio diagnostics began stopped with zero played cues before input, became running after a canvas gesture, and returned to zero active voices after playback. A Baccarat deal added seven cues (six card arrivals and the win cue); the cache contained five unique buffers afterward. Muting kept the played count unchanged and voices at zero during another deal. Reduced motion showed the complete deal immediately. The isolated QA settings were restored afterward. Final browser inspection covered 1280×720, 390×844, and 1000×560 result layouts for both cabinets; the short Blackjack ledger uses side markers to keep outlines clear of its text. The temporary viewport override was removed. No physical-speaker or subjective audible quality assessment is claimed.
+
+Native packaging and the WASM release build succeeded. Eight browser specs are discoverable and their JavaScript syntax checks pass; the Playwright runner and hosted CI remain unexecuted. No additional performance measurement is claimed. The [sound preview](audio/casino-preview.wav) concatenates Bet, Card, Double, Win, Natural, Push, Loss, and Bust, separated by silence; its raw samples precede the app’s master gain.
+
 ## Screenshots
 
 Actual native render captures, excluding window chrome.
+
+![Blackjack outcome effects](screenshots/blackjack-feedback.png)
+
+![Baccarat outcome effects](screenshots/baccarat-feedback.png)
 
 ![Baccarat](screenshots/baccarat.png)
 

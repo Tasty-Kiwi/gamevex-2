@@ -1,3 +1,4 @@
+use super::casino_fx::{self, ResultKind};
 use super::screens::{button, card_face};
 use super::*;
 use gamevex_core::baccarat::{BetSide, Command, MAX_BET, Outcome, Phase, hand_value};
@@ -182,6 +183,46 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     draw_lane(f, panels[1], banker_total, &game.banker, false, small, s);
 
     if has_result {
+        let result = s
+            .casino_feedback
+            .result
+            .clone()
+            .unwrap_or_else(|| crate::casino_feedback::baccarat_result(&game));
+        let age = s
+            .casino_feedback
+            .result
+            .as_ref()
+            .map(|_| s.casino_feedback.result_age);
+        for (i, side) in [BetSide::Player, BetSide::Banker].into_iter().enumerate() {
+            let kind = if game.result == Some(BetSide::Tie) {
+                ResultKind::Push
+            } else if game.result == Some(side) {
+                ResultKind::Win
+            } else {
+                ResultKind::Loss
+            };
+            casino_fx::highlight(f, panels[i], kind, age, reduced);
+        }
+        casino_fx::banner(
+            f,
+            rect(
+                m,
+                if short {
+                    151.0
+                } else if small {
+                    183.0
+                } else {
+                    187.0
+                },
+                w,
+                if small || short { 56.0 } else { 66.0 },
+            ),
+            result.kind.into(),
+            &result.title,
+            &format!("{:+} CREDITS / RETURN {}", result.net, game.payout),
+            age,
+            reduced,
+        );
         let line = result_line(&game);
         f.text(
             Vec2::new(m, table_bottom + 7.0),
@@ -193,6 +234,15 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 Some(Outcome::Loss) => RED,
                 None => MUTED,
             },
+        );
+    } else if let Some(label) = s.casino_feedback.action {
+        casino_fx::action(
+            f,
+            Vec2::new(m + w * 0.78, bet_y + 16.0),
+            label,
+            s.casino_feedback.action_age,
+            reduced,
+            GOLD,
         );
     }
 

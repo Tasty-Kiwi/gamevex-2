@@ -1,4 +1,5 @@
 use super::blackjack_motion::visible_dealer_total;
+use super::casino_fx::{self, ResultKind};
 use super::screens::{button, card_face};
 use super::*;
 use gamevex_core::blackjack::{Command, HandOutcome, MAX_BET, Phase, hand_value};
@@ -10,6 +11,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
     let small = w < 620.0;
     let short = f.size.y < 640.0;
     let compact_view = small || short;
+    let finished = matches!(game.phase, Phase::Settled | Phase::GameOver);
     f.text(
         Vec2::new(m, if short { 82.0 } else { 96.0 }),
         "BLACKJACK",
@@ -144,7 +146,15 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
     } else {
         270.0
     };
-    let table_bottom = (buttons_y - if short { 20.0 } else { 24.0 }).max(table_top + 110.0);
+    let table_bottom = (buttons_y
+        - if finished && small {
+            78.0
+        } else if short {
+            20.0
+        } else {
+            24.0
+        })
+    .max(table_top + 110.0);
     let table_rect = rect(m, table_top, w, table_bottom - table_top);
     f.rect(
         table_rect.min,
@@ -218,7 +228,12 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
         card_face(f, animated_rect(s, r, true, 0, i), shown, false, true);
     }
 
-    let hands_y = table_top + if short { 100.0 } else { card_h + 54.0 };
+    let hands_y = table_top
+        + if short {
+            if finished && small { 65.0 } else { 100.0 }
+        } else {
+            card_h + 54.0
+        };
     f.text(Vec2::new(m + 14.0, hands_y), "PLAYER", 12.0, MUTED);
     let narrow_live = compact_view && game.phase == Phase::PlayerTurn;
     if narrow_live {
@@ -228,16 +243,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 .iter()
                 .enumerate()
                 .map(|(i, hand)| {
-                    let outcome =
-                        hand.outcome
-                            .map(outcome_label)
-                            .unwrap_or(if i == game.active_hand {
-                                "PLAYING"
-                            } else if hand.stood {
-                                "STOOD"
-                            } else {
-                                "WAITING"
-                            });
+                    let outcome = hand_state(hand, i == game.active_hand);
                     format!(
                         "H{} {} / {} {}",
                         i + 1,
@@ -256,15 +262,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             );
         }
         for (i, hand) in game.hands.iter().enumerate() {
-            let outcome = hand.outcome.map(outcome_label).unwrap_or_else(|| {
-                if i == game.active_hand {
-                    "PLAYING"
-                } else if hand.stood {
-                    "STOOD"
-                } else {
-                    "WAITING"
-                }
-            });
+            let outcome = hand_state(hand, i == game.active_hand);
             let label = format!(
                 "H{}  {}  BET {}  {}",
                 i + 1,
@@ -330,6 +328,27 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
     } else if compact_view {
         // A compact result ledger keeps all five outcomes visible on phones.
         for (i, hand) in game.hands.iter().enumerate() {
+            if let Some(kind) = hand.outcome.map(hand_result_kind) {
+                if short {
+                    // A side marker leaves enough room for the compact text line.
+                    f.rect(
+                        Vec2::new(m + 8.0, hands_y + 20.0 + i as f32 * 18.0),
+                        Vec2::new(2.0, 15.0),
+                        casino_fx::kind_color(kind),
+                    );
+                } else {
+                    casino_fx::highlight(
+                        f,
+                        rect(m + 8.0, hands_y + 15.0 + i as f32 * 25.0, w - 16.0, 24.0),
+                        kind,
+                        s.casino_feedback
+                            .result
+                            .as_ref()
+                            .map(|_| s.casino_feedback.result_age),
+                        reduced,
+                    );
+                }
+            }
             let result = hand.outcome.map(outcome_label).unwrap_or("READY");
             let label = format!(
                 "HAND {}  {}  BET {}  {}",
@@ -367,6 +386,22 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 card_w.min(col_w / (1.0 + 0.45 * hand.cards.len().saturating_sub(1) as f32));
             let hand_card_h = hand_card_w * 1.4;
             let y = hands_y + 38.0;
+            if let Some(kind) = hand
+                .outcome
+                .map(hand_result_kind)
+                .or_else(|| (hand_value(&hand.cards) > 21).then_some(ResultKind::Loss))
+            {
+                casino_fx::highlight(
+                    f,
+                    rect(x + 4.0, hands_y + 16.0, col_w - 8.0, hand_card_h + 58.0),
+                    kind,
+                    s.casino_feedback
+                        .result
+                        .as_ref()
+                        .map(|_| s.casino_feedback.result_age),
+                    reduced,
+                );
+            }
             let card_gap = if hand.cards.len() <= 1 {
                 0.0
             } else {
@@ -414,6 +449,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
     }
     if let Some(message) = &game.message
         && !short
+        && !finished
         && !(compact_view
             && matches!(
                 game.phase,
@@ -426,6 +462,45 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             compact(message, ((w - 28.0) / 8.1) as usize),
             13.0,
             CYAN,
+        );
+    }
+
+    if finished {
+        let result = s
+            .casino_feedback
+            .result
+            .clone()
+            .unwrap_or_else(|| crate::casino_feedback::blackjack_result(game));
+        let bounds = if small {
+            rect(m, buttons_y - 66.0, w, 54.0)
+        } else {
+            rect(
+                m + w * 0.43,
+                if short { 174.0 } else { 198.0 },
+                w * 0.57,
+                if short { 40.0 } else { 54.0 },
+            )
+        };
+        casino_fx::banner(
+            f,
+            bounds,
+            result.kind.into(),
+            &result.title,
+            &format!("{:+} CREDITS / BANK {}", result.net, game.balance),
+            s.casino_feedback
+                .result
+                .as_ref()
+                .map(|_| s.casino_feedback.result_age),
+            reduced,
+        );
+    } else if let Some(label) = s.casino_feedback.action {
+        casino_fx::action(
+            f,
+            Vec2::new(m + w * 0.76, if short { 191.0 } else { 230.0 }),
+            label,
+            s.casino_feedback.action_age,
+            reduced,
+            if label == "BUST" { RED } else { GOLD },
         );
     }
 
@@ -590,4 +665,29 @@ fn turn_outline(f: &mut Frame, s: &Arcade, target: Rect) {
             GOLD.with_alpha(pulse),
         );
     }
+}
+
+fn hand_result_kind(outcome: HandOutcome) -> ResultKind {
+    match outcome {
+        HandOutcome::Blackjack => ResultKind::Natural,
+        HandOutcome::Win => ResultKind::Win,
+        HandOutcome::Push => ResultKind::Push,
+        _ => ResultKind::Loss,
+    }
+}
+
+fn hand_state(hand: &gamevex_core::blackjack::PlayerHand, active: bool) -> &'static str {
+    hand.outcome.map(outcome_label).unwrap_or_else(|| {
+        if hand_value(&hand.cards) > 21 {
+            "BUST"
+        } else if hand_value(&hand.cards) == 21 {
+            "21"
+        } else if active {
+            "PLAYING"
+        } else if hand.stood {
+            "STOOD"
+        } else {
+            "WAITING"
+        }
+    })
 }

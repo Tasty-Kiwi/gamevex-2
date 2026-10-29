@@ -1,9 +1,13 @@
+#[cfg(any(target_arch = "wasm32", test))]
+mod browser_audio;
+mod casino_audio;
+mod casino_feedback;
 mod platform;
 mod presentation;
 mod rendering;
 
 use bevy::{
-    audio::{AudioSource, Volume},
+    audio::{AudioSink, AudioSinkPlayback, AudioSource, Volume},
     input::{
         ButtonState,
         mouse::{MouseScrollUnit, MouseWheel},
@@ -41,6 +45,7 @@ pub(crate) struct Arcade {
     pub motion_time: f32,
     pub blackjack_motion: presentation::blackjack_motion::BlackjackMotion,
     pub baccarat_motion: presentation::baccarat_motion::BaccaratMotion,
+    pub casino_feedback: casino_feedback::CasinoFeedback,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -105,6 +110,7 @@ impl Arcade {
             motion_time: 0.0,
             blackjack_motion: Default::default(),
             baccarat_motion: Default::default(),
+            casino_feedback: Default::default(),
             message,
             persistence,
             protected_save,
@@ -152,6 +158,9 @@ impl Arcade {
             self.settings_scroll = 0.0;
             self.settings_return = self.screen;
             self.settings_return_focus = self.focus;
+        }
+        if screen != self.screen && screen != Screen::Settings && self.screen != Screen::Settings {
+            self.casino_feedback.clear();
         }
         self.screen = screen;
         if !matches!(screen, Screen::Blackjack | Screen::Settings) {
@@ -234,7 +243,11 @@ impl Arcade {
         if self.modal.is_some() && !matches!(action, Action::Confirm | Action::Cancel) {
             return;
         }
-        self.sound = Some(440.0);
+        self.sound = if matches!(action, Action::Blackjack(_) | Action::Baccarat(_)) {
+            None
+        } else {
+            Some(440.0)
+        };
         match action {
             Action::Open(screen) => self.open(screen),
             Action::Back => {
@@ -274,6 +287,8 @@ impl Arcade {
                 let before = self.save.blackjack.clone();
                 let phase = self.save.blackjack.phase;
                 if self.save.blackjack.command(command) {
+                    self.casino_feedback
+                        .blackjack(command, &before, &self.save.blackjack);
                     self.blackjack_motion
                         .start(command, &before, &self.save.blackjack);
                     if self.save.blackjack.phase != phase {
@@ -292,6 +307,8 @@ impl Arcade {
                 }
                 let before = self.save.baccarat.clone();
                 if self.save.baccarat.command(command) {
+                    self.casino_feedback
+                        .baccarat(command, &before, &self.save.baccarat);
                     self.baccarat_motion
                         .start(command, &before, &self.save.baccarat);
                     self.focus = match command {
@@ -391,6 +408,7 @@ impl Arcade {
         self.lab.reset();
         self.blackjack_motion.clear();
         self.baccarat_motion.clear();
+        self.casino_feedback.clear();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -473,6 +491,7 @@ fn main() {
                 }),
         )
         .add_plugins(ArcadeRenderPlugin)
+        .init_resource::<SoundBank>()
         .add_systems(Startup, diagnostics)
         .add_systems(Update, capture_tools)
         .add_systems(
@@ -490,6 +509,8 @@ fn main() {
 }
 
 fn diagnostics(adapter: Option<Res<RenderAdapterInfo>>, mut state: ResMut<Arcade>) {
+    #[cfg(target_arch = "wasm32")]
+    browser_audio::install();
     if let Some(adapter) = adapter {
         state.backend = format!(
             "{:?} / {}",
@@ -562,6 +583,37 @@ fn lifecycle(
         }
         if was_busy && !state.baccarat_motion.busy() {
             state.focus = 3;
+        }
+    }
+    if foreground
+        && state.modal.is_none()
+        && matches!(state.screen, Screen::Blackjack | Screen::Baccarat)
+    {
+        state.casino_feedback.tick(delta as f32);
+        let reduced = state.save.settings.reduced_motion;
+        if state.screen == Screen::Blackjack {
+            let view = state
+                .blackjack_motion
+                .sample(&state.save.blackjack, reduced);
+            let hidden = state
+                .blackjack_motion
+                .dealer_hidden(&state.save.blackjack, reduced);
+            let finished = reduced || !state.blackjack_motion.busy();
+            state.casino_feedback.observe(
+                view.hands.iter().map(|h| h.cards.len()).collect(),
+                view.dealer.len(),
+                hidden,
+                finished,
+            );
+        } else {
+            let view = state.baccarat_motion.sample(&state.save.baccarat, reduced);
+            let finished = reduced || !state.baccarat_motion.busy();
+            state.casino_feedback.observe(
+                vec![view.player.len()],
+                view.banker.len(),
+                false,
+                finished,
+            );
         }
     }
     if (state.last_active && !active)
@@ -1002,27 +1054,161 @@ fn handle_input(
     }
 }
 
+#[derive(Resource)]
+struct SoundBank {
+    casino: std::collections::HashMap<casino_audio::SoundCue, Handle<AudioSource>>,
+    legacy: std::collections::HashMap<u32, Handle<AudioSource>>,
+    played: u64,
+    last: String,
+}
+const CASINO_GAIN: f32 = 0.5;
+const MAX_AUDIO_VOICES: usize = 4;
+impl Default for SoundBank {
+    fn default() -> Self {
+        Self {
+            casino: std::collections::HashMap::with_capacity(casino_audio::ALL.len()),
+            legacy: Default::default(),
+            played: 0,
+            last: String::new(),
+        }
+    }
+}
+#[derive(Component)]
+struct SoundVoice {
+    cue: Option<casino_audio::SoundCue>,
+    gain: f32,
+}
+
+fn cue_priority(cue: Option<casino_audio::SoundCue>) -> u8 {
+    use casino_audio::SoundCue::*;
+    match cue {
+        Some(Win | Natural | Push | Loss | GameOver) => 3,
+        Some(Bust | Reveal | Double | Split | Surrender | Insurance) => 2,
+        Some(Card) => 0,
+        _ => 1,
+    }
+}
+
 fn play_sound(
     mut commands: Commands,
     mut sources: ResMut<Assets<AudioSource>>,
     mut state: ResMut<Arcade>,
+    mut bank: ResMut<SoundBank>,
+    mut voices: Query<(Entity, &SoundVoice, Option<&mut AudioSink>)>,
 ) {
-    let Some(frequency) = state.sound.take() else {
-        return;
-    };
-    if !state.audio_started || state.save.settings.muted || state.save.settings.volume <= 0.0 {
-        return;
+    let enabled =
+        state.audio_started && !state.save.settings.muted && state.save.settings.volume > 0.0;
+    #[cfg(target_arch = "wasm32")]
+    browser_audio::update(
+        state.save.settings.volume,
+        !enabled,
+        matches!(state.screen, Screen::Blackjack | Screen::Baccarat),
+    );
+    let mut active = Vec::new();
+    for (entity, voice, sink) in &mut voices {
+        if !enabled
+            || (voice.cue.is_some()
+                && !matches!(state.screen, Screen::Blackjack | Screen::Baccarat))
+        {
+            commands.entity(entity).despawn();
+        } else {
+            if let Some(mut sink) = sink {
+                sink.set_volume(Volume::Linear(state.save.settings.volume * voice.gain));
+            }
+            active.push((entity, cue_priority(voice.cue)));
+        }
     }
-    let source = sources.add(AudioSource {
-        bytes: tone(frequency).into(),
-    });
-    commands.spawn((
-        AudioPlayer::new(source),
-        PlaybackSettings {
-            volume: Volume::Linear(state.save.settings.volume * 0.12),
-            ..PlaybackSettings::DESPAWN
-        },
-    ));
+    let mut requests: Vec<_> = state
+        .casino_feedback
+        .take_sounds()
+        .into_iter()
+        .map(|cue| (Some(cue), 0.0))
+        .collect();
+    if let Some(frequency) = state.sound.take() {
+        requests.push((None, frequency));
+    }
+    requests.sort_by_key(|(cue, _)| std::cmp::Reverse(cue_priority(*cue)));
+    if enabled {
+        for (cue, frequency) in requests {
+            #[cfg(not(target_arch = "wasm32"))]
+            if active.len() >= MAX_AUDIO_VOICES {
+                let (i, (_, lowest)) = active
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, (_, p))| p)
+                    .unwrap();
+                if *lowest >= cue_priority(cue) {
+                    continue;
+                }
+                commands.entity(active.remove(i).0).despawn();
+            }
+            let source = if let Some(cue) = cue {
+                bank.casino
+                    .entry(cue)
+                    .or_insert_with(|| {
+                        sources.add(AudioSource {
+                            bytes: casino_audio::synthesize(cue).into(),
+                        })
+                    })
+                    .clone()
+            } else {
+                bank.legacy
+                    .entry(frequency.to_bits())
+                    .or_insert_with(|| {
+                        sources.add(AudioSource {
+                            bytes: tone(frequency).into(),
+                        })
+                    })
+                    .clone()
+            };
+            let gain = if cue.is_some() { CASINO_GAIN } else { 0.12 };
+            #[cfg(target_arch = "wasm32")]
+            if !browser_audio::play(
+                cue.map_or(frequency.to_bits(), |c| c as u32),
+                &sources.get(&source).unwrap().bytes,
+                gain,
+                cue_priority(cue),
+                cue.is_some(),
+            ) {
+                continue;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let entity = commands
+                    .spawn((
+                        AudioPlayer::new(source),
+                        PlaybackSettings {
+                            volume: Volume::Linear(state.save.settings.volume * gain),
+                            ..PlaybackSettings::DESPAWN
+                        },
+                        SoundVoice { cue, gain },
+                    ))
+                    .id();
+                active.push((entity, cue_priority(cue)));
+            }
+            bank.played += 1;
+            bank.last = cue.map_or_else(|| "Ui".to_owned(), |cue| format!("{cue:?}"));
+        }
+    }
+    if platform::diagnostics_enabled() {
+        #[cfg(target_arch = "wasm32")]
+        let (voice_count, cached, running, backend) = {
+            let status = browser_audio::status();
+            (status.voices, status.cached, status.running, "WebAudio")
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let (voice_count, cached, running, backend) =
+            (active.len(), bank.casino.len(), enabled, "BevyAudio");
+        platform::diagnostics_attribute(
+            "data-audio",
+            &serde_json::json!({
+                "played": bank.played, "last": bank.last, "cached": cached,
+                "voices": voice_count, "running": running, "backend": backend, "muted": state.save.settings.muted,
+                "volume": state.save.settings.volume, "gesture": state.audio_started,
+            })
+            .to_string(),
+        );
+    }
 }
 
 fn tone(frequency: f32) -> Vec<u8> {
@@ -1077,6 +1263,7 @@ mod tests {
             motion_time: 0.0,
             blackjack_motion: Default::default(),
             baccarat_motion: Default::default(),
+            casino_feedback: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -1250,6 +1437,92 @@ mod tests {
         assert_eq!(state.screen, Screen::Cards);
         assert_eq!(state.settings_return, Screen::Lobby);
         assert_eq!(state.lab.selected, None);
+    }
+
+    #[test]
+    fn casino_mix_has_headroom_at_full_volume_with_all_voices_active() {
+        let mut peak = 0.0_f32;
+        for cue in casino_audio::ALL {
+            let wav = casino_audio::synthesize(cue);
+            for bytes in wav[44..].as_chunks::<2>().0 {
+                peak = peak.max(i16::from_le_bytes(*bytes).unsigned_abs() as f32 / 32768.0);
+            }
+        }
+        assert!(MAX_AUDIO_VOICES as f32 * (peak * CASINO_GAIN).max(0.12) < 0.95);
+    }
+
+    #[test]
+    fn casino_audio_requires_gesture_caches_samples_caps_voices_and_mutes_immediately() {
+        let mut app = App::new();
+        let mut state = test_arcade();
+        state.screen = Screen::Baccarat;
+        app.insert_resource(state)
+            .insert_resource(Assets::<AudioSource>::default())
+            .init_resource::<SoundBank>()
+            .add_systems(Update, play_sound);
+        app.world_mut()
+            .resource_mut::<Arcade>()
+            .act(Action::Baccarat(baccarat::Command::Select(
+                baccarat::BetSide::Banker,
+            )));
+        app.update();
+        assert_eq!(app.world().resource::<SoundBank>().played, 0);
+        app.world_mut().resource_mut::<Arcade>().audio_started = true;
+        app.update();
+        assert_eq!(app.world().resource::<SoundBank>().played, 0);
+        for i in 0..20 {
+            let side = if i % 2 == 0 {
+                baccarat::BetSide::Player
+            } else {
+                baccarat::BetSide::Banker
+            };
+            app.world_mut()
+                .resource_mut::<Arcade>()
+                .act(Action::Baccarat(baccarat::Command::Select(side)));
+            app.update();
+        }
+        assert_eq!(
+            app.world_mut()
+                .query::<&SoundVoice>()
+                .iter(app.world())
+                .count(),
+            4
+        );
+        assert_eq!(app.world().resource::<SoundBank>().casino.len(), 1);
+        assert_eq!(app.world().resource::<Assets<AudioSource>>().len(), 1);
+        let played = app.world().resource::<SoundBank>().played;
+        app.world_mut().resource_mut::<Arcade>().save.settings.muted = true;
+        app.world_mut()
+            .resource_mut::<Arcade>()
+            .act(Action::Baccarat(baccarat::Command::Select(
+                baccarat::BetSide::Tie,
+            )));
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&SoundVoice>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+        assert_eq!(app.world().resource::<SoundBank>().played, played);
+        {
+            let mut state = app.world_mut().resource_mut::<Arcade>();
+            state.save.settings.muted = false;
+            state.save.settings.volume = 0.0;
+            state.act(Action::Baccarat(baccarat::Command::Select(
+                baccarat::BetSide::Player,
+            )));
+        }
+        app.update();
+        assert_eq!(app.world().resource::<SoundBank>().played, played);
+        assert_eq!(
+            app.world_mut()
+                .query::<&SoundVoice>()
+                .iter(app.world())
+                .count(),
+            0
+        );
     }
 
     #[test]

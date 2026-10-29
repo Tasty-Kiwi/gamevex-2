@@ -293,3 +293,28 @@ test('Baccarat settles, persists, and starts the next round with the same balanc
   expect(nextRound.player).toEqual([]);
   expect(nextRound.banker).toEqual([]);
 });
+
+test('casino audio starts on a gesture, caches cues, and releases finished voices', async ({ page }) => {
+  await openReady(page);
+  const c = page.locator(canvas);
+  const audio = () => c.evaluate((el) => el.dataset.audio ? JSON.parse(el.dataset.audio) : null);
+  await expect.poll(async () => (await audio())?.played).toBe(0);
+  expect((await audio()).backend).toBe('WebAudio');
+  expect((await audio()).running).toBe(false);
+  const lobby = await c.evaluate((el) => JSON.parse(el.dataset.actionBounds));
+  const entry = center(lobby.baccarat);
+  await clickSurface(page, entry.x, entry.y);
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Baccarat');
+  for (const side of ['player', 'banker', 'tie', 'player']) {
+    const bounds = await c.evaluate((el, side) => JSON.parse(el.dataset.actionBounds)[side], side);
+    const p = center(bounds);
+    await clickSurface(page, p.x, p.y);
+  }
+  await expect.poll(async () => (await audio()).running).toBe(true);
+  await expect.poll(async () => (await audio()).played).toBeGreaterThan(0);
+  await expect.poll(async () => (await audio()).voices, { timeout: 5_000 }).toBe(0);
+  expect((await audio()).cached).toBeLessThanOrEqual(21);
+  await page.reload();
+  await expect.poll(async () => (await audio())?.played).toBe(0);
+  expect((await audio()).running).toBe(false);
+});

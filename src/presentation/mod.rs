@@ -210,6 +210,7 @@ mod baccarat;
 pub(crate) mod baccarat_motion;
 mod blackjack;
 pub(crate) mod blackjack_motion;
+pub(crate) mod casino_fx;
 mod screens;
 
 use blackjack::blackjack;
@@ -222,6 +223,11 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
     if !platform::diagnostics_enabled() {
         return;
     }
+    platform::diagnostics_attribute("data-feedback", &serde_json::json!({
+        "result": state.casino_feedback.result.as_ref().map(|r| format!("{:?}", r.kind)),
+        "age": state.casino_feedback.result_age,
+        "action": state.casino_feedback.action.filter(|_| state.casino_feedback.action_age < 1.2),
+    }).to_string());
     let mut interaction = serde_json::json!({
         "screen": format!("{:?}", state.screen),
         "selectedCard": state.lab.selected,
