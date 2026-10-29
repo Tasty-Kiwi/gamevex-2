@@ -4,8 +4,10 @@ A local-first Rust arcade prototype. The workspace lives here; the existing Game
 
 ## Architecture
 
-- `crates/gamevex-core` contains the serializable Minesweeper game model, commands, cards, settings, records, and save validation. It does not depend on Bevy.
-- `crates/gamevex-app` owns Bevy rendering, input, audio, and platform integration. The ordinary Rust game state is authoritative; Bevy entities present that state.
+Cargo manifests, the lockfile, documentation, scripts, web files, and assets live at the repository root. `src/` contains only Rust source; the embedded CRT shader lives in `assets/crt.wgsl`. The small core crate manifest is in `crates/gamevex-core/`.
+
+- `src/core/` contains the serializable Minesweeper game model, commands, cards, settings, records, and save validation. It does not depend on Bevy.
+- The root `gamevex-app` package (`src/main.rs` and its sibling modules) owns Bevy rendering, input, audio, and platform integration. The ordinary Rust game state is authoritative; Bevy entities present that state.
 - `web/` contains the browser entry point and generated WebAssembly package. `scripts/build-web.sh` copies `assets/` into `web/assets/` when that source directory exists.
 - Native saves use the GameVex Rust Demo application-support namespace. Browser saves use their own namespaced local-storage key, separate from the existing TypeScript app.
 

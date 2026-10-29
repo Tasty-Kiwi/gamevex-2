@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{RenderAssetUsages, embedded_asset},
+    asset::{RenderAssetUsages, load_internal_asset, uuid_handle},
     camera::{ScalingMode, visibility::RenderLayers},
     image::ImageSampler,
     mesh::{Indices, PrimitiveTopology},
@@ -10,6 +10,8 @@ use bevy::{
     sprite::Anchor,
     sprite_render::{AlphaMode2d, Material2d, Material2dPlugin},
 };
+
+const CRT_SHADER: Handle<Shader> = uuid_handle!("e1e7c94d-f608-4672-af98-4412e77052d1");
 
 const SCENE_LAYER: usize = 0;
 const TEXT_LAYER: usize = 1;
@@ -218,7 +220,7 @@ pub struct ArcadeRenderPlugin;
 
 impl Plugin for ArcadeRenderPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "crt.wgsl");
+        load_internal_asset!(app, CRT_SHADER, "../assets/crt.wgsl", Shader::from_wgsl);
         app.add_plugins(Material2dPlugin::<CrtMaterial>::default())
             .init_resource::<Frame>()
             .init_resource::<RenderOptions>()
@@ -243,7 +245,7 @@ struct CrtMaterial {
 
 impl Material2d for CrtMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://gamevex_app/crt.wgsl".into()
+        CRT_SHADER.into()
     }
 
     fn alpha_mode(&self) -> AlphaMode2d {
@@ -289,7 +291,6 @@ fn setup_renderer(
     mut meshes: ResMut<Assets<Mesh>>,
     mut color_materials: ResMut<Assets<ColorMaterial>>,
     mut crt_materials: ResMut<Assets<CrtMaterial>>,
-    asset_server: Res<AssetServer>,
 ) {
     let initial_size = UVec2::new(1280, 720);
     let mut image = Image::new_target_texture(
@@ -314,8 +315,6 @@ fn setup_renderer(
         text_source: text_image.clone(),
         monitor: Vec4::new(0.06, 0.45, 1.05, 0.0),
     });
-    let _shader: Handle<Shader> =
-        bevy::asset::load_embedded_asset!(asset_server.as_ref(), "crt.wgsl");
 
     let scene_camera = commands
         .spawn((

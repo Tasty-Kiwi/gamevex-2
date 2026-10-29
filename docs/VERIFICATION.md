@@ -1,6 +1,6 @@
 # GameVex Rust demo verification
 
-Verified locally on 28 October 2026. All implementation and artifacts are under `gamevex-2/src`; the original GameVex repository was used only as a read-only rules/palette reference. Focused implementation and review work used Luna subagents.
+Verified locally on 28 October 2026. Implementation and artifacts live in `gamevex-2` (Rust code in `src/`); the original GameVex repository was used only as a read-only rules/palette reference. Focused implementation and review work used Luna subagents.
 
 ## Automated checks and builds
 
@@ -67,8 +67,8 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 37,715,976 | 6,109,109 |
-| Generated JavaScript | 107,369 | 17,329 |
+| WASM | 37,711,465 | 6,106,802 |
+| Generated JavaScript | 107,369 | 17,327 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
 
@@ -95,6 +95,10 @@ All 36 tests, formatting, Clippy, native packaging, and the WASM release build p
 Actual browser checks: fast selection; secondary flip with no image menu; valid slot drops; occupied-slot snapback; desktop resize to 390×844; Expert horizontal pan remaining at the right edge; secondary clicks flagging cells 0 and 19 before/after panning; first reveal at cell 50. Native Metal also launched and exercised the shared card selection/flip path. The final browser pass used the in-app WebGPU browser on a fresh localhost origin after an earlier external Chromium session disconnected. No native drag-gesture reliability or new frame-time measurement is claimed.
 
 Old original-app service workers were observed serving cached GameVex pages on reused preview ports. The Rust server now defaults to a separate port, 18435; original-app caches and saved data were left intact. The final playable preview is http://localhost:18435/.
+
+## Repository layout — 29 October 2026
+
+Moved Cargo configuration, lockfile, README, docs, scripts, web files, assets, and build outputs to the repository root. `src/` contains only Rust files; the core crate manifest points to `src/core/lib.rs`, and the app is the root package. The CRT shader is embedded from `assets/crt.wgsl` using a stable internal asset handle. Formatting, all 36 tests, Clippy, native packaging, and the WASM release build passed from the root. Both actual runtimes rendered the relocated shader successfully, and the root-level server script served the browser preview.
 
 ## Screenshots
 
