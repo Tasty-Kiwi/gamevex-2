@@ -26,13 +26,14 @@ window.addEventListener("pagehide", advanceLifecycleEpoch);
 window.addEventListener("pageshow", advanceLifecycleEpoch);
 document.addEventListener("visibilitychange", advanceLifecycleEpoch);
 
-// The Rust board publishes a visible rectangle in logical CSS-pixel coordinates
-// as JSON in canvas.dataset.boardBounds, and enables it only during Minesweeper.
+// Only the board and cards use secondary-click gameplay. Other canvas areas
+// retain the browser menu. Bounds share the shader's curved surface coordinates.
 canvas.addEventListener("contextmenu", (event) => {
-  if (canvas.dataset.boardActive !== "true" || !canvas.dataset.boardBounds) return;
-  let bounds;
-  try { bounds = JSON.parse(canvas.dataset.boardBounds); } catch { return; }
-  if (!Array.isArray(bounds) || bounds.length !== 4 || !bounds.every(Number.isFinite)) return;
+  let bounds = [];
+  try {
+    if (canvas.dataset.boardActive === "true" && canvas.dataset.boardBounds) bounds.push(JSON.parse(canvas.dataset.boardBounds));
+    if (canvas.dataset.cardBounds) bounds.push(...JSON.parse(canvas.dataset.cardBounds));
+  } catch { return; }
   const rect = canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
   const px = (event.clientX - rect.left) / rect.width * 2 - 1;
@@ -41,9 +42,17 @@ canvas.addEventListener("contextmenu", (event) => {
   const warp = 1 + curvature * (px * px + py * py);
   const x = (px * warp + 1) * 0.5 * rect.width;
   const y = (py * warp + 1) * 0.5 * rect.height;
-  const [left, top, width, height] = bounds;
-  if (x >= left && x < left + width && y >= top && y < top + height) event.preventDefault();
+  if (bounds.some((b) => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite)
+    && x >= b[0] && x < b[0] + b[2] && y >= b[1] && y < b[1] + b[3])) event.preventDefault();
 });
+
+// Keep native image dragging/selection from stealing a game drag. Winit owns
+// pointer capture; focus explicitly because preventing pointerdown cancels it.
+canvas.addEventListener("pointerdown", (event) => {
+  if (event.button === 0) event.preventDefault();
+  canvas.focus({ preventScroll: true });
+});
+canvas.addEventListener("dragstart", (event) => event.preventDefault());
 
 // Report initialization-to-ready time, not first-pixel latency. Resource Timing's
 // encodedBodySize is the transferred WASM body size when the browser exposes it.
@@ -92,7 +101,7 @@ start().catch((error) => showError("GameVex could not initialize.", describeErro
 // The canvas contains the app's own focus order. Leave browser/OS shortcuts alone.
 canvas.addEventListener("keydown", (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
-  if (["Tab", " ", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+  if (["Tab", " ", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Backspace"].includes(event.key)) {
     event.preventDefault();
   }
 });

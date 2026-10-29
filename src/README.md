@@ -9,7 +9,7 @@ A local-first Rust arcade prototype. The workspace lives here; the existing Game
 - `web/` contains the browser entry point and generated WebAssembly package. `scripts/build-web.sh` copies `assets/` into `web/assets/` when that source directory exists.
 - Native saves use the GameVex Rust Demo application-support namespace. Browser saves use their own namespaced local-storage key, separate from the existing TypeScript app.
 
-The update flow is input → command → rules update → domain events → presentation. Animations do not determine game results.
+The update flow is input → command → rules update → domain events → presentation. Pointer events retain their received order and per-event position, including fast presses/releases within a single frame. Presentation buffers update before Bevy lays out text and propagates transforms. Animations do not determine game results.
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ scripts/build-web.sh
 scripts/serve-web.sh
 ```
 
-Then open `http://localhost:8000`. The browser loader reports a visible setup error when the page is not in a secure context, WebGPU is unavailable, or no compatible adapter is found. `scripts/build-all.sh` builds the native release and browser release in sequence.
+Then open `http://localhost:18435`. Set `GAMEVEX_PORT` to choose another port. Use an origin separate from the original GameVex app: its offline service worker can otherwise serve cached pages instead of this demo. The browser loader reports a visible setup error when the page is not in a secure context, WebGPU is unavailable, or no compatible adapter is found. `scripts/build-all.sh` builds the native release and browser release in sequence.
 
 ## Browser QA modes
 
@@ -50,7 +50,7 @@ With `diagnostics` present, the latest serialized save is mirrored into `#gameve
 
 ## Controls
 
-On the Minesweeper board, arrow keys move focus, Space reveals, F toggles a flag, and Enter chords a revealed number. Right-click or secondary click flags a cell. Keep keyboard shortcuts scoped to the active board; Tab and Shift+Tab navigate controls outside it. The browser suppresses its context menu only over the active board.
+On the Minesweeper board, arrow keys move focus, Space reveals, F toggles a flag, and Enter chords a revealed number. Right-click or secondary click flags a cell. Keep keyboard shortcuts scoped to the active board; Tab and Shift+Tab navigate controls outside it. The browser suppresses its context menu over the active board and Card Lab cards, where secondary click flags or flips. Other canvas areas retain the browser menu.
 
 In Card Lab, use the visible on-screen controls and pointer interactions to select, move, flip, and reset the sample cards. Audio starts after a user gesture, as required by browser autoplay policy.
 
@@ -67,7 +67,7 @@ Tab / Shift+Tab move between controls; Enter / Space activate them. Entering Min
 
 The GameVex header logo returns to the lobby and supports pointer and keyboard activation. Settings scrolls with the wheel or Page Up / Page Down on short windows; its Back, Retry save, and Reset saved data controls stay visible.
 
-Card Lab uses a repeatable five-card hand. Click to select; drag to one of three empty slots. Invalid or occupied drops return to the committed position. Left/Right select a card, F flips it, 1/2/3 place it, and Backspace returns it to the hand. Deal again resets the sample. Losing focus or leaving the surface cancels a drag. This is a sandbox without casino rules.
+Card Lab uses a repeatable five-card hand. Click to select; right-click to flip that card; drag to one of three empty slots. Invalid or occupied drops return to the committed position. Left/Right select a card, F flips it, 1/2/3 place it, and Backspace returns it to the hand. Deal again resets the sample. Losing focus, leaving the surface, or resizing cancels a drag. Hover lift retains the card’s resting footprint, and pointer clicks follow the painted stacking order. This is a sandbox without casino rules.
 
 Vector CRT renders geometry at the display's pixel density. Pixel CRT renders that geometry at half logical resolution and scales with nearest-neighbor sampling. Both use the same logical layout and picking coordinates. A separate text layer stays at display resolution in both presets. Geometry and text pass through the same curved-monitor composite, and pointer picking follows the curve. One reusable mesh batches triangle strokes, filled rectangles, focus outlines, grids, and geometric card suits. An embedded fragment shader composites bounded glow, scanlines, adjustable screen curvature, an adjustable vignette, and radial chromatic aberration; disabling CRT bypasses these effects. Settings offers the original cyan scheme and a warm amber scheme. Chromatic aberration separates red/blue channels toward the screen edges, stays sharp in the center, and scales consistently with display density in both presets. Its strength is saved, defaults to 35%, and can be set to zero independently. The scene uses no custom compute pass. Reduced motion removes card movement/dealing transitions. Volume and mute control short synthesized action sounds; no audio assets are fetched.
 

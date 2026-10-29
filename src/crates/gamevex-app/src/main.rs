@@ -4,17 +4,20 @@ mod rendering;
 
 use bevy::{
     audio::{AudioSource, Volume},
-    input::mouse::{MouseScrollUnit, MouseWheel},
+    input::{
+        ButtonState,
+        mouse::{MouseScrollUnit, MouseWheel},
+    },
     prelude::*,
     render::{
         RenderPlugin,
         renderer::RenderAdapterInfo,
         settings::{Backends, RenderCreation, WgpuSettings},
     },
-    window::{PrimaryWindow, WindowCloseRequested, WindowFocused, WindowResolution},
+    window::{PrimaryWindow, WindowCloseRequested, WindowEvent, WindowFocused, WindowResolution},
 };
 use gamevex_core::{Command as GameCommand, cards::CardLab, *};
-use presentation::{Action, Hit, Screen, ViewLayout};
+use presentation::{Action, Screen, ViewLayout};
 use rendering::ArcadeRenderPlugin;
 
 #[derive(Resource)]
@@ -399,7 +402,14 @@ fn main() {
         .add_systems(Update, capture_tools)
         .add_systems(
             Update,
-            (lifecycle, handle_input, presentation::paint, play_sound).chain(),
+            (
+                lifecycle,
+                handle_pointer_input,
+                handle_input,
+                presentation::paint,
+                play_sound,
+            )
+                .chain(),
         )
         .run();
 }
@@ -489,28 +499,88 @@ fn account_play_time(
     whole_ms
 }
 
-fn handle_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
+/// Preserve the OS event order and each press/release position. ButtonInput's
+/// per-frame sets can collapse fast clicks and pair them with a later cursor move.
+fn handle_pointer_input(
     windows: Query<&Window, With<PrimaryWindow>>,
-    mut wheel: MessageReader<MouseWheel>,
+    mut events: MessageReader<WindowEvent>,
     layout: Res<ViewLayout>,
     mut state: ResMut<Arcade>,
+    mut pointer: Local<Option<Vec2>>,
 ) {
     let Ok(window) = windows.single() else {
         return;
     };
-    state.cursor = if let Some([_, _, density]) = platform::canvas_metrics() {
-        window.physical_cursor_position().map(|p| p / density)
-    } else {
-        window.cursor_position()
-    };
-    let size = platform::canvas_metrics()
+    let metrics = platform::canvas_metrics();
+    let size = metrics
         .map(|[w, h, _]| Vec2::new(w, h))
         .unwrap_or(Vec2::new(window.width(), window.height()));
-    state.cursor = state.cursor.and_then(|p| {
+    let to_css = metrics
+        .map(|[_, _, density]| window.scale_factor() / density)
+        .unwrap_or(1.0);
+    let mut layout_valid = layout.size == size;
+    let difficulty = state.save.game.difficulty;
+    for event in events.read() {
+        match event {
+            WindowEvent::CursorMoved(event) => *pointer = Some(event.position * to_css),
+            WindowEvent::CursorLeft(_) => {
+                *pointer = None;
+                state.lab.cancel_drag();
+            }
+            WindowEvent::WindowResized(_) | WindowEvent::WindowScaleFactorChanged(_) => {
+                state.lab.cancel_drag();
+                layout_valid = false;
+            }
+            WindowEvent::WindowFocused(event) if !event.focused => {
+                *pointer = None;
+                state.lab.cancel_drag();
+            }
+            _ => {}
+        }
+        state.cursor = pointer.and_then(|point| {
+            rendering::screen_to_surface(
+                point,
+                size,
+                if state.save.settings.crt {
+                    state.save.settings.curvature
+                } else {
+                    0.0
+                },
+            )
+        });
+        if state.cursor.is_none() {
+            state.lab.cancel_drag();
+        }
+        if !window.focused || !platform::visible() {
+            continue;
+        }
+        if let WindowEvent::MouseButtonInput(event) = event {
+            // A preceding event may have navigated or opened a dialog. Wait for
+            // paint to build the new surface before accepting another action.
+            if !layout_valid
+                || state.save.game.difficulty != difficulty
+                || layout.surface != Some(state.screen)
+                || layout.modal != state.modal.is_some()
+            {
+                continue;
+            }
+            match event.state {
+                ButtonState::Pressed => pointer_pressed(&mut state, &layout, event.button),
+                ButtonState::Released
+                    if event.button == MouseButton::Left && state.lab.drag.is_some() =>
+                {
+                    let slot = state
+                        .cursor
+                        .and_then(|p| layout.slots.iter().position(|r| r.contains(p)));
+                    state.lab.drop_in(slot);
+                }
+                _ => {}
+            }
+        }
+    }
+    state.cursor = pointer.and_then(|point| {
         rendering::screen_to_surface(
-            p,
+            point,
             size,
             if state.save.settings.crt {
                 state.save.settings.curvature
@@ -519,13 +589,77 @@ fn handle_input(
             },
         )
     });
+}
+
+fn pointer_pressed(state: &mut Arcade, layout: &ViewLayout, button: MouseButton) {
+    if !matches!(button, MouseButton::Left | MouseButton::Right) {
+        return;
+    }
+    state.audio_started = true;
+    state.keyboard = false;
+    if let Some((index, hit)) = layout
+        .hits
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, hit)| state.cursor.is_some_and(|p| hit.rect.contains(p)))
+    {
+        state.focus = index;
+        if let Action::Board = hit.action {
+            if let Some(board) = &layout.board
+                && let Some(i) = state
+                    .cursor
+                    .and_then(|p| board.index(p, state.save.game.cols(), state.save.game.rows()))
+            {
+                state.cell = i;
+                let command = if button == MouseButton::Right || state.flag_mode {
+                    GameCommand::ToggleFlag(i)
+                } else if state.save.game.cells[i].revealed {
+                    GameCommand::Chord(i)
+                } else {
+                    GameCommand::Reveal(i)
+                };
+                state.command(command);
+            }
+        } else if button == MouseButton::Left {
+            state.act(hit.action);
+        }
+    } else if state.screen == Screen::Cards
+        && state.modal.is_none()
+        && let Some(i) = layout.card_order.iter().rev().copied().find(|i| {
+            state
+                .cursor
+                .is_some_and(|p| layout.card_hits[*i].contains(p))
+        })
+    {
+        if button == MouseButton::Right {
+            state.lab.select(i);
+            state.lab.flip_selected();
+        } else if state.lab.pick(i) {
+            state.drag_offset = state.cursor.unwrap() - layout.cards[i].min;
+        }
+    }
+}
+
+fn handle_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut wheel: MessageReader<MouseWheel>,
+    layout: Res<ViewLayout>,
+    mut state: ResMut<Arcade>,
+) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
     if !window.focused || !platform::visible() {
         wheel.clear();
         return;
     }
-    let gesture = mouse.just_pressed(MouseButton::Left)
-        || mouse.just_pressed(MouseButton::Right)
-        || keys.get_just_pressed().next().is_some();
+    if layout.surface != Some(state.screen) || layout.modal != state.modal.is_some() {
+        wheel.clear();
+        return;
+    }
+    let gesture = keys.get_just_pressed().next().is_some();
     if gesture {
         state.audio_started = true;
     }
@@ -570,11 +704,6 @@ fn handle_input(
             };
             state.act(action);
         }
-        if mouse.just_pressed(MouseButton::Left)
-            && let Some(hit) = hit_at(&layout.hits, state.cursor)
-        {
-            state.act(hit.action);
-        }
         wheel.clear();
         return;
     }
@@ -600,7 +729,9 @@ fn handle_input(
             state.keyboard = true;
         }
         state.cell = row * cols + col;
-        if let Some(board) = &layout.board {
+        if state.keyboard
+            && let Some(board) = &layout.board
+        {
             let point = board.origin + Vec2::new(col as f32, row as f32) * board.cell;
             if point.x < board.clip.min.x {
                 state.pan.x -= board.clip.min.x - point.x;
@@ -665,6 +796,7 @@ fn handle_input(
         }
     }
     for event in wheel.read() {
+        state.keyboard = false;
         if state.screen == Screen::Settings {
             let scale = if event.unit == MouseScrollUnit::Line {
                 36.0
@@ -692,66 +824,6 @@ fn handle_input(
             }
         }
     }
-    if mouse.just_pressed(MouseButton::Left) || mouse.just_pressed(MouseButton::Right) {
-        state.keyboard = false;
-        if let Some((index, hit)) = layout
-            .hits
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, hit)| state.cursor.is_some_and(|p| hit.rect.contains(p)))
-        {
-            state.focus = index;
-            if let Action::Board = hit.action {
-                if let Some(board) = &layout.board
-                    && let Some(i) = board.index(
-                        state.cursor.unwrap(),
-                        state.save.game.cols(),
-                        state.save.game.rows(),
-                    )
-                {
-                    state.cell = i;
-                    let command = if mouse.just_pressed(MouseButton::Right) || state.flag_mode {
-                        GameCommand::ToggleFlag(i)
-                    } else if state.save.game.cells[i].revealed {
-                        GameCommand::Chord(i)
-                    } else {
-                        GameCommand::Reveal(i)
-                    };
-                    state.command(command);
-                }
-            } else if mouse.just_pressed(MouseButton::Left) {
-                state.act(hit.action);
-            }
-        } else if state.screen == Screen::Cards
-            && mouse.just_pressed(MouseButton::Left)
-            && let Some(i) = layout
-                .card_order
-                .iter()
-                .rev()
-                .copied()
-                .find(|i| state.cursor.is_some_and(|p| layout.cards[*i].contains(p)))
-        {
-            state.lab.pick(i);
-            state.drag_offset = state.cursor.unwrap() - layout.cards[i].min;
-        }
-    }
-    if state.lab.drag.is_some() && (!mouse.pressed(MouseButton::Left) || state.cursor.is_none()) {
-        let slot = state
-            .cursor
-            .and_then(|p| layout.slots.iter().position(|r| r.contains(p)));
-        let accepted = state.lab.drop_in(slot);
-        debug!(
-            "CardLab pointer drop slot={slot:?} accepted={accepted} at {:?}",
-            state.cursor
-        );
-    }
-}
-
-fn hit_at(hits: &[Hit], cursor: Option<Vec2>) -> Option<&Hit> {
-    hits.iter()
-        .rev()
-        .find(|hit| cursor.is_some_and(|p| hit.rect.contains(p)))
 }
 
 fn play_sound(
@@ -839,6 +911,160 @@ mod tests {
             sound: None,
             audio_started: false,
         }
+    }
+
+    fn pointer_app(screen: Screen) -> (App, Entity) {
+        let mut app = App::new();
+        let mut state = test_arcade();
+        state.screen = screen;
+        state.save.settings.crt = false;
+        app.insert_resource(state)
+            .insert_resource(ViewLayout {
+                surface: Some(screen),
+                size: Vec2::new(1280.0, 800.0),
+                ..default()
+            })
+            .add_message::<WindowEvent>()
+            .add_systems(Update, handle_pointer_input);
+        let window = app
+            .world_mut()
+            .spawn((
+                Window {
+                    resolution: WindowResolution::new(1280, 800),
+                    focused: true,
+                    ..default()
+                },
+                PrimaryWindow,
+            ))
+            .id();
+        (app, window)
+    }
+
+    fn move_pointer(app: &mut App, window: Entity, x: f32, y: f32) {
+        app.world_mut()
+            .write_message(WindowEvent::CursorMoved(bevy::window::CursorMoved {
+                window,
+                position: Vec2::new(x, y),
+                delta: None,
+            }));
+    }
+    fn mouse_event(app: &mut App, window: Entity, button: MouseButton, state: ButtonState) {
+        app.world_mut().write_message(WindowEvent::MouseButtonInput(
+            bevy::input::mouse::MouseButtonInput {
+                window,
+                button,
+                state,
+            },
+        ));
+    }
+
+    #[test]
+    fn queued_clicks_keep_their_own_cells_in_one_update() {
+        let (mut app, window) = pointer_app(Screen::Mines);
+        let mut layout = app.world_mut().resource_mut::<ViewLayout>();
+        let clip = Rect::from_corners(Vec2::ZERO, Vec2::splat(288.0));
+        layout.board = Some(presentation::BoardLayout {
+            origin: Vec2::ZERO,
+            clip,
+            cell: 32.0,
+        });
+        layout.hits.push(presentation::Hit {
+            rect: clip,
+            action: Action::Board,
+        });
+        for x in [16.0, 80.0] {
+            move_pointer(&mut app, window, x, 16.0);
+            mouse_event(&mut app, window, MouseButton::Right, ButtonState::Pressed);
+            mouse_event(&mut app, window, MouseButton::Right, ButtonState::Released);
+        }
+        // A later move must not redirect either queued click.
+        move_pointer(&mut app, window, 200.0, 200.0);
+        app.update();
+        let state = app.world().resource::<Arcade>();
+        assert!(state.save.game.cells[0].flagged);
+        assert!(state.save.game.cells[2].flagged);
+        assert_eq!(
+            state.save.game.cells.iter().filter(|c| c.flagged).count(),
+            2
+        );
+    }
+
+    #[test]
+    fn queued_drag_and_release_commit_without_a_held_frame() {
+        let (mut app, window) = pointer_app(Screen::Cards);
+        let mut layout = app.world_mut().resource_mut::<ViewLayout>();
+        layout.cards[0] = Rect::from_corners(Vec2::new(10.0, 400.0), Vec2::new(110.0, 540.0));
+        layout.card_hits = layout.cards;
+        layout.card_order = vec![0];
+        layout.slots[0] = Rect::from_corners(Vec2::new(200.0, 100.0), Vec2::new(300.0, 240.0));
+        move_pointer(&mut app, window, 30.0, 420.0);
+        mouse_event(&mut app, window, MouseButton::Left, ButtonState::Pressed);
+        move_pointer(&mut app, window, 230.0, 150.0);
+        mouse_event(&mut app, window, MouseButton::Left, ButtonState::Released);
+        app.update();
+        let state = app.world().resource::<Arcade>();
+        assert_eq!(state.lab.slots, [Some(0), None, None]);
+        assert_eq!(state.lab.drag, None);
+    }
+
+    #[test]
+    fn resize_during_drag_cancels_instead_of_dropping_at_stale_slots() {
+        let (mut app, window) = pointer_app(Screen::Cards);
+        app.world_mut().resource_mut::<Arcade>().lab.pick(0);
+        app.world_mut().resource_mut::<ViewLayout>().slots[0] =
+            Rect::from_corners(Vec2::ZERO, Vec2::splat(100.0));
+        move_pointer(&mut app, window, 30.0, 30.0);
+        app.world_mut()
+            .write_message(WindowEvent::WindowResized(bevy::window::WindowResized {
+                window,
+                width: 900.0,
+                height: 700.0,
+            }));
+        mouse_event(&mut app, window, MouseButton::Left, ButtonState::Released);
+        app.update();
+        let state = app.world().resource::<Arcade>();
+        assert_eq!(state.lab.drag, None);
+        assert_eq!(state.lab.slots, [None; 3]);
+    }
+
+    #[test]
+    fn secondary_click_flips_the_topmost_card_once() {
+        let (mut app, window) = pointer_app(Screen::Cards);
+        let mut layout = app.world_mut().resource_mut::<ViewLayout>();
+        layout.cards[0] = Rect::from_corners(Vec2::splat(10.0), Vec2::splat(110.0));
+        layout.cards[1] = layout.cards[0];
+        layout.card_hits = layout.cards;
+        layout.card_order = vec![1, 0];
+        move_pointer(&mut app, window, 30.0, 30.0);
+        mouse_event(&mut app, window, MouseButton::Right, ButtonState::Pressed);
+        mouse_event(&mut app, window, MouseButton::Right, ButtonState::Released);
+        app.update();
+        let state = app.world().resource::<Arcade>();
+        assert!(!state.lab.cards[0].face_up);
+        assert!(state.lab.cards[1].face_up);
+        assert_eq!(state.lab.drag, None);
+    }
+
+    #[test]
+    fn navigation_does_not_reuse_the_previous_screens_hits() {
+        let (mut app, window) = pointer_app(Screen::Lobby);
+        app.world_mut()
+            .resource_mut::<ViewLayout>()
+            .hits
+            .push(presentation::Hit {
+                rect: Rect::from_corners(Vec2::ZERO, Vec2::splat(100.0)),
+                action: Action::Open(Screen::Cards),
+            });
+        for _ in 0..2 {
+            move_pointer(&mut app, window, 30.0, 30.0);
+            mouse_event(&mut app, window, MouseButton::Left, ButtonState::Pressed);
+            mouse_event(&mut app, window, MouseButton::Left, ButtonState::Released);
+        }
+        app.update();
+        let state = app.world().resource::<Arcade>();
+        assert_eq!(state.screen, Screen::Cards);
+        assert_eq!(state.settings_return, Screen::Lobby);
+        assert_eq!(state.lab.selected, None);
     }
 
     #[test]

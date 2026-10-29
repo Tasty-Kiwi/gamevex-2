@@ -8,5 +8,6 @@ if [[ ! -f "$WEB_DIR/pkg/gamevex_app.js" ]]; then
   exit 1
 fi
 cd "$WEB_DIR"
-echo "Serving GameVex at http://localhost:8000 (Ctrl-C to stop)"
-exec python3 -m http.server 8000 --bind 127.0.0.1
+GAMEVEX_PORT="${GAMEVEX_PORT:-18435}"
+echo "Serving GameVex at http://localhost:$GAMEVEX_PORT (Ctrl-C to stop)"
+exec python3 -m http.server "$GAMEVEX_PORT" --bind 127.0.0.1

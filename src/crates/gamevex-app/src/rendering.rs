@@ -223,7 +223,7 @@ impl Plugin for ArcadeRenderPlugin {
             .init_resource::<Frame>()
             .init_resource::<RenderOptions>()
             .add_systems(Startup, setup_renderer)
-            .add_systems(PostUpdate, render_frame);
+            .add_systems(Update, render_frame.after(crate::presentation::paint));
     }
 }
 

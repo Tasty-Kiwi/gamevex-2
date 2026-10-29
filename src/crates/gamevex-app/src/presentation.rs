@@ -74,9 +74,13 @@ impl BoardLayout {
 }
 #[derive(Resource, Default)]
 pub struct ViewLayout {
+    pub size: Vec2,
+    pub surface: Option<Screen>,
+    pub modal: bool,
     pub hits: Vec<Hit>,
     pub board: Option<BoardLayout>,
     pub cards: [Rect; 5],
+    pub card_hits: [Rect; 5],
     pub slots: [Rect; 3],
     pub card_order: Vec<usize>,
     pub settings_max_scroll: f32,
@@ -101,6 +105,9 @@ pub fn paint(
         return;
     }
     frame.clear(size);
+    layout.size = size;
+    layout.surface = Some(state.screen);
+    layout.modal = state.modal.is_some();
     layout.hits.clear();
     layout.board = None;
     layout.card_order.clear();
@@ -140,6 +147,7 @@ pub fn paint(
             Color::srgb(0.015, 0.045, 0.065),
         );
     }
+    platform::publish_cards(None);
     if state.modal.is_some() {
         dialog(&mut frame, &state, &mut layout, margin);
         platform::publish_board(None);
@@ -158,6 +166,13 @@ pub fn paint(
             time.delta_secs(),
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
+    }
+    if state.screen == Screen::Cards {
+        platform::publish_cards(Some(
+            layout
+                .card_hits
+                .map(|r| [r.min.x, r.min.y, r.width(), r.height()]),
+        ));
     }
     let status = if state.protected_save || state.persistence.starts_with("Playing") {
         GOLD
@@ -313,7 +328,7 @@ fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
         if records_y + 115.0 < f.size.y - 40.0 {
             f.text(
                 Vec2::new(m, records_y + 82.0),
-                compact(&s.backend, 80),
+                compact(&s.backend, ((w - 150.0) / 7.5).max(8.0) as usize),
                 12.0,
                 MUTED,
             );
@@ -745,12 +760,6 @@ fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: 
     let hand_y = (f.size.y - card_h - 105.0).max(slots_y + card_h + 36.0);
     let spread = (card_w * 0.65).min((w - card_w) / 4.0);
     let hand_x = m + (w - (card_w + spread * 4.0)) * 0.5;
-    let hovered = (0..5).rev().find(|&i| {
-        s.lab.slot_of(i).is_none()
-            && s.cursor.is_some_and(|p| {
-                rect(s.card_positions[i].x, s.card_positions[i].y, card_w, card_h).contains(p)
-            })
-    });
     let mut order: Vec<usize> = (0..5).collect();
     if let Some(i) = s.lab.selected {
         order.retain(|&v| v != i);
@@ -760,12 +769,22 @@ fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: 
         order.retain(|&v| v != i);
         order.push(i);
     }
+    // Lifted cards retain their resting footprint so a stationary pointer at
+    // the bottom edge cannot repeatedly enter and leave the moving card.
+    let hovered = s.cursor.and_then(|p| {
+        order
+            .iter()
+            .rev()
+            .copied()
+            .find(|&i| s.lab.slot_of(i).is_none() && l.card_hits[i].contains(p))
+    });
     for i in order.iter().copied() {
         let mut target = if let Some(slot) = s.lab.slot_of(i) {
             l.slots[slot].min
         } else {
             Vec2::new(hand_x + i as f32 * spread, hand_y)
         };
+        let resting = rect(target.x, target.y, card_w, card_h);
         if s.lab.slot_of(i).is_none() && (s.lab.selected == Some(i) || hovered == Some(i)) {
             target.y -= 18.0;
         }
@@ -794,12 +813,17 @@ fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: 
         }
         let r = rect(s.card_positions[i].x, s.card_positions[i].y, card_w, card_h);
         l.cards[i] = r;
+        l.card_hits[i] = if s.lab.slot_of(i).is_none() && s.lab.drag != Some(i) {
+            card_hit_bounds(r, resting)
+        } else {
+            r
+        };
     }
     for (stack, &i) in order.iter().enumerate() {
-        let rank_center = l.cards[i].min + Vec2::new(24.0, 24.0);
+        let rank_bounds = rect(l.cards[i].min.x + 12.0, l.cards[i].min.y + 11.0, 32.0, 27.0);
         let rank_visible = !order[stack + 1..]
             .iter()
-            .any(|&later| l.cards[later].contains(rank_center));
+            .any(|&later| rects_overlap(rank_bounds, l.cards[later]));
         card_face(
             f,
             l.cards[i],
@@ -812,7 +836,7 @@ fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: 
     f.text(
         Vec2::new(m, f.size.y - 79.0),
         if small {
-            "Drag to slots / invalid drops snap back"
+            "Drag to slots / 1 / 2 / 3 place"
         } else {
             "Drag to a slot. Invalid drops snap back. Click a card to select it."
         },
@@ -822,13 +846,24 @@ fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: 
     f.text(
         Vec2::new(m, f.size.y - 57.0),
         if small {
-            "Left/Right select / F flip / 1 / 2 / 3 place"
+            "Arrows select / right-click or F flips"
         } else {
-            "Left/Right select   F flip   1 / 2 / 3 place in slot   Backspace returns card   Esc lobby"
+            "Left/Right select   Right-click or F flip   1 / 2 / 3 place in slot   Backspace returns card   Esc lobby"
         },
         12.0,
         MUTED,
     );
+}
+
+fn card_hit_bounds(card: Rect, resting: Rect) -> Rect {
+    Rect {
+        min: card.min.min(resting.min),
+        max: card.max.max(resting.max),
+    }
+}
+
+fn rects_overlap(a: Rect, b: Rect) -> bool {
+    a.min.x < b.max.x && a.max.x > b.min.x && a.min.y < b.max.y && a.max.y > b.min.y
 }
 
 fn card_face(
@@ -1381,5 +1416,36 @@ mod tests {
         assert_eq!(b.index(Vec2::new(19.0, 51.0), 30, 16), None);
         assert_eq!(b.index(Vec2::new(219.0, 81.0), 30, 16), Some(7));
         assert_eq!(b.index(Vec2::new(220.0, 81.0), 30, 16), None);
+    }
+
+    #[test]
+    fn card_hover_bounds_keep_the_lifted_bottom_edge_stable() {
+        let resting = rect(20.0, 48.0, 80.0, 112.0);
+        let lifted = rect(20.0, 30.0, 80.0, 112.0);
+        let hit = card_hit_bounds(lifted, resting);
+        assert!(hit.contains(Vec2::new(40.0, 159.0)));
+        assert!(hit.contains(Vec2::new(40.0, 31.0)));
+        assert!(!hit.contains(Vec2::new(40.0, 161.0)));
+        assert_eq!(card_hit_bounds(resting, resting), resting);
+    }
+
+    #[test]
+    fn card_hover_uses_the_topmost_painted_card() {
+        let cards = [rect(20.0, 30.0, 80.0, 112.0), rect(55.0, 30.0, 80.0, 112.0)];
+        let order = [0, 1];
+        let point = Vec2::new(65.0, 50.0);
+        let hit = order
+            .iter()
+            .rev()
+            .copied()
+            .find(|&i| card_hit_bounds(cards[i], cards[i]).contains(point));
+        assert_eq!(hit, Some(1));
+    }
+
+    #[test]
+    fn rank_is_hidden_when_a_later_card_covers_any_part_of_it() {
+        let rank = rect(32.0, 41.0, 32.0, 27.0);
+        let later = rect(60.0, 30.0, 80.0, 112.0);
+        assert!(rects_overlap(rank, later));
     }
 }

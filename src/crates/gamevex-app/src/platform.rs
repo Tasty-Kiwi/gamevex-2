@@ -412,3 +412,17 @@ pub fn publish_monitor(_curvature: f32) {
         let _ = canvas.set_attribute("data-curvature", &_curvature.to_string());
     }
 }
+
+/// Scope browser secondary-click behavior to cards that actually support flipping.
+pub fn publish_cards(_bounds: Option<[[f32; 4]; 5]>) {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(canvas) = canvas_element() {
+        if let Some(bounds) = _bounds {
+            if let Ok(json) = serde_json::to_string(&bounds) {
+                let _ = canvas.set_attribute("data-card-bounds", &json);
+            }
+        } else {
+            let _ = canvas.remove_attribute("data-card-bounds");
+        }
+    }
+}
