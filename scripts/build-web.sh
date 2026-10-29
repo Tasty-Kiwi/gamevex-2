@@ -53,11 +53,13 @@ else
   if [[ -z "$WASM_LINKER" ]]; then
     SYSROOT="$(rustc --print sysroot)"
     HOST="$(rustc -vV | sed -n 's/^host: //p')"
+    # Prefer the real LLD driver over rustup's flavor-specific wrappers. Rustc
+    # supplies the WASM flavor itself; a wrapper can add it a second time.
     for candidate in \
-      "$SYSROOT/lib/rustlib/$HOST/bin/gcc-ld/wasm-ld" \
-      "$SYSROOT/lib/rustlib/$HOST/bin/wasm-ld" \
       "$SYSROOT/lib/rustlib/$HOST/bin/rust-lld" \
-      "$SYSROOT/lib/rustlib/bin/rust-lld"; do
+      "$SYSROOT/lib/rustlib/bin/rust-lld" \
+      "$SYSROOT/lib/rustlib/$HOST/bin/wasm-ld" \
+      "$SYSROOT/lib/rustlib/$HOST/bin/gcc-ld/wasm-ld"; do
       if [[ -x "$candidate" ]]; then
         WASM_LINKER="$candidate"
         break

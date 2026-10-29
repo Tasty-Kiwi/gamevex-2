@@ -2,6 +2,8 @@
 
 A local-first Rust arcade prototype. The workspace lives here; the existing GameVex web application remains separate.
 
+Play at **https://tasty-kiwi.github.io/gamevex-2/** in a desktop browser with WebGPU support. Successful CI runs on `main` build the game, run the browser regressions, and publish `web/` to GitHub Pages. The CI workflow can also be run manually from GitHub Actions.
+
 ## Architecture
 
 Cargo manifests, the lockfile, documentation, scripts, web files, and assets live at the repository root. `src/` contains only Rust source; the embedded CRT shader lives in `assets/crt.wgsl`. The small core crate manifest is in `crates/gamevex-core/`.
