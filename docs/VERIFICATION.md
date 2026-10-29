@@ -5,7 +5,7 @@ Verified locally on 29 October 2026. Implementation and artifacts live in `gamev
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 71 tests passed (47 core, 24 application/platform).
+- `cargo test --workspace --locked`: 88 tests passed (60 core, 28 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
@@ -67,8 +67,8 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 37,854,562 | 6,148,289 |
-| Generated JavaScript | 107,369 | 17,328 |
+| WASM | 37,907,639 | 6,159,338 |
+| Generated JavaScript | 107,369 | 17,327 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
 
@@ -120,9 +120,21 @@ The dealer label always includes a sum, including zero before a deal. While the 
 
 Native Metal rendered the new dealer label with `8 + ?` while the hole card remained face down. Browser WebGPU showed staggered dealing with one dealer card and no player cards initially, then complete hands, and changed the dealer sum from the up-card total to the revealed total. Enter correctly reached Next round after settlement. A browser settings check enabled reduced motion, confirmed an immediate Hit with no active animation, then restored animations in the isolated QA save. The final 1280×720 browser view keeps cards, values, and controls separated; the 390×844 view retains the dealer sum and full hand ledger. The temporary viewport override was reset. Both release targets rebuilt successfully. No hosted CI or Playwright-runner execution is claimed.
 
+## Baccarat port — 29 October 2026
+
+Added a fourth lobby cabinet with separate bankroll, Player/Banker/Tie selection, wager steppers and MAX, automatic natural/tableau resolution, staged card dealing, both visible totals, result/return labels, Next round, and fixed 1,000-credit bankruptcy restart. The original TypeScript component remains a read-only behavior reference. Rules consume cards as P1/P2/B1/B2 and the presentation reveals them as P1/B1/P2/B2, followed by any third cards. Bets deduct immediately; visual payouts wait for the animation while the completed rules state persists immediately.
+
+The core is checked against 18 value examples and all 110 Banker tableau decisions generated directly from the original TypeScript utility through Bun. The fixture file records the source SHA-256. Fixed-shoe tests cover natural 8/9, Ace=1 and modulo totals, third-card paths, Player/Banker/Tie returns, tie pushes, integer commission rounding, low-bankroll MAX, bankruptcy, exact replay/restore, invalid tables, bounded shoes, and atomic failure on insufficient fixture cards. Motion and app tests cover reveal order, reduced motion, staged credits, guarded rapid actions, settings/leave behavior, and reset. Schema-3 migration preserves complete version-2 Blackjack and Minesweeper states while adding Baccarat; version-1 migration remains supported. All 88 Rust tests, formatting, and workspace Clippy pass.
+
+Actual browser WebGPU checks migrated the existing isolated version-2 save to version 3 with Expert first-reveal cell 50 and Blackjack's 800-credit balance intact. Banker bet 10 resolved Player 6 against Banker 5, losing the stake to 990. Reload restored the exact serialized Baccarat round and shoe; Next cleared both hands/selection and preserved credits. A Tie bet 20 then resolved Player A/K/4 = 5 against Banker 3/A/K = 4, leaving 970. The initial staggered frame exposed one Player card and no Banker cards. Desktop 1280×720, narrow 390×844, and short 1000×560 layouts were inspected, including all four lobby entries.
+
+The native Metal / Apple M4 package ran an isolated fixed-shoe natural fixture: Player A+7 = 8, Banker A+8 = 9, Banker stake 20 returned 39 after commission and saved balance 1,019. The screenshot below is an actual native capture. Both release builds succeeded. Seven Playwright specs are discoverable and their JavaScript syntax checks pass; the Playwright runner and hosted CI remain unexecuted. No additional performance claim is made.
+
 ## Screenshots
 
 Actual native render captures, excluding window chrome.
+
+![Baccarat](screenshots/baccarat.png)
 
 ![Blackjack](screenshots/blackjack.png)
  The interaction repair capture shows the shared Card Lab after a secondary flip:

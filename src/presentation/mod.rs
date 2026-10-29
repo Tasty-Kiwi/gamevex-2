@@ -23,6 +23,7 @@ pub enum Screen {
     Cards,
     Settings,
     Blackjack,
+    Baccarat,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -50,6 +51,7 @@ pub enum Action {
     Deal,
     ReturnCard,
     Blackjack(gamevex_core::blackjack::Command),
+    Baccarat(gamevex_core::baccarat::Command),
 }
 pub struct Hit {
     pub rect: Rect,
@@ -169,6 +171,7 @@ pub fn paint(
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Baccarat => baccarat::baccarat(&mut frame, &mut state, &mut layout, margin, w),
     }
     publish_diagnostics(&state, &layout, size);
     if state.screen == Screen::Cards {
@@ -203,6 +206,8 @@ pub fn paint(
     }
 }
 
+mod baccarat;
+pub(crate) mod baccarat_motion;
 mod blackjack;
 pub(crate) mod blackjack_motion;
 mod screens;
@@ -235,6 +240,10 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         interaction["activeHand"] = serde_json::json!(state.save.blackjack.active_hand);
         interaction["balance"] = serde_json::json!(state.save.blackjack.balance);
     }
+    if state.screen == Screen::Baccarat {
+        interaction["phase"] = serde_json::json!(format!("{:?}", state.save.baccarat.phase));
+        interaction["balance"] = serde_json::json!(state.save.baccarat.balance);
+    }
     if let Ok(json) = serde_json::to_string(&interaction) {
         platform::diagnostics_attribute("data-interaction", &json);
     }
@@ -262,6 +271,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "cards": action_bounds(Screen::Cards),
             "mines": action_bounds(Screen::Mines),
             "blackjack": action_bounds(Screen::Blackjack),
+            "baccarat": action_bounds(Screen::Baccarat),
         });
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
@@ -299,6 +309,34 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
         }
+    }
+    if state.screen == Screen::Baccarat {
+        use gamevex_core::baccarat::{BetSide, Command as Bc, MAX_BET};
+        let game = &state.save.baccarat;
+        let bounds = |command| {
+            layout.hits.iter().find_map(|hit| match hit.action {
+                Action::Baccarat(candidate) if candidate == command => Some([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height(),
+                ]),
+                _ => None,
+            })
+        };
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::json!({
+                "player": bounds(Bc::Select(BetSide::Player)),
+                "banker": bounds(Bc::Select(BetSide::Banker)),
+                "tie": bounds(Bc::Select(BetSide::Tie)),
+                "betDown": bounds(Bc::SetBet(game.bet.saturating_sub(10).max(10))),
+                "betUp": bounds(Bc::SetBet(game.bet.saturating_add(10).min(MAX_BET))),
+                "max": bounds(Bc::MaxBet), "deal": bounds(Bc::Deal),
+                "next": bounds(Bc::NextRound), "restart": bounds(Bc::Restart),
+            })
+            .to_string(),
+        );
     }
     if state.screen == Screen::Mines {
         let bounds = Difficulty::ALL.map(|difficulty| {

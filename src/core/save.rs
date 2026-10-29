@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 2;
+pub const SAVE_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -141,6 +141,7 @@ pub struct Save {
     pub settings: Settings,
     pub minesweeper: MinesweeperSave,
     pub blackjack: crate::blackjack::Blackjack,
+    pub baccarat: crate::baccarat::Baccarat,
 }
 
 #[derive(Deserialize)]
@@ -148,6 +149,13 @@ struct LegacySave {
     settings: Settings,
     game: Game,
     records: Records,
+}
+
+#[derive(Deserialize)]
+struct LegacyV2 {
+    settings: Settings,
+    minesweeper: MinesweeperSave,
+    blackjack: crate::blackjack::Blackjack,
 }
 
 impl Default for Save {
@@ -166,6 +174,7 @@ impl Save {
                 records: Records::default(),
             },
             blackjack: crate::blackjack::Blackjack::new(seed ^ 0x424c_4143_4b4a_4143),
+            baccarat: crate::baccarat::Baccarat::new(seed ^ 0x4241_4343_4152_4154),
         }
     }
 
@@ -177,6 +186,7 @@ impl Save {
         self.minesweeper.game.validate()?;
         self.minesweeper.records.validate()?;
         self.blackjack.validate()?;
+        self.baccarat.validate()?;
         Ok(())
     }
 
@@ -202,7 +212,16 @@ impl Save {
                 };
                 migrated
             }
-            2 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            2 => {
+                let old: LegacyV2 = serde_json::from_value(value)
+                    .map_err(|e| format!("invalid version-2 save: {e}"))?;
+                let mut migrated = Self::new(old.minesweeper.game.seed);
+                migrated.settings = old.settings;
+                migrated.minesweeper = old.minesweeper;
+                migrated.blackjack = old.blackjack;
+                migrated
+            }
+            3 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -290,9 +309,35 @@ mod tests {
         migrated.blackjack.command(crate::blackjack::Command::Deal);
         let restored = Save::from_json(&migrated.to_json().unwrap()).unwrap();
         assert_eq!(restored, migrated);
-        assert_eq!(restored.version, 2);
+        assert_eq!(restored.version, 3);
         let mut corrupt = serde_json::to_value(restored).unwrap();
         corrupt["blackjack"]["hand_count"] = 0.into();
+        assert!(Save::from_json(&corrupt.to_string()).is_err());
+    }
+
+    #[test]
+    fn version_two_migration_preserves_both_cabinets_and_initializes_baccarat() {
+        let mut old = Save::new(44);
+        old.blackjack.command(crate::blackjack::Command::Deal);
+        old.minesweeper.game.command(crate::Command::Reveal(40));
+        old.settings.color_scheme = ColorScheme::Amber;
+        let value = serde_json::json!({"version":2,"settings":old.settings,
+            "minesweeper":old.minesweeper,"blackjack":old.blackjack});
+        let mut migrated = Save::from_json(&value.to_string()).unwrap();
+        assert_eq!(migrated.settings, old.settings);
+        assert_eq!(migrated.minesweeper, old.minesweeper);
+        assert_eq!(migrated.blackjack, old.blackjack);
+        assert_eq!(migrated.baccarat.balance, 1000);
+        migrated.baccarat.command(crate::baccarat::Command::Select(
+            crate::baccarat::BetSide::Banker,
+        ));
+        migrated.baccarat.command(crate::baccarat::Command::Deal);
+        assert_eq!(
+            Save::from_json(&migrated.to_json().unwrap()).unwrap(),
+            migrated
+        );
+        let mut corrupt = serde_json::to_value(migrated).unwrap();
+        corrupt["baccarat"]["bet"] = 0.into();
         assert!(Save::from_json(&corrupt.to_string()).is_err());
     }
 

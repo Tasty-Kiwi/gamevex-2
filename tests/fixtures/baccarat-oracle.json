@@ -1,0 +1,675 @@
+{
+  "source": "GameVex TypeScript baccarat.ts",
+  "values": [
+    {
+      "ranks": [
+        2
+      ],
+      "total": 2
+    },
+    {
+      "ranks": [
+        3
+      ],
+      "total": 3
+    },
+    {
+      "ranks": [
+        4
+      ],
+      "total": 4
+    },
+    {
+      "ranks": [
+        5
+      ],
+      "total": 5
+    },
+    {
+      "ranks": [
+        6
+      ],
+      "total": 6
+    },
+    {
+      "ranks": [
+        7
+      ],
+      "total": 7
+    },
+    {
+      "ranks": [
+        8
+      ],
+      "total": 8
+    },
+    {
+      "ranks": [
+        9
+      ],
+      "total": 9
+    },
+    {
+      "ranks": [
+        10
+      ],
+      "total": 0
+    },
+    {
+      "ranks": [
+        11
+      ],
+      "total": 0
+    },
+    {
+      "ranks": [
+        12
+      ],
+      "total": 0
+    },
+    {
+      "ranks": [
+        13
+      ],
+      "total": 0
+    },
+    {
+      "ranks": [
+        14
+      ],
+      "total": 1
+    },
+    {
+      "ranks": [
+        14,
+        8
+      ],
+      "total": 9
+    },
+    {
+      "ranks": [
+        14,
+        14,
+        9
+      ],
+      "total": 1
+    },
+    {
+      "ranks": [
+        10,
+        11,
+        12
+      ],
+      "total": 0
+    },
+    {
+      "ranks": [
+        8,
+        9,
+        7
+      ],
+      "total": 4
+    },
+    {
+      "ranks": [
+        14,
+        10,
+        5
+      ],
+      "total": 6
+    }
+  ],
+  "tableau": [
+    {
+      "banker": 0,
+      "third": null,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 0,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 1,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 2,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 3,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 4,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 5,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 6,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 7,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 8,
+      "draw": true
+    },
+    {
+      "banker": 0,
+      "third": 9,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": null,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 0,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 1,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 2,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 3,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 4,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 5,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 6,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 7,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 8,
+      "draw": true
+    },
+    {
+      "banker": 1,
+      "third": 9,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": null,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 0,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 1,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 2,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 3,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 4,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 5,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 6,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 7,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 8,
+      "draw": true
+    },
+    {
+      "banker": 2,
+      "third": 9,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": null,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 0,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 1,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 2,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 3,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 4,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 5,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 6,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 7,
+      "draw": true
+    },
+    {
+      "banker": 3,
+      "third": 8,
+      "draw": false
+    },
+    {
+      "banker": 3,
+      "third": 9,
+      "draw": true
+    },
+    {
+      "banker": 4,
+      "third": null,
+      "draw": true
+    },
+    {
+      "banker": 4,
+      "third": 0,
+      "draw": false
+    },
+    {
+      "banker": 4,
+      "third": 1,
+      "draw": false
+    },
+    {
+      "banker": 4,
+      "third": 2,
+      "draw": true
+    },
+    {
+      "banker": 4,
+      "third": 3,
+      "draw": true
+    },
+    {
+      "banker": 4,
+      "third": 4,
+      "draw": true
+    },
+    {
+      "banker": 4,
+      "third": 5,
+      "draw": true
+    },
+    {
+      "banker": 4,
+      "third": 6,
+      "draw": true
+    },
+    {
+      "banker": 4,
+      "third": 7,
+      "draw": true
+    },
+    {
+      "banker": 4,
+      "third": 8,
+      "draw": false
+    },
+    {
+      "banker": 4,
+      "third": 9,
+      "draw": false
+    },
+    {
+      "banker": 5,
+      "third": null,
+      "draw": true
+    },
+    {
+      "banker": 5,
+      "third": 0,
+      "draw": false
+    },
+    {
+      "banker": 5,
+      "third": 1,
+      "draw": false
+    },
+    {
+      "banker": 5,
+      "third": 2,
+      "draw": false
+    },
+    {
+      "banker": 5,
+      "third": 3,
+      "draw": false
+    },
+    {
+      "banker": 5,
+      "third": 4,
+      "draw": true
+    },
+    {
+      "banker": 5,
+      "third": 5,
+      "draw": true
+    },
+    {
+      "banker": 5,
+      "third": 6,
+      "draw": true
+    },
+    {
+      "banker": 5,
+      "third": 7,
+      "draw": true
+    },
+    {
+      "banker": 5,
+      "third": 8,
+      "draw": false
+    },
+    {
+      "banker": 5,
+      "third": 9,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": null,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": 0,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": 1,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": 2,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": 3,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": 4,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": 5,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": 6,
+      "draw": true
+    },
+    {
+      "banker": 6,
+      "third": 7,
+      "draw": true
+    },
+    {
+      "banker": 6,
+      "third": 8,
+      "draw": false
+    },
+    {
+      "banker": 6,
+      "third": 9,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": null,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 0,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 1,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 2,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 3,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 4,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 5,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 6,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 7,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 8,
+      "draw": false
+    },
+    {
+      "banker": 7,
+      "third": 9,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": null,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 0,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 1,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 2,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 3,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 4,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 5,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 6,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 7,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 8,
+      "draw": false
+    },
+    {
+      "banker": 8,
+      "third": 9,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": null,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 0,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 1,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 2,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 3,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 4,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 5,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 6,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 7,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 8,
+      "draw": false
+    },
+    {
+      "banker": 9,
+      "third": 9,
+      "draw": false
+    }
+  ],
+  "source_sha256": "d89874b583f338dad0abfcd60c6f8a41a0802f6dcf4251666fe358f30f268f1c"
+}

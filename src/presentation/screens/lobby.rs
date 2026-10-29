@@ -15,7 +15,13 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
     f.text(
         Vec2::new(m, y + 17.0),
         "One more round.",
-        if wide { 32.0 } else { 25.0 },
+        if f.size.y < 640.0 {
+            24.0
+        } else if wide {
+            32.0
+        } else {
+            25.0
+        },
         CYAN,
     );
     if wide {
@@ -27,9 +33,10 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
         );
     }
     let compact_layout = f.size.y < 640.0;
-    let row_gap = if compact_layout { 12.0 } else { 16.0 };
-    let roster_y = y + if compact_layout { 72.0 } else { 76.0 };
-    let row_h = ((f.size.y - roster_y - 88.0 - row_gap * 2.0) / 3.0).clamp(64.0, 96.0);
+    let row_gap = if compact_layout { 8.0 } else { 16.0 };
+    let roster_y = y + if compact_layout { 50.0 } else { 76.0 };
+    let reserved = if compact_layout { 52.0 } else { 88.0 };
+    let row_h = ((f.size.y - roster_y - reserved - row_gap * 3.0) / 4.0).clamp(64.0, 96.0);
     let a = rect(m, roster_y, w, row_h);
     cabinet(
         f,
@@ -67,12 +74,30 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
         Action::Open(Screen::Blackjack),
     );
     f.text(
-        Vec2::new(c.min.x + 24.0, c.min.y + row_h - 10.0),
+        Vec2::new(c.min.x + 24.0, c.min.y + row_h - 11.0),
         format!("{} credits", s.save.blackjack.balance),
-        11.0,
+        10.0,
         GOLD,
     );
-    let records_y = roster_y + row_h * 3.0 + row_gap * 2.0 + 23.0;
+    let d = rect(m, roster_y + (row_h + row_gap) * 3.0, w, row_h);
+    cabinet(
+        f,
+        s,
+        l,
+        d,
+        "BACCARAT",
+        "Player. Banker. Closest to nine.",
+        "DEAL",
+        GREEN,
+        Action::Open(Screen::Baccarat),
+    );
+    f.text(
+        Vec2::new(d.min.x + 24.0, d.min.y + row_h - 11.0),
+        format!("{} credits", s.save.baccarat.balance),
+        10.0,
+        GREEN,
+    );
+    let records_y = roster_y + row_h * 4.0 + row_gap * 3.0 + 23.0;
     if records_y + 75.0 < f.size.y - 40.0 {
         f.text(
             Vec2::new(m, records_y),
@@ -149,7 +174,13 @@ fn cabinet(
     f.text(
         r.min + Vec2::new(23.0, 17.0),
         title,
-        if small { 22.0 } else { 30.0 },
+        if short_row {
+            20.0
+        } else if small {
+            22.0
+        } else {
+            30.0
+        },
         INK,
     );
     if !small && !short_row {
@@ -158,10 +189,11 @@ fn cabinet(
         let short_desc = match title {
             "MINESWEEPER" => "A safe first move. A new field.",
             "BLACKJACK" => "Five hands. One shoe. Play local.",
+            "BACCARAT" => "Player, Banker or Tie. Closest to 9.",
             _ => "Card interaction sandbox.",
         };
         let desc_y = if short_row {
-            (r.height() - 28.0).max(38.0)
+            (r.height() - 23.0).max(40.0)
         } else {
             53.0
         };

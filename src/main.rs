@@ -40,6 +40,7 @@ pub(crate) struct Arcade {
     pub drag_offset: Vec2,
     pub motion_time: f32,
     pub blackjack_motion: presentation::blackjack_motion::BlackjackMotion,
+    pub baccarat_motion: presentation::baccarat_motion::BaccaratMotion,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -103,6 +104,7 @@ impl Arcade {
             drag_offset: Vec2::ZERO,
             motion_time: 0.0,
             blackjack_motion: Default::default(),
+            baccarat_motion: Default::default(),
             message,
             persistence,
             protected_save,
@@ -155,10 +157,14 @@ impl Arcade {
         if !matches!(screen, Screen::Blackjack | Screen::Settings) {
             self.blackjack_motion.clear();
         }
+        if !matches!(screen, Screen::Baccarat | Screen::Settings) {
+            self.baccarat_motion.clear();
+        }
         self.focus = match screen {
             Screen::Mines => 9,
             Screen::Blackjack if self.save.blackjack.phase == blackjack::Phase::Betting => 7,
             Screen::Blackjack => 3,
+            Screen::Baccarat => 3,
             _ => 0,
         };
         self.keyboard = false;
@@ -280,6 +286,28 @@ impl Arcade {
                     self.persist();
                 }
             }
+            Action::Baccarat(command) => {
+                if self.baccarat_motion.busy() && !self.save.settings.reduced_motion {
+                    return;
+                }
+                let before = self.save.baccarat.clone();
+                if self.save.baccarat.command(command) {
+                    self.baccarat_motion
+                        .start(command, &before, &self.save.baccarat);
+                    self.focus = match command {
+                        baccarat::Command::Select(_)
+                            if self.save.baccarat.legal(baccarat::Command::Deal) =>
+                        {
+                            9
+                        }
+                        baccarat::Command::Deal
+                        | baccarat::Command::NextRound
+                        | baccarat::Command::Restart => 3,
+                        _ => self.focus,
+                    };
+                    self.persist();
+                }
+            }
             Action::FlagMode => self.flag_mode = !self.flag_mode,
             Action::Board => {}
             Action::Preset => {
@@ -362,6 +390,7 @@ impl Arcade {
         self.protected_save = false;
         self.lab.reset();
         self.blackjack_motion.clear();
+        self.baccarat_motion.clear();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -522,6 +551,17 @@ fn lifecycle(
             } else {
                 3
             };
+        }
+    }
+    if state.screen == Screen::Baccarat && foreground && state.modal.is_none() {
+        let was_busy = state.baccarat_motion.busy();
+        if state.save.settings.reduced_motion {
+            state.baccarat_motion.clear();
+        } else {
+            state.baccarat_motion.tick(delta.min(0.1) as f32);
+        }
+        if was_busy && !state.baccarat_motion.busy() {
+            state.focus = 3;
         }
     }
     if (state.last_active && !active)
@@ -769,6 +809,18 @@ fn handle_input(
         wheel.clear();
         return;
     }
+    if state.screen == Screen::Baccarat
+        && state.modal.is_none()
+        && ((state.baccarat_motion.busy() && !state.save.settings.reduced_motion)
+            || (layout.surface == Some(Screen::Baccarat)
+                && !layout
+                    .hits
+                    .iter()
+                    .any(|h| matches!(h.action, Action::Baccarat(_)))))
+    {
+        wheel.clear();
+        return;
+    }
     let focus_count = if state.modal.is_some() {
         2
     } else {
@@ -813,6 +865,21 @@ fn handle_input(
         ] {
             if keys.just_pressed(key) {
                 state.act(Action::Blackjack(command));
+            }
+        }
+    }
+    if state.screen == Screen::Baccarat {
+        use baccarat::{BetSide, Command as Bc};
+        for (key, command) in [
+            (KeyCode::KeyP, Bc::Select(BetSide::Player)),
+            (KeyCode::KeyB, Bc::Select(BetSide::Banker)),
+            (KeyCode::KeyT, Bc::Select(BetSide::Tie)),
+            (KeyCode::KeyD, Bc::Deal),
+            (KeyCode::KeyN, Bc::NextRound),
+            (KeyCode::KeyR, Bc::Restart),
+        ] {
+            if keys.just_pressed(key) {
+                state.act(Action::Baccarat(command));
             }
         }
     }
@@ -1009,6 +1076,7 @@ mod tests {
             drag_offset: Vec2::ZERO,
             motion_time: 0.0,
             blackjack_motion: Default::default(),
+            baccarat_motion: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -1217,6 +1285,33 @@ mod tests {
     }
 
     #[test]
+    fn baccarat_settles_before_animation_and_settings_preserve_the_round() {
+        use baccarat::{BetSide, Command as Bc, Phase};
+        let mut state = test_arcade();
+        state.open(Screen::Baccarat);
+        state.act(Action::Baccarat(Bc::Select(BetSide::Banker)));
+        state.act(Action::Baccarat(Bc::Deal));
+        assert_eq!(state.save.baccarat.phase, Phase::Settled);
+        assert!(state.baccarat_motion.busy());
+        let round = state.save.baccarat.clone();
+        state.act(Action::Baccarat(Bc::NextRound));
+        assert_eq!(state.save.baccarat, round);
+        state.open(Screen::Settings);
+        state.act(Action::Back);
+        assert_eq!(state.screen, Screen::Baccarat);
+        assert_eq!(state.save.baccarat, round);
+        state.open(Screen::Lobby);
+        assert!(state.modal.is_none());
+        assert!(!state.baccarat_motion.busy());
+        state.open(Screen::Baccarat);
+        assert_eq!(state.save.baccarat, round);
+        assert_eq!(
+            Save::from_json(&state.save.to_json().unwrap()).unwrap(),
+            state.save
+        );
+    }
+
+    #[test]
     fn blackjack_leave_requires_confirmation_and_settings_preserve_the_hand() {
         let mut state = test_arcade();
         state.save.blackjack = blackjack::Blackjack::with_shoe(
@@ -1310,6 +1405,11 @@ mod tests {
         state.save.minesweeper.records.beginner = Some(5000);
         state.save.minesweeper.game.command(GameCommand::Reveal(40));
         state.save.blackjack.command(blackjack::Command::Deal);
+        state
+            .save
+            .baccarat
+            .command(baccarat::Command::Select(baccarat::BetSide::Tie));
+        state.save.baccarat.command(baccarat::Command::Deal);
         state.lab.pick(0);
         state.lab.drop_in(Some(0));
         state.flag_mode = true;
@@ -1319,6 +1419,8 @@ mod tests {
         assert_eq!(state.save.minesweeper.game.status, Status::Ready);
         assert_eq!(state.save.blackjack.balance, 1000);
         assert_eq!(state.save.blackjack.phase, blackjack::Phase::Betting);
+        assert_eq!(state.save.baccarat.balance, 1000);
+        assert_eq!(state.save.baccarat.phase, baccarat::Phase::Betting);
         assert_eq!(state.screen, Screen::Lobby);
         assert_eq!(state.lab, CardLab::default());
         assert!(!state.flag_mode);
@@ -1385,6 +1487,7 @@ fn capture_tools(
                 Screen::Cards => "card-lab",
                 Screen::Settings => "settings",
                 Screen::Blackjack => "blackjack",
+                Screen::Baccarat => "baccarat",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

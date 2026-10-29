@@ -20,7 +20,7 @@ async function openReady(page) {
   await expect.poll(async () => page.locator(canvas).evaluate((el) => {
     if (!el.dataset.session) return null;
     const save = JSON.parse(el.dataset.session);
-    return Boolean(save.version === 2 && save.minesweeper && save.blackjack);
+    return Boolean(save.version === 3 && save.minesweeper && save.blackjack && save.baccarat);
   })).toBe(true);
 }
 
@@ -224,4 +224,72 @@ test('Blackjack deals one hand, resolves it, and restores the round after reload
   await clickSurface(page, blackjack.x, blackjack.y);
   await expect.poll(async () => (await interaction(page)).screen).toBe('Blackjack');
   await expect.poll(async () => blackjackSave(page)).toEqual(beforeReload);
+});
+
+test('Baccarat settles, persists, and starts the next round with the same balance', async ({ page }) => {
+  await openReady(page);
+  const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
+  const baccarat = center(lobby.baccarat);
+  await clickSurface(page, baccarat.x, baccarat.y);
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Baccarat');
+  await expect.poll(async () => (await interaction(page)).phase).toBe('Betting');
+
+  const clickAction = async (action) => {
+    await expect.poll(async () => page.locator(canvas).evaluate((el) => {
+      const bounds = JSON.parse(el.dataset.actionBounds);
+      return Array.isArray(bounds[action]) && bounds[action].length === 4;
+    })).toBe(true);
+    const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds)[action]);
+    const p = center(bounds);
+    await clickSurface(page, p.x, p.y);
+  };
+  const baccaratSave = async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.session).baccarat);
+
+  await clickAction('banker');
+  await expect.poll(async () => (await baccaratSave()).selected).toBe('banker');
+  const beforeDeal = await baccaratSave();
+  expect(beforeDeal.balance).toBe(1000);
+  expect(beforeDeal.bet).toBe(10);
+
+  await clickAction('deal');
+  await expect.poll(async () => (await baccaratSave()).phase).not.toBe('betting');
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => {
+    const view = JSON.parse(el.dataset.baccaratView);
+    return !view.animating && view.playerCards === JSON.parse(el.dataset.session).baccarat.player.length
+      && view.bankerCards === JSON.parse(el.dataset.session).baccarat.banker.length;
+  })).toBe(true);
+
+  const settled = await baccaratSave();
+  expect(settled.result).toMatch(/^(player|banker|tie)$/);
+  expect(settled.outcome).toMatch(/^(win|push|loss)$/);
+  expect(settled.player.length).toBeGreaterThanOrEqual(2);
+  expect(settled.banker.length).toBeGreaterThanOrEqual(2);
+  const expectedPayout = settled.outcome === 'loss' ? 0
+    : settled.outcome === 'push' ? settled.bet
+      : settled.result === 'banker' ? Math.round(settled.bet * 1.95)
+        : settled.result === 'player' ? settled.bet * 2 : settled.bet * 9;
+  expect(settled.payout).toBe(expectedPayout);
+  expect(settled.balance).toBe(beforeDeal.balance - beforeDeal.bet + expectedPayout);
+
+  await page.reload();
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => {
+    if (!el.dataset.session) return false;
+    return JSON.parse(el.dataset.session).baccarat.phase === 'settled';
+  })).toBe(true);
+  expect(await baccaratSave()).toEqual(settled);
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+  const restoredLobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
+  const restoredEntry = center(restoredLobby.baccarat);
+  await clickSurface(page, restoredEntry.x, restoredEntry.y);
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Baccarat');
+  await expect.poll(async () => (await baccaratSave()).phase).toBe('settled');
+  expect(await baccaratSave()).toEqual(settled);
+
+  await clickAction('next');
+  await expect.poll(async () => (await baccaratSave()).phase).toBe('betting');
+  const nextRound = await baccaratSave();
+  expect(nextRound.balance).toBe(settled.balance);
+  expect(nextRound.selected).toBeNull();
+  expect(nextRound.player).toEqual([]);
+  expect(nextRound.banker).toEqual([]);
 });
