@@ -204,6 +204,7 @@ pub fn paint(
 }
 
 mod blackjack;
+pub(crate) mod blackjack_motion;
 mod screens;
 
 use blackjack::blackjack;

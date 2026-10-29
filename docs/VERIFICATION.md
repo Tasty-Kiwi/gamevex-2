@@ -5,7 +5,7 @@ Verified locally on 29 October 2026. Implementation and artifacts live in `gamev
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 64 tests passed (47 core, 17 application/platform).
+- `cargo test --workspace --locked`: 71 tests passed (47 core, 24 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
@@ -67,7 +67,7 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 37,835,696 | 6,141,218 |
+| WASM | 37,854,562 | 6,148,289 |
 | Generated JavaScript | 107,369 | 17,328 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
@@ -110,7 +110,15 @@ The presentation is split into shared primitives and cabinet modules. Browser di
 
 Actual in-app browser/WebGPU checks covered keyboard Deal, Double into a bust, Next round, five-hand play, sequential Stand, dealer draw and mixed push/loss settlement, active-round reload, settled-round reload, and exact state equality after restoration. A settings visit preserved the live round; cancelling the leave dialog preserved it; confirming the dialog forfeited all committed hands while retaining unspent credits. Desktop, 390×844, and 1000×560 layouts were inspected; the temporary viewport override was reset. The existing Minesweeper QA board remained independent of Blackjack play.
 
-The packaged native app launched on Metal / Apple M4. Native keyboard Deal and Stand resolved a 16-versus-17 loss and persisted the resulting 990-credit balance to an isolated temporary save. The final native package also exercised five-hand betting, insurance purchase, and sequential Stand settlement. The captured five-hand view below is from the actual native renderer. All 64 Rust tests, formatting, and warning-free workspace Clippy passed. Native release packaging and the WebAssembly release build succeeded. No new performance claim is made for this milestone.
+The packaged native app launched on Metal / Apple M4. Native keyboard Deal and Stand resolved a 16-versus-17 loss and persisted the resulting 990-credit balance to an isolated temporary save. The final native package also exercised five-hand betting, insurance purchase, and sequential Stand settlement. The original five-hand capture was replaced by the native animation-update view below. All 64 Rust tests, formatting, and warning-free workspace Clippy passed. Native release packaging and the WebAssembly release build succeeded. No new performance claim is made for this milestone.
+
+## Blackjack animation update — 29 October 2026
+
+Added staggered initial dealing, sliding drawn/split cards, a dealer hole-card flip, sequential dealer draws, and a brief active-hand highlight. Existing cards remain stationary when drawing. Presentation delays terminal labels and payouts until the visual sequence completes; the authoritative rules state persists immediately. Rapid game commands are ignored during animation, while settings and leave navigation remain available. Reduced motion bypasses all animation, and foreground/settings/modal handling pauses presentation timing.
+
+The dealer label always includes a sum, including zero before a deal. While the hole card is face down it displays the face-up-card sum plus `?`; after the flip it includes all revealed cards. Aces use the same soft-total rules as gameplay. New tests cover staggered card visibility, stationary existing cards, natural-deal ordering, committed stakes versus delayed payouts, the flip midpoint, hidden-card totals, exact final state, reduced motion, and rejection of input during an animation. All 71 Rust tests and workspace Clippy pass. A regression test also checks that finishing an animation preserves keyboard focus while control hit regions rebuild.
+
+Native Metal rendered the new dealer label with `8 + ?` while the hole card remained face down. Browser WebGPU showed staggered dealing with one dealer card and no player cards initially, then complete hands, and changed the dealer sum from the up-card total to the revealed total. Enter correctly reached Next round after settlement. A browser settings check enabled reduced motion, confirmed an immediate Hit with no active animation, then restored animations in the isolated QA save. The final 1280×720 browser view keeps cards, values, and controls separated; the 390×844 view retains the dealer sum and full hand ledger. The temporary viewport override was reset. Both release targets rebuilt successfully. No hosted CI or Playwright-runner execution is claimed.
 
 ## Screenshots
 

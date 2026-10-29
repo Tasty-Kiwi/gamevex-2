@@ -39,6 +39,7 @@ pub(crate) struct Arcade {
     pub card_positions: [Vec2; 5],
     pub drag_offset: Vec2,
     pub motion_time: f32,
+    pub blackjack_motion: presentation::blackjack_motion::BlackjackMotion,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -101,6 +102,7 @@ impl Arcade {
             card_positions: [Vec2::splat(-1000.0); 5],
             drag_offset: Vec2::ZERO,
             motion_time: 0.0,
+            blackjack_motion: Default::default(),
             message,
             persistence,
             protected_save,
@@ -150,6 +152,9 @@ impl Arcade {
             self.settings_return_focus = self.focus;
         }
         self.screen = screen;
+        if !matches!(screen, Screen::Blackjack | Screen::Settings) {
+            self.blackjack_motion.clear();
+        }
         self.focus = match screen {
             Screen::Mines => 9,
             Screen::Blackjack if self.save.blackjack.phase == blackjack::Phase::Betting => 7,
@@ -257,8 +262,14 @@ impl Arcade {
             },
             Action::Cancel => self.restore_modal_focus(),
             Action::Blackjack(command) => {
+                if self.blackjack_motion.busy() && !self.save.settings.reduced_motion {
+                    return;
+                }
+                let before = self.save.blackjack.clone();
                 let phase = self.save.blackjack.phase;
                 if self.save.blackjack.command(command) {
+                    self.blackjack_motion
+                        .start(command, &before, &self.save.blackjack);
                     if self.save.blackjack.phase != phase {
                         self.focus = if self.save.blackjack.phase == blackjack::Phase::Betting {
                             7
@@ -350,6 +361,7 @@ impl Arcade {
         self.save = Save::new(fresh_seed());
         self.protected_save = false;
         self.lab.reset();
+        self.blackjack_motion.clear();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -497,6 +509,21 @@ fn lifecycle(
     }
     state.save_age += delta.min(0.5) as f32;
     state.motion_time += delta.min(0.1) as f32;
+    if state.screen == Screen::Blackjack && foreground && state.modal.is_none() {
+        let was_busy = state.blackjack_motion.busy();
+        if state.save.settings.reduced_motion {
+            state.blackjack_motion.clear();
+        } else {
+            state.blackjack_motion.tick(delta.min(0.1) as f32);
+        }
+        if was_busy && !state.blackjack_motion.busy() {
+            state.focus = if state.save.blackjack.phase == blackjack::Phase::Betting {
+                7
+            } else {
+                3
+            };
+        }
+    }
     if (state.last_active && !active)
         || transitioned
         || close.read().count() > 0
@@ -728,6 +755,18 @@ fn handle_input(
         } else if state.screen != Screen::Lobby {
             state.act(Action::Back);
         }
+        return;
+    }
+    if state.screen == Screen::Blackjack
+        && state.modal.is_none()
+        && ((state.blackjack_motion.busy() && !state.save.settings.reduced_motion)
+            || (layout.surface == Some(Screen::Blackjack)
+                && !layout
+                    .hits
+                    .iter()
+                    .any(|h| matches!(h.action, Action::Blackjack(_)))))
+    {
+        wheel.clear();
         return;
     }
     let focus_count = if state.modal.is_some() {
@@ -969,6 +1008,7 @@ mod tests {
             card_positions: [Vec2::ZERO; 5],
             drag_offset: Vec2::ZERO,
             motion_time: 0.0,
+            blackjack_motion: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -1145,6 +1185,38 @@ mod tests {
     }
 
     #[test]
+    fn finishing_blackjack_animation_keeps_focus_until_controls_are_rebuilt() {
+        let (mut app, _) = pointer_app(Screen::Blackjack);
+        app.insert_resource(ButtonInput::<KeyCode>::default())
+            .add_message::<MouseWheel>()
+            .add_systems(Update, handle_input);
+        app.world_mut().resource_mut::<Arcade>().focus = 7;
+        // The previous animation frame contained only the three header hits.
+        app.world_mut().resource_mut::<ViewLayout>().hits = (0..3)
+            .map(|_| presentation::Hit {
+                rect: Rect::default(),
+                action: Action::Open(Screen::Settings),
+            })
+            .collect();
+        app.update();
+        assert_eq!(app.world().resource::<Arcade>().focus, 7);
+        let mut layout = app.world_mut().resource_mut::<ViewLayout>();
+        for _ in 3..8 {
+            layout.hits.push(presentation::Hit {
+                rect: Rect::default(),
+                action: Action::Blackjack(blackjack::Command::Deal),
+            });
+        }
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        let state = app.world().resource::<Arcade>();
+        assert_eq!(state.screen, Screen::Blackjack);
+        assert_ne!(state.save.blackjack.phase, blackjack::Phase::Betting);
+    }
+
+    #[test]
     fn blackjack_leave_requires_confirmation_and_settings_preserve_the_hand() {
         let mut state = test_arcade();
         state.save.blackjack = blackjack::Blackjack::with_shoe(
@@ -1167,6 +1239,9 @@ mod tests {
         assert!(state.save.blackjack.legal(blackjack::Command::Abandon));
         {
             let round = state.save.blackjack.clone();
+            assert!(state.blackjack_motion.busy());
+            state.act(Action::Blackjack(blackjack::Command::Hit));
+            assert_eq!(state.save.blackjack, round);
             state.open(Screen::Settings);
             state.act(Action::Back);
             assert_eq!(state.screen, Screen::Blackjack);

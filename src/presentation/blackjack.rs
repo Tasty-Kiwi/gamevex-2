@@ -1,9 +1,12 @@
+use super::blackjack_motion::visible_dealer_total;
 use super::screens::{button, card_face};
 use super::*;
 use gamevex_core::blackjack::{Command, HandOutcome, MAX_BET, Phase, hand_value};
 
 pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
-    let game = &s.save.blackjack;
+    let reduced = s.save.settings.reduced_motion;
+    let view = s.blackjack_motion.sample(&s.save.blackjack, reduced);
+    let game = &view;
     let small = w < 620.0;
     let short = f.size.y < 640.0;
     let compact_view = small || short;
@@ -161,18 +164,42 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
         1.5,
         GOLD,
     );
-    let hidden = matches!(game.phase, Phase::Insurance | Phase::PlayerTurn);
+    let hidden = s.blackjack_motion.dealer_hidden(&s.save.blackjack, reduced);
+    if platform::diagnostics_enabled() {
+        platform::diagnostics_attribute(
+            "data-blackjack-view",
+            &serde_json::json!({
+                "dealerTotal": visible_dealer_total(game, hidden),
+                "dealerHidden": hidden,
+                "animating": s.blackjack_motion.busy() && !reduced,
+                "dealerCards": game.dealer.len(),
+                "playerCards": game.hands.iter().map(|h| h.cards.len()).collect::<Vec<_>>(),
+            })
+            .to_string(),
+        );
+    }
     let base_card_w = if short {
         38.0
     } else if small {
         50.0
     } else {
-        90.0_f32.min((w / 6.0).max(66.0))
+        90.0_f32
+            .min((w / 6.0).max(66.0))
+            .min(((table_bottom - table_top - 146.0) / 2.8).max(34.0))
     };
     let card_w = base_card_w;
     let card_h = card_w * 1.4;
     let dealer_label_y = table_top + if short { 16.0 } else { 24.0 };
-    f.text(Vec2::new(m + 14.0, dealer_label_y), "DEALER", 12.0, MUTED);
+    f.text(
+        Vec2::new(m + 14.0, dealer_label_y),
+        format!(
+            "DEALER  {}{}",
+            visible_dealer_total(game, hidden),
+            if hidden { " + ?" } else { "" }
+        ),
+        12.0,
+        GOLD,
+    );
     let dealer_step = (card_w * 0.64)
         .min((w - card_w - 46.0).max(0.0) / game.dealer.len().saturating_sub(1).max(1) as f32);
     let dealer_span = if game.dealer.is_empty() {
@@ -188,15 +215,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             shown.face_up = false;
         }
         let r = rect(dealer_x + i as f32 * dealer_step, dealer_y, card_w, card_h);
-        card_face(f, r, shown, false, true);
-    }
-    if !hidden && !game.dealer.is_empty() {
-        f.text(
-            Vec2::new(dealer_x + dealer_span + 8.0, dealer_y + 20.0),
-            format!("{}", hand_value(&game.dealer)),
-            18.0,
-            GOLD,
-        );
+        card_face(f, animated_rect(s, r, true, 0, i), shown, false, true);
     }
 
     let hands_y = table_top + if short { 100.0 } else { card_h + 54.0 };
@@ -271,7 +290,11 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             };
             let gaps = 6.0 * hand.cards.len().saturating_sub(1) as f32;
             let active_card_w = (if short { 38.0_f32 } else { 90.0_f32 })
-                .min(((w - gaps) / hand.cards.len().max(1) as f32).max(1.0));
+                .min(((w - gaps) / hand.cards.len().max(1) as f32).max(1.0))
+                .min(
+                    ((buttons_y - if w < 700.0 { 42.0 } else { 0.0 } - cards_y - 26.0) / 1.4)
+                        .max(1.0),
+                );
             let active_card_h = active_card_w * 1.4;
             let span = active_card_w * hand.cards.len() as f32 + gaps;
             let start_x = m + (w - span).max(0.0) * 0.5;
@@ -288,7 +311,14 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                     active_card_w,
                     active_card_h,
                 );
-                card_face(f, card_rect, *card, true, true);
+                turn_outline(f, s, card_rect);
+                card_face(
+                    f,
+                    animated_rect(s, card_rect, false, game.active_hand, i),
+                    *card,
+                    true,
+                    true,
+                );
             }
             f.text(
                 Vec2::new(m, cards_y + active_card_h + 5.0),
@@ -362,7 +392,16 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 let rank_visible = !card_rects[j + 1..]
                     .iter()
                     .any(|later| rects_overlap(rank, *later));
-                card_face(f, card_rects[j], *card, active, rank_visible);
+                if active {
+                    turn_outline(f, s, card_rects[j]);
+                }
+                card_face(
+                    f,
+                    animated_rect(s, card_rects[j], false, i, j),
+                    *card,
+                    active,
+                    rank_visible,
+                );
             }
             let result = hand.outcome.map(outcome_label).unwrap_or("");
             f.text(
@@ -511,7 +550,8 @@ fn outcome_color(outcome: Option<HandOutcome>) -> Color {
 }
 
 fn control(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, r: Rect, label: &str, cmd: Command) {
-    if s.save.blackjack.legal(cmd) {
+    if s.save.blackjack.legal(cmd) && (!s.blackjack_motion.busy() || s.save.settings.reduced_motion)
+    {
         button(f, s, l, r, label, Action::Blackjack(cmd), false);
     } else {
         f.rect(r.min, r.size(), PANEL);
@@ -522,6 +562,32 @@ fn control(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, r: Rect, label: &str, 
             label,
             11.0,
             MUTED,
+        );
+    }
+}
+
+fn animated_rect(s: &Arcade, target: Rect, dealer: bool, hand: usize, index: usize) -> Rect {
+    let (arrival, flip) =
+        s.blackjack_motion
+            .card_pose(dealer, hand, index, s.save.settings.reduced_motion);
+    let eased = 1.0 - (1.0 - arrival).powi(3);
+    let offset = Vec2::new(34.0, -28.0) * (1.0 - eased);
+    let scale = 0.78 + 0.22 * eased;
+    let size = target.size() * Vec2::new(scale * flip.max(0.025), scale);
+    Rect::from_center_size(target.center() + offset, size)
+}
+
+fn turn_outline(f: &mut Frame, s: &Arcade, target: Rect) {
+    let pulse = 1.0
+        - s.blackjack_motion
+            .turn_progress(s.save.settings.reduced_motion);
+    if pulse > 0.0 {
+        let padding = Vec2::splat(3.0 + pulse * 4.0);
+        f.outline(
+            target.min - padding,
+            target.size() + padding * 2.0,
+            1.0 + pulse * 2.0,
+            GOLD.with_alpha(pulse),
         );
     }
 }
