@@ -17,6 +17,7 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
     f.rect(r.min, r.size(), PANEL);
     f.rounded_outline(r.min, r.size(), 8.0, 2.0, GOLD);
     let recover = matches!(s.modal, Some(Pending::Recover));
+    let sudoku = matches!(s.modal, Some(Pending::NewSudoku(..)));
     let leave_blackjack = matches!(s.modal, Some(Pending::LeaveBlackjack(_)));
     f.text(
         r.min + Vec2::new(22.0, 24.0),
@@ -36,6 +37,8 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             "Your current Blackjack bets will be forfeited.\nUnspent credits will be kept."
         } else if recover {
             "Saved settings, records, and progress\nwill be replaced with a fresh session."
+        } else if sudoku {
+            "Your Sudoku entries and notes will be replaced.\nCancel to keep playing this puzzle."
         } else {
             "Your unfinished field will be replaced.\nCancel to keep playing this run."
         },

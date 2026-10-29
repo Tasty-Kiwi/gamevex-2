@@ -33,10 +33,10 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
         );
     }
     let compact_layout = f.size.y < 640.0;
-    let row_gap = if compact_layout { 8.0 } else { 16.0 };
+    let row_gap = if compact_layout { 8.0 } else { 10.0 };
     let roster_y = y + if compact_layout { 50.0 } else { 76.0 };
-    let reserved = if compact_layout { 52.0 } else { 88.0 };
-    let row_h = ((f.size.y - roster_y - reserved - row_gap * 3.0) / 4.0).clamp(64.0, 96.0);
+    let reserved = 48.0;
+    let row_h = ((f.size.y - roster_y - reserved - row_gap * 4.0) / 5.0).clamp(50.0, 96.0);
     let a = rect(m, roster_y, w, row_h);
     cabinet(
         f,
@@ -73,12 +73,6 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
         GOLD,
         Action::Open(Screen::Blackjack),
     );
-    f.text(
-        Vec2::new(c.min.x + 24.0, c.min.y + row_h - 11.0),
-        format!("{} credits", s.save.blackjack.balance),
-        10.0,
-        GOLD,
-    );
     let d = rect(m, roster_y + (row_h + row_gap) * 3.0, w, row_h);
     cabinet(
         f,
@@ -91,13 +85,19 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
         GREEN,
         Action::Open(Screen::Baccarat),
     );
-    f.text(
-        Vec2::new(d.min.x + 24.0, d.min.y + row_h - 11.0),
-        format!("{} credits", s.save.baccarat.balance),
-        10.0,
-        GREEN,
+    let e = rect(m, roster_y + (row_h + row_gap) * 4.0, w, row_h);
+    cabinet(
+        f,
+        s,
+        l,
+        e,
+        "SUDOKU",
+        "Every row. Every column. Every box.",
+        "PLAY",
+        CYAN,
+        Action::Open(Screen::Sudoku),
     );
-    let records_y = roster_y + row_h * 4.0 + row_gap * 3.0 + 23.0;
+    let records_y = roster_y + row_h * 5.0 + row_gap * 4.0 + 23.0;
     if records_y + 75.0 < f.size.y - 40.0 {
         f.text(
             Vec2::new(m, records_y),
@@ -172,7 +172,7 @@ fn cabinet(
     let small = r.width() < 600.0;
     let short_row = r.height() < 90.0;
     f.text(
-        r.min + Vec2::new(23.0, 17.0),
+        r.min + Vec2::new(23.0, if r.height() < 60.0 { 8.0 } else { 13.0 }),
         title,
         if short_row {
             20.0
@@ -190,10 +190,11 @@ fn cabinet(
             "MINESWEEPER" => "A safe first move. A new field.",
             "BLACKJACK" => "Five hands. One shoe. Play local.",
             "BACCARAT" => "Player, Banker or Tie. Closest to 9.",
+            "SUDOKU" => "Every row, column and box.",
             _ => "Card interaction sandbox.",
         };
         let desc_y = if short_row {
-            (r.height() - 23.0).max(40.0)
+            (r.height() - 19.0).max(30.0)
         } else {
             53.0
         };

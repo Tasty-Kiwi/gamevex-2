@@ -1,12 +1,12 @@
 {
   "gamevex_app_bg.wasm": {
-    "bytes": 37979527,
-    "gzip_level_9_bytes": 6183698,
-    "sha256": "7af574a6020811e5abfae75be2d4df714c29475742545f0e1a9d67a3ab80b229"
+    "bytes": 38071320,
+    "gzip_level_9_bytes": 6211451,
+    "sha256": "dfb522cb757e174fc68f368e05e4f82ac23cadc600dedba8960040cbbc150f52"
   },
   "gamevex_app.js": {
     "bytes": 108170,
-    "gzip_level_9_bytes": 17529,
-    "sha256": "5ca82d4fc55cf5ffbbe558755bf518d53b6c6636b805b74010eb3d09cc3030cc"
+    "gzip_level_9_bytes": 17530,
+    "sha256": "1e82bcbeef5020c1d3e0ffc398f56b76c0d4dc66e2ba9ad3d8c4ee813984a1f9"
   }
 }

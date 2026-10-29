@@ -5,11 +5,12 @@ Verified locally on 29 October 2026. Implementation and artifacts live in `gamev
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 98 tests passed (60 core, 38 application/platform).
+- `cargo test --workspace --locked`: 115 tests passed (70 core, 45 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
 - Shell scripts passed `bash -n`; the custom browser loader passed `node --check`.
+- All 13 browser regressions passed locally with the Chromium/Metal override described in the Sudoku section; hosted CI and its default software-WebGPU setup remain unverified.
 
 Tests cover first-reveal protection over every difficulty and 32 seeds, mine/adjacency counts, flood behavior and pre-existing flags, correct/wrong-flag chording, win/loss and completed-command rejection, zero-seed determinism, save round trips and invalid-state checks, bounded elapsed time, record improvement, repeatable cards, valid/invalid/occupied drops, drag cancellation, native atomic file replacement, board picking with a clipped/panned viewport, modal focus restoration, timer transition/fractional-millisecond accounting, curved-monitor input mapping, old-save defaults for the added settings, and complete saved-data reset.
 
@@ -67,8 +68,8 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 37,979,527 | 6,183,698 |
-| Generated JavaScript | 108,170 | 17,529 |
+| WASM | 38,071,320 | 6,211,451 |
+| Generated JavaScript | 108,170 | 17,530 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
 
@@ -142,9 +143,27 @@ Actual native Metal captures exercised a natural Blackjack returning a net +15 c
 
 Native packaging and the WASM release build succeeded. Eight browser specs are discoverable and their JavaScript syntax checks pass; the Playwright runner and hosted CI remain unexecuted. No additional performance measurement is claimed. The [sound preview](audio/casino-preview.wav) concatenates Bet, Card, Double, Win, Natural, Push, Loss, and Bust, separated by silence; its raw samples precede the app’s master gain.
 
+## Sudoku port — 29 October 2026
+
+Added a fifth lobby entry and a complete Sudoku cabinet with 4x4, 6x6, 9x9, and experimental 16x16 boards, four clue-density modes, locked givens, editable conflicts, pencil marks, a value bank with remaining counts, keyboard input including A-G, error/same-value preferences, 100-move visit undo, forced-single hints with explanations, sticky assistance, per-mode records, and confirmed replacement of edited puzzles. Large grids keep 32-pixel cells and support wheel/keyboard panning. The completed-board outline briefly pulses unless reduced motion is enabled. No shared ticket/shop progression was added.
+
+The pure Rust model constructs a valid solution with Sudoku-preserving permutations, then removes clues with a 5,000-node uniqueness budget for sizes through 9x9. Exhausted checks retain the clue. Experimental 16x16 deliberately skips uniqueness verification and hints, matching the original limits. Tests cover every size/difficulty with seeds 0, 1, 17, and u64::MAX, deterministic generation, a fixed shuffle permutation that checks 32-bit/WASM and 64-bit seed compatibility, clue preservation, uniqueness where supported, row/column/box conflicts, notes, locked cells, undo bounds, assistance/time that cannot be undone, completion, record independence and the one-second record floor, malformed saves, and bounded time.
+
+`scripts/generate-sudoku-fixtures.ts` imports only the read-only original TypeScript helpers. The generated fixture records their combined SHA-256 and 28 seeded puzzle/solution examples plus completion/conflict checks and eight hint categories. Rust tests compare exact hint positions, values, and explanations, including naked singles, hidden row/column/box singles, impossible/conflicting boards, no available hint, and disabled 16x16 hints. The two generators use their own seeded random streams; exact generated-board equality is not claimed.
+
+Schema 4 adds Sudoku while retaining the existing storage key/filename. Migration tests preserve all three earlier games and settings from schema 3; version-1/2 migration remains supported. Sudoku saves preserve entries, clues, notes, elapsed time, assistance, highlight preferences, and records; UI selection and undo snapshots are transient. App tests exercise settings/navigation, replacement Cancel/Confirm, reset, keyboard scoping and A-G values, exact restore, isolated clocks, and actual rendered hit bounds at 1280x720, 390x844, 1000x560, and 390x560 for every size. Runtime checks found and repaired hint text wrapping and crowded value/count labels in the short 16x16 layout. The browser regression run also reproduced an older Card Lab drag that survived a canvas-metric resize before a winit event; shared input now cancels the drag immediately when layout metrics change, with a focused regression test. All 115 Rust tests, formatting, and warning-free workspace Clippy pass.
+
+Actual native Metal / Apple M4 checks exercised a 9x9 hint, undo with assistance retained, and settings pause: elapsed time stayed exactly 50,014 ms during the observed pause. The native screenshot below was captured from the packaged application. Actual in-app browser WebGPU checks migrated the existing QA save from schema 3 to 4 without changing the earlier cabinets, exercised notes/erase/undo, rejected a hint on a conflicting entry, retained assistance after undo, completed an unassisted 4x4 Medium puzzle in 9,499 ms, and stored/restored that exact board and mode record. Narrow 390x844 inspection kept the grid, value bank, and controls separate. Experimental 16x16 kept 32-pixel cells; A and G entered 10 and 16, H explained the unavailable hints, and arrow navigation reached cell 255 while panning the view. Temporary browser viewport overrides were reset after verification.
+
+Native release packaging and the WASM release build succeeded. All 13 Playwright regressions passed locally in 21.1 seconds with one worker, including all five Sudoku cases and the repaired canvas-resize drag case. The pinned Playwright 1.56.1 runner used the already installed Chrome for Testing 151.0.7922.34 (headless-shell build 1234) through a temporary config, with `--enable-unsafe-webgpu --use-angle=metal`, video/tracing disabled, and the existing test server. This is a local Metal run; the default pinned-browser/software-WebGPU configuration and hosted CI remain unverified. The pinned browser download stalled during extraction under the installed Node 26 runtime; the installed browser’s forced software adapter also failed to initialize a mapped GPU buffer. Neither failed setup is counted as a passed gameplay check. The temporary override did not modify the checked-in CI configuration.
+
+Executing the suite also fixed missing page-evaluation arguments and reload/navigation readiness in test helpers. Its rapid-click test now targets two exposed cards: selecting the first card promotes it above the adjacent card, so a stale coordinate on that neighbor was not a stable second target. Ordered event behavior still has the existing focused application tests. The final native screenshot attempt was prevented by the Mac lock; the earlier actual native screenshot is retained below. No new performance benchmark is claimed.
+
 ## Screenshots
 
 Actual native render captures, excluding window chrome.
+
+![Sudoku](screenshots/sudoku.png)
 
 ![Blackjack outcome effects](screenshots/blackjack-feedback.png)
 

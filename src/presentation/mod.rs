@@ -24,6 +24,7 @@ pub enum Screen {
     Settings,
     Blackjack,
     Baccarat,
+    Sudoku,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -52,6 +53,12 @@ pub enum Action {
     ReturnCard,
     Blackjack(gamevex_core::blackjack::Command),
     Baccarat(gamevex_core::baccarat::Command),
+    Sudoku(gamevex_core::sudoku::Command),
+    SudokuCell,
+    SudokuNew(u8, gamevex_core::sudoku::Difficulty),
+    SudokuPencil,
+    SudokuErrors,
+    SudokuSame,
 }
 pub struct Hit {
     pub rect: Rect,
@@ -88,6 +95,8 @@ pub struct ViewLayout {
     pub slots: [Rect; 3],
     pub card_order: Vec<usize>,
     pub settings_max_scroll: f32,
+    pub sudoku: Option<BoardLayout>,
+    pub sudoku_max_pan: Vec2,
 }
 
 pub fn paint(
@@ -114,6 +123,8 @@ pub fn paint(
     layout.modal = state.modal.is_some();
     layout.hits.clear();
     layout.board = None;
+    layout.sudoku = None;
+    layout.sudoku_max_pan = Vec2::ZERO;
     layout.card_order.clear();
     layout.settings_max_scroll = 0.0;
     options.scale_factor = metrics.map(|[_, _, d]| d).unwrap_or(window.scale_factor());
@@ -172,6 +183,7 @@ pub fn paint(
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Baccarat => baccarat::baccarat(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Sudoku => sudoku::sudoku(&mut frame, &mut state, &mut layout, margin, w),
     }
     publish_diagnostics(&state, &layout, size);
     if state.screen == Screen::Cards {
@@ -212,6 +224,7 @@ mod blackjack;
 pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
 mod screens;
+mod sudoku;
 
 use blackjack::blackjack;
 use screens::{button, cards as draw_cards, dialog, lobby, mines, rects_overlap, settings};
@@ -278,6 +291,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "mines": action_bounds(Screen::Mines),
             "blackjack": action_bounds(Screen::Blackjack),
             "baccarat": action_bounds(Screen::Baccarat),
+            "sudoku": action_bounds(Screen::Sudoku),
         });
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
@@ -343,6 +357,53 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             })
             .to_string(),
         );
+    }
+    if state.screen == Screen::Sudoku {
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::SudokuCell => "board".to_owned(),
+                Action::Sudoku(gamevex_core::sudoku::Command::Enter { value, .. }) => {
+                    format!("value{value}")
+                }
+                Action::Sudoku(gamevex_core::sudoku::Command::Erase(_)) => "erase".into(),
+                Action::Sudoku(gamevex_core::sudoku::Command::Undo) => "undo".into(),
+                Action::Sudoku(gamevex_core::sudoku::Command::Hint) => "hint".into(),
+                Action::SudokuPencil => "pencil".into(),
+                Action::SudokuErrors => "errors".into(),
+                Action::SudokuSame => "same".into(),
+                Action::SudokuNew(size, difficulty) => {
+                    if size != state.save.sudoku.game.size {
+                        "size".into()
+                    } else if difficulty != state.save.sudoku.game.difficulty {
+                        "difficulty".into()
+                    } else {
+                        "new".into()
+                    }
+                }
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        if let Some(board) = &layout.sudoku {
+            platform::diagnostics_attribute("data-sudoku-view", &serde_json::json!({
+                "origin":[board.origin.x,board.origin.y], "clip":[board.clip.min.x,board.clip.min.y,board.clip.width(),board.clip.height()],
+                "cell":board.cell, "selected":state.sudoku_ui.selected, "pencil":state.sudoku_ui.pencil,
+                "undo":state.sudoku_ui.history.len(), "message":state.sudoku_ui.message,
+            }).to_string());
+        }
     }
     if state.screen == Screen::Mines {
         let bounds = Difficulty::ALL.map(|difficulty| {

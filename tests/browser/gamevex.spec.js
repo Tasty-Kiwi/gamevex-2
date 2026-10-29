@@ -20,7 +20,7 @@ async function openReady(page) {
   await expect.poll(async () => page.locator(canvas).evaluate((el) => {
     if (!el.dataset.session) return null;
     const save = JSON.parse(el.dataset.session);
-    return Boolean(save.version === 3 && save.minesweeper && save.blackjack && save.baccarat);
+    return Boolean(save.version === 4 && save.minesweeper && save.blackjack && save.baccarat && save.sudoku);
   })).toBe(true);
 }
 
@@ -33,7 +33,7 @@ async function enterCards(page) {
 }
 
 async function interaction(page) {
-  return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.interaction));
+  return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.interaction || '{}'));
 }
 
 async function blackjackSave(page) {
@@ -41,11 +41,11 @@ async function blackjackSave(page) {
 }
 
 async function clickBlackjackAction(page, action) {
-  await expect.poll(async () => page.locator(canvas).evaluate((el) => {
+  await expect.poll(async () => page.locator(canvas).evaluate((el, action) => {
     const bounds = JSON.parse(el.dataset.actionBounds);
     return Array.isArray(bounds[action]) && bounds[action].length === 4;
-  })).toBe(true);
-  const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds)[action]);
+  }, action)).toBe(true);
+  const bounds = await page.locator(canvas).evaluate((el, action) => JSON.parse(el.dataset.actionBounds)[action], action);
   const p = center(bounds);
   await clickSurface(page, p.x, p.y);
 }
@@ -108,10 +108,12 @@ test('card clicks keep rapid selections ordered and CRT-aware', async ({ page })
   await enterCards(page);
   const bounds = await settledBounds(page);
   const first = exposedCardPoint(bounds, 0);
-  const second = exposedCardPoint(bounds, 1);
+  // Selecting the first card raises it above its neighbor. The far end stays
+  // exposed whether or not a paint happens between these rapid clicks.
+  const second = exposedCardPoint(bounds, 4);
   await clickSurface(page, first.x, first.y);
   await clickSurface(page, second.x, second.y);
-  await expect.poll(async () => (await interaction(page)).selectedCard).toBe(1);
+  await expect.poll(async () => (await interaction(page)).selectedCard).toBe(4);
 });
 
 test('right click flips a card without opening the browser context menu', async ({ page }) => {
@@ -235,11 +237,11 @@ test('Baccarat settles, persists, and starts the next round with the same balanc
   await expect.poll(async () => (await interaction(page)).phase).toBe('Betting');
 
   const clickAction = async (action) => {
-    await expect.poll(async () => page.locator(canvas).evaluate((el) => {
+    await expect.poll(async () => page.locator(canvas).evaluate((el, action) => {
       const bounds = JSON.parse(el.dataset.actionBounds);
       return Array.isArray(bounds[action]) && bounds[action].length === 4;
-    })).toBe(true);
-    const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds)[action]);
+    }, action)).toBe(true);
+    const bounds = await page.locator(canvas).evaluate((el, action) => JSON.parse(el.dataset.actionBounds)[action], action);
     const p = center(bounds);
     await clickSurface(page, p.x, p.y);
   };
@@ -317,4 +319,213 @@ test('casino audio starts on a gesture, caches cues, and releases finished voice
   await page.reload();
   await expect.poll(async () => (await audio())?.played).toBe(0);
   expect((await audio()).running).toBe(false);
+});
+
+async function enterSudoku(page) {
+  await openReady(page);
+  const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
+  const entry = center(lobby.sudoku);
+  await clickSurface(page, entry.x, entry.y);
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Sudoku');
+}
+
+async function sudokuSave(page) {
+  return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.session).sudoku);
+}
+
+function sudokuGameplay(game) {
+  const { elapsed_ms, ...state } = game;
+  return state;
+}
+
+async function clickSudokuAction(page, action) {
+  await expect.poll(async () => page.locator(canvas).evaluate((el, action) => {
+    const bounds = JSON.parse(el.dataset.actionBounds);
+    return Array.isArray(bounds[action]) && bounds[action].length === 4;
+  }, action)).toBe(true);
+  const bounds = await page.locator(canvas).evaluate((el, action) => JSON.parse(el.dataset.actionBounds)[action], action);
+  const p = center(bounds);
+  await clickSurface(page, p.x, p.y);
+}
+
+async function firstVisibleEditableCell(page) {
+  return page.locator(canvas).evaluate((el) => {
+    const game = JSON.parse(el.dataset.session).sudoku.game;
+    const view = JSON.parse(el.dataset.sudokuView);
+    const [ox, oy] = view.origin;
+    const [cx, cy, cw, ch] = view.clip;
+    const n = game.size;
+    for (let i = 0; i < n * n; i++) {
+      if (game.givens[i] !== 0 || game.board[i] !== 0) continue;
+      const col = i % n;
+      const row = Math.floor(i / n);
+      const x = ox + (col + 0.5) * view.cell;
+      const y = oy + (row + 0.5) * view.cell;
+      if (x >= cx && x <= cx + cw && y >= cy && y <= cy + ch) return { index: i, x, y };
+    }
+    return null;
+  });
+}
+
+async function expectSudokuBoundsInsideViewport(page) {
+  const data = await page.locator(canvas).evaluate(async (el) => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      bounds: JSON.parse(el.dataset.actionBounds),
+      viewport: JSON.parse(el.dataset.interaction).viewport,
+    };
+  });
+  for (const [name, rect] of Object.entries(data.bounds)) {
+    expect(rect, `${name} has a positive rectangle`).toHaveLength(4);
+    expect(rect[2], `${name} width`).toBeGreaterThan(0);
+    expect(rect[3], `${name} height`).toBeGreaterThan(0);
+    expect(rect[0], `${name} left`).toBeGreaterThanOrEqual(0);
+    expect(rect[1], `${name} top`).toBeGreaterThanOrEqual(0);
+    expect(rect[0] + rect[2], `${name} right`).toBeLessThanOrEqual(data.viewport[0] + 1);
+    expect(rect[1] + rect[3], `${name} bottom`).toBeLessThanOrEqual(data.viewport[1] + 1);
+  }
+}
+
+test('Sudoku pencil notes, erase, undo, and reload keep the editable cell state', async ({ page }) => {
+  await enterSudoku(page);
+  const target = await firstVisibleEditableCell(page);
+  expect(target).not.toBeNull();
+  await clickSurface(page, target.x, target.y);
+  await expect.poll(async () => JSON.parse(await page.locator(canvas).getAttribute('data-sudoku-view')).selected)
+    .toBe(target.index);
+
+  await clickSudokuAction(page, 'pencil');
+  await clickSudokuAction(page, 'value1');
+  await expect.poll(async () => (await sudokuSave(page)).game.notes[target.index]).toBe(1);
+  await clickSudokuAction(page, 'erase');
+  await expect.poll(async () => (await sudokuSave(page)).game.notes[target.index]).toBe(0);
+  await clickSudokuAction(page, 'undo');
+  await expect.poll(async () => (await sudokuSave(page)).game.notes[target.index]).toBe(1);
+
+  const noteGame = (await sudokuSave(page)).game;
+  await page.reload();
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+  expect(sudokuGameplay((await sudokuSave(page)).game)).toEqual(sudokuGameplay(noteGame));
+  const restored = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
+  const entry = center(restored.sudoku);
+  await clickSurface(page, entry.x, entry.y);
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Sudoku');
+  expect((await sudokuSave(page)).game.notes[target.index]).toBe(1);
+});
+
+test('a Sudoku hint remains assisted after reload and other games keep their saves', async ({ page }) => {
+  await enterSudoku(page);
+  const game = (await sudokuSave(page)).game;
+  test.skip(game.size === 16, 'The experimental 16x16 mode deliberately has no hint action.');
+  const minesBefore = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.session).minesweeper);
+  const blackjackBefore = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.session).blackjack);
+  const baccaratBefore = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.session).baccarat);
+  await clickSudokuAction(page, 'hint');
+  await expect.poll(async () => (await sudokuSave(page)).game.assisted).toBe(true);
+
+  // Visit each neighboring game and return to the lobby without making moves.
+  // The Sudoku clock may advance, so capture its persisted state afterwards.
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+  for (const mode of ['mines', 'blackjack', 'baccarat']) {
+    const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
+    const entry = center(bounds[mode]);
+    await clickSurface(page, entry.x, entry.y);
+    const expectedScreen = mode[0].toUpperCase() + mode.slice(1);
+    await expect.poll(async () => (await interaction(page)).screen).toBe(expectedScreen);
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+  }
+  const hinted = (await sudokuSave(page)).game;
+  await page.reload();
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+  expect(sudokuGameplay((await sudokuSave(page)).game)).toEqual(sudokuGameplay(hinted));
+  const after = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.session));
+  expect(after.minesweeper).toEqual(minesBefore);
+  expect(after.blackjack).toEqual(blackjackBefore);
+  expect(after.baccarat).toEqual(baccaratBefore);
+});
+
+test('canceling a Sudoku replacement protects entered values and notes', async ({ page }) => {
+  await enterSudoku(page);
+  const target = await firstVisibleEditableCell(page);
+  expect(target).not.toBeNull();
+  await clickSurface(page, target.x, target.y);
+  await clickSudokuAction(page, 'value1');
+  await expect.poll(async () => (await sudokuSave(page)).game.board[target.index]).toBe(1);
+  const before = (await sudokuSave(page)).game;
+
+  await clickSudokuAction(page, 'size');
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Sudoku');
+  expect(sudokuGameplay((await sudokuSave(page)).game)).toEqual(sudokuGameplay(before));
+});
+
+test('16x16 Sudoku accepts A through G values and pans the clipped board', async ({ page }) => {
+  await enterSudoku(page);
+  for (let i = 0; i < 4; i++) {
+    const game = (await sudokuSave(page)).game;
+    if (game.size === 16) break;
+    await clickSudokuAction(page, 'size');
+    await expect.poll(async () => (await sudokuSave(page)).game.size).not.toBe(game.size);
+  }
+  await expect.poll(async () => (await sudokuSave(page)).game.size).toBe(16);
+  await page.setViewportSize({ width: 640, height: 760 });
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.interaction).viewport))
+    .toEqual([640, 760]);
+  const target = await firstVisibleEditableCell(page);
+  expect(target).not.toBeNull();
+  await clickSurface(page, target.x, target.y);
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.sudokuView).selected))
+    .toBe(target.index);
+
+  // Board focus is observable because arrow keys move the selected cell.
+  const selected = target.index;
+  const moveKey = selected % 16 < 15 ? 'ArrowRight' : 'ArrowLeft';
+  const undoMoveKey = moveKey === 'ArrowRight' ? 'ArrowLeft' : 'ArrowRight';
+  await page.keyboard.press(moveKey);
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.sudokuView).selected))
+    .not.toBe(selected);
+  await page.keyboard.press(undoMoveKey);
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.sudokuView).selected))
+    .toBe(selected);
+  const viewBeforePan = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.sudokuView));
+  const wheelPoint = await screenPoint(page, viewBeforePan.clip[0] + viewBeforePan.clip[2] / 2,
+    viewBeforePan.clip[1] + viewBeforePan.clip[3] / 2);
+  await page.mouse.move(wheelPoint.x, wheelPoint.y);
+  await page.mouse.wheel(0, 180);
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.sudokuView).origin[1]))
+    .not.toBe(viewBeforePan.origin[1]);
+
+  // Click a visible editable cell again after panning and type the extended
+  // symbols on that cell; the last key proves the 16th value is reachable.
+  const afterPan = await firstVisibleEditableCell(page);
+  expect(afterPan).not.toBeNull();
+  await clickSurface(page, afterPan.x, afterPan.y);
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.sudokuView).selected))
+    .toBe(afterPan.index);
+  for (const [offset, key] of ['A', 'B', 'C', 'D', 'E', 'F', 'G'].entries()) {
+    const expected = offset + 10;
+    await page.keyboard.press(key);
+    await expect.poll(async () => (await sudokuSave(page)).game.board[afterPan.index])
+      .toBe(expected);
+  }
+  expect((await sudokuSave(page)).game.board[afterPan.index]).toBe(16);
+});
+
+test('Sudoku controls stay inside a narrow viewport in every size mode', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 740 });
+  await enterSudoku(page);
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.interaction).viewport))
+    .toEqual([390, 740]);
+  const sizeCycle = [4, 6, 9, 16];
+  for (let i = 0; i < sizeCycle.length; i++) {
+    const game = (await sudokuSave(page)).game;
+    expect(sizeCycle).toContain(game.size);
+    await expectSudokuBoundsInsideViewport(page);
+    await clickSudokuAction(page, 'size');
+    const next = game.size === 4 ? 6 : game.size === 6 ? 9 : game.size === 9 ? 16 : 4;
+    await expect.poll(async () => (await sudokuSave(page)).game.size).toBe(next);
+  }
+  await expectSudokuBoundsInsideViewport(page);
 });

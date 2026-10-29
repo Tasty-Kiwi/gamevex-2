@@ -5,6 +5,7 @@ mod casino_feedback;
 mod platform;
 mod presentation;
 mod rendering;
+mod sudoku_app;
 
 use bevy::{
     audio::{AudioSink, AudioSinkPlayback, AudioSource, Volume},
@@ -46,6 +47,7 @@ pub(crate) struct Arcade {
     pub blackjack_motion: presentation::blackjack_motion::BlackjackMotion,
     pub baccarat_motion: presentation::baccarat_motion::BaccaratMotion,
     pub casino_feedback: casino_feedback::CasinoFeedback,
+    pub sudoku_ui: sudoku_app::SudokuUi,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -64,6 +66,7 @@ pub(crate) enum Pending {
     New(Difficulty, bool),
     Recover,
     LeaveBlackjack(Screen),
+    NewSudoku(u8, sudoku::Difficulty),
 }
 
 impl Arcade {
@@ -111,6 +114,7 @@ impl Arcade {
             blackjack_motion: Default::default(),
             baccarat_motion: Default::default(),
             casino_feedback: Default::default(),
+            sudoku_ui: Default::default(),
             message,
             persistence,
             protected_save,
@@ -162,6 +166,16 @@ impl Arcade {
         if screen != self.screen && screen != Screen::Settings && self.screen != Screen::Settings {
             self.casino_feedback.clear();
         }
+        if self.screen == Screen::Sudoku && !matches!(screen, Screen::Sudoku | Screen::Settings) {
+            self.sudoku_ui.history.clear();
+        }
+        if screen == Screen::Sudoku && self.screen != Screen::Settings {
+            self.sudoku_ui.selected = 0;
+            self.sudoku_ui.pan = Vec2::ZERO;
+            self.sudoku_ui.follow = true;
+            self.sudoku_ui.message.clear();
+            self.sudoku_ui.completion_age = None;
+        }
         self.screen = screen;
         if !matches!(screen, Screen::Blackjack | Screen::Settings) {
             self.blackjack_motion.clear();
@@ -173,7 +187,7 @@ impl Arcade {
             Screen::Mines => 9,
             Screen::Blackjack if self.save.blackjack.phase == blackjack::Phase::Betting => 7,
             Screen::Blackjack => 3,
-            Screen::Baccarat => 3,
+            Screen::Baccarat | Screen::Sudoku => 3,
             _ => 0,
         };
         self.keyboard = false;
@@ -269,6 +283,7 @@ impl Arcade {
             }
             Action::Confirm => match self.modal.take() {
                 Some(Pending::New(difficulty, repeat)) => self.new_game(difficulty, repeat),
+                Some(Pending::NewSudoku(size, difficulty)) => self.new_sudoku(size, difficulty),
                 Some(Pending::Recover) => {
                     self.reset_saved_data();
                     self.persist();
@@ -324,6 +339,18 @@ impl Arcade {
                     };
                     self.persist();
                 }
+            }
+            Action::Sudoku(command) => self.sudoku_command(command),
+            Action::SudokuCell => {}
+            Action::SudokuNew(size, difficulty) => self.request_sudoku(size, difficulty),
+            Action::SudokuPencil => self.sudoku_ui.pencil = !self.sudoku_ui.pencil,
+            Action::SudokuErrors => {
+                self.save.sudoku.highlight_errors = !self.save.sudoku.highlight_errors;
+                self.persist();
+            }
+            Action::SudokuSame => {
+                self.save.sudoku.highlight_same = !self.save.sudoku.highlight_same;
+                self.persist();
             }
             Action::FlagMode => self.flag_mode = !self.flag_mode,
             Action::Board => {}
@@ -409,6 +436,7 @@ impl Arcade {
         self.blackjack_motion.clear();
         self.baccarat_motion.clear();
         self.casino_feedback.clear();
+        self.sudoku_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -544,7 +572,9 @@ fn lifecycle(
     let epoch = platform::lifecycle_epoch();
     let transitioned = focused.read().count() > 0 || epoch != state.lifecycle;
     let foreground = window.focused && platform::visible();
-    let active = foreground && state.screen == Screen::Mines && state.modal.is_none();
+    let active = foreground
+        && matches!(state.screen, Screen::Mines | Screen::Sudoku)
+        && state.modal.is_none();
     let delta = time.delta_secs_f64();
     let millis = account_play_time(
         delta,
@@ -553,7 +583,14 @@ fn lifecycle(
         transitioned,
         &mut state.fractional_ms,
     );
-    state.save.minesweeper.game.advance_elapsed(millis, active);
+    if state.screen == Screen::Mines {
+        state.save.minesweeper.game.advance_elapsed(millis, active);
+    } else if state.screen == Screen::Sudoku {
+        state.save.sudoku.game.advance_time(millis);
+        if active && let Some(age) = &mut state.sudoku_ui.completion_age {
+            *age = (*age + delta.min(0.1) as f32).min(3.0);
+        }
+    }
     if !foreground || transitioned {
         state.lab.cancel_drag();
     }
@@ -620,7 +657,9 @@ fn lifecycle(
         || transitioned
         || close.read().count() > 0
         || (active
-            && state.save.minesweeper.game.status == Status::Playing
+            && ((state.screen == Screen::Mines
+                && state.save.minesweeper.game.status == Status::Playing)
+                || (state.screen == Screen::Sudoku && !state.save.sudoku.game.complete))
             && state.save_age >= 5.0)
     {
         state.persist();
@@ -674,7 +713,15 @@ fn handle_pointer_input(
         .map(|[_, _, density]| window.scale_factor() / density)
         .unwrap_or(1.0);
     let mut layout_valid = layout.size == size;
+    // Browser canvas metrics can change before winit emits a resize event.
+    if !layout_valid {
+        state.lab.cancel_drag();
+    }
     let difficulty = state.save.minesweeper.game.difficulty;
+    let sudoku_mode = (
+        state.save.sudoku.game.size,
+        state.save.sudoku.game.difficulty,
+    );
     for event in events.read() {
         match event {
             WindowEvent::CursorMoved(event) => *pointer = Some(event.position * to_css),
@@ -714,6 +761,11 @@ fn handle_pointer_input(
             // paint to build the new surface before accepting another action.
             if !layout_valid
                 || state.save.minesweeper.game.difficulty != difficulty
+                || sudoku_mode
+                    != (
+                        state.save.sudoku.game.size,
+                        state.save.sudoku.game.difficulty,
+                    )
                 || layout.surface != Some(state.screen)
                 || layout.modal != state.modal.is_some()
             {
@@ -779,6 +831,16 @@ fn pointer_pressed(state: &mut Arcade, layout: &ViewLayout, button: MouseButton)
                     GameCommand::Reveal(i)
                 };
                 state.command(command);
+            }
+        } else if matches!(hit.action, Action::SudokuCell) {
+            if button == MouseButton::Left
+                && let Some(board) = &layout.sudoku
+            {
+                let size = usize::from(state.save.sudoku.game.size);
+                if let Some(i) = state.cursor.and_then(|p| board.index(p, size, size)) {
+                    state.sudoku_ui.selected = i;
+                    state.sudoku_ui.follow = false;
+                }
             }
         } else if button == MouseButton::Left {
             state.act(hit.action);
@@ -935,6 +997,7 @@ fn handle_input(
             }
         }
     }
+    sudoku_app::board_keys(&mut state, &keys, &layout);
     if state.screen == Screen::Mines && board_focused {
         let cols = state.save.minesweeper.game.cols();
         let rows = state.save.minesweeper.game.rows();
@@ -1033,6 +1096,26 @@ fn handle_input(
             };
             state.settings_scroll =
                 (state.settings_scroll - event.y * scale).clamp(0.0, layout.settings_max_scroll);
+        }
+        if state.screen == Screen::Sudoku
+            && state.modal.is_none()
+            && layout
+                .sudoku
+                .as_ref()
+                .is_some_and(|board| state.cursor.is_some_and(|p| board.clip.contains(p)))
+        {
+            let scale = if event.unit == MouseScrollUnit::Line {
+                36.0
+            } else {
+                1.0
+            };
+            state.sudoku_ui.follow = false;
+            if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+                state.sudoku_ui.pan.x -= event.y * scale;
+            } else {
+                state.sudoku_ui.pan -= Vec2::new(event.x, event.y) * scale;
+            }
+            state.sudoku_ui.pan = state.sudoku_ui.pan.clamp(Vec2::ZERO, layout.sudoku_max_pan);
         }
         if state.screen == Screen::Mines
             && layout
@@ -1264,6 +1347,7 @@ mod tests {
             blackjack_motion: Default::default(),
             baccarat_motion: Default::default(),
             casino_feedback: Default::default(),
+            sudoku_ui: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -1557,6 +1641,233 @@ mod tests {
         assert_ne!(state.save.blackjack.phase, blackjack::Phase::Betting);
     }
 
+    fn sudoku_test_state() -> Arcade {
+        let mut state = test_arcade();
+        state.save.sudoku.game = sudoku::Sudoku::new(4, sudoku::Difficulty::Easy, 5);
+        state.open(Screen::Sudoku);
+        state.sudoku_ui.selected = state
+            .save
+            .sudoku
+            .game
+            .board
+            .iter()
+            .position(|v| *v == 0)
+            .unwrap();
+        state
+    }
+
+    #[test]
+    fn canvas_metric_resize_cancels_drag_without_a_window_resize_event() {
+        let (mut app, window) = pointer_app(Screen::Cards);
+        app.world_mut().resource_mut::<Arcade>().lab.pick(0);
+        app.world_mut()
+            .entity_mut(window)
+            .get_mut::<Window>()
+            .unwrap()
+            .resolution
+            .set(900.0, 700.0);
+        app.update();
+        let state = app.world().resource::<Arcade>();
+        assert!(state.lab.drag.is_none());
+        assert_eq!(state.lab.slots, [None; 3]);
+    }
+
+    #[test]
+    fn sudoku_notes_undo_assistance_and_navigation_preserve_only_domain_state() {
+        let mut state = sudoku_test_state();
+        let i = state.sudoku_ui.selected;
+        let original = state.save.sudoku.game.clone();
+        state.act(Action::SudokuPencil);
+        state.act(Action::Sudoku(sudoku::Command::Enter {
+            index: 0,
+            value: 1,
+            pencil: false,
+        }));
+        assert_eq!(state.save.sudoku.game.notes[i], 1);
+        assert_eq!(state.sudoku_ui.history.len(), 1);
+        state.open(Screen::Settings);
+        state.act(Action::Back);
+        assert_eq!(state.sudoku_ui.history.len(), 1);
+        state.act(Action::Sudoku(sudoku::Command::Undo));
+        assert_eq!(state.save.sudoku.game, original);
+        state.act(Action::Sudoku(sudoku::Command::Hint));
+        assert!(state.save.sudoku.game.assisted);
+        state.act(Action::Sudoku(sudoku::Command::Undo));
+        assert!(state.save.sudoku.game.assisted);
+        assert_eq!(state.save.sudoku.game.board, original.board);
+        state.act(Action::Sudoku(sudoku::Command::Hint));
+        let saved = state.save.sudoku.clone();
+        state.open(Screen::Lobby);
+        assert!(state.sudoku_ui.history.is_empty());
+        state.open(Screen::Sudoku);
+        assert_eq!(state.save.sudoku, saved);
+        assert!(state.sudoku_ui.completion_age.is_none());
+        assert_eq!(
+            Save::from_json(&state.save.to_json().unwrap()).unwrap(),
+            state.save
+        );
+    }
+
+    #[test]
+    fn replacing_sudoku_requires_confirmation_and_preserves_other_games() {
+        let mut state = sudoku_test_state();
+        state.act(Action::Sudoku(sudoku::Command::Hint));
+        let before = state.save.clone();
+        state.act(Action::SudokuNew(16, sudoku::Difficulty::Expert));
+        assert!(matches!(state.modal, Some(Pending::NewSudoku(16, _))));
+        state.act(Action::Cancel);
+        assert_eq!(state.save, before);
+        state.act(Action::SudokuNew(16, sudoku::Difficulty::Expert));
+        state.act(Action::Confirm);
+        assert!(state.modal.is_none());
+        assert_eq!(state.save.sudoku.game.size, 16);
+        assert!(!state.save.sudoku.game.assisted);
+        assert_eq!(state.save.sudoku.game.elapsed_ms, 0);
+        assert!(state.sudoku_ui.history.is_empty());
+        assert_eq!(state.save.blackjack, before.blackjack);
+        assert_eq!(state.save.baccarat, before.baccarat);
+        assert_eq!(state.save.minesweeper, before.minesweeper);
+        state.reset_saved_data();
+        assert_eq!(state.save.sudoku.game.size, 9);
+        assert!(!state.save.sudoku.game.assisted);
+    }
+
+    #[test]
+    fn sudoku_keyboard_values_are_scoped_and_hex_letters_remain_values() {
+        let mut state = sudoku_test_state();
+        let mut layout = ViewLayout::default();
+        layout.hits.push(presentation::Hit {
+            rect: Rect::default(),
+            action: Action::SudokuCell,
+        });
+        state.focus = 0;
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::Digit2);
+        sudoku_app::board_keys(&mut state, &keys, &layout);
+        let i = state.sudoku_ui.selected;
+        assert_eq!(state.save.sudoku.game.board[i], 2);
+        layout.hits[0].action = Action::SudokuPencil;
+        keys.reset_all();
+        keys.press(KeyCode::Digit3);
+        sudoku_app::board_keys(&mut state, &keys, &layout);
+        assert_eq!(state.save.sudoku.game.board[i], 2);
+        state.save.sudoku.game = sudoku::Sudoku::new(16, sudoku::Difficulty::Easy, 2);
+        state.sudoku_ui.selected = state
+            .save
+            .sudoku
+            .game
+            .board
+            .iter()
+            .position(|v| *v == 0)
+            .unwrap();
+        layout.hits[0].action = Action::SudokuCell;
+        keys.reset_all();
+        keys.press(KeyCode::KeyA);
+        sudoku_app::board_keys(&mut state, &keys, &layout);
+        assert_eq!(state.save.sudoku.game.board[state.sudoku_ui.selected], 10);
+        keys.reset_all();
+        keys.press(KeyCode::KeyG);
+        sudoku_app::board_keys(&mut state, &keys, &layout);
+        assert_eq!(state.save.sudoku.game.board[state.sudoku_ui.selected], 16);
+        state.sudoku_ui.selected = 0;
+        keys.reset_all();
+        keys.press(KeyCode::ArrowLeft);
+        sudoku_app::board_keys(&mut state, &keys, &layout);
+        assert_eq!(state.sudoku_ui.selected, 0);
+    }
+
+    #[test]
+    fn sudoku_clock_pauses_in_settings_and_does_not_advance_minesweeper() {
+        use std::time::Duration;
+        let mut app = App::new();
+        app.insert_resource(sudoku_test_state())
+            .insert_resource(Time::<Real>::default())
+            .add_message::<WindowFocused>()
+            .add_message::<WindowCloseRequested>()
+            .add_systems(Update, lifecycle);
+        app.world_mut().spawn((
+            Window {
+                focused: true,
+                ..default()
+            },
+            PrimaryWindow,
+        ));
+        let tick = |app: &mut App, ms| {
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .advance_by(Duration::from_millis(ms));
+            app.update();
+        };
+        tick(&mut app, 100);
+        tick(&mut app, 125);
+        assert_eq!(
+            app.world().resource::<Arcade>().save.sudoku.game.elapsed_ms,
+            125
+        );
+        app.world_mut()
+            .resource_mut::<Arcade>()
+            .open(Screen::Settings);
+        tick(&mut app, 200);
+        tick(&mut app, 200);
+        assert_eq!(
+            app.world().resource::<Arcade>().save.sudoku.game.elapsed_ms,
+            125
+        );
+        app.world_mut().resource_mut::<Arcade>().act(Action::Back);
+        tick(&mut app, 200);
+        tick(&mut app, 125);
+        let state = app.world().resource::<Arcade>();
+        assert_eq!(state.save.sudoku.game.elapsed_ms, 250);
+        assert_eq!(state.save.minesweeper.game.elapsed_ms, 0);
+    }
+
+    #[test]
+    fn sudoku_controls_fit_supported_layouts_and_selection_can_pan_into_view() {
+        for (width, height) in [(1280, 720), (390, 844), (1000, 560), (390, 560)] {
+            for size in sudoku::SIZES {
+                let mut app = App::new();
+                let mut state = sudoku_test_state();
+                state.save.sudoku.game = sudoku::Sudoku::new(size, sudoku::Difficulty::Easy, 3);
+                state.sudoku_ui.selected = usize::from(size).pow(2) - 1;
+                state.sudoku_ui.follow = true;
+                app.insert_resource(state)
+                    .insert_resource(Time::<()>::default())
+                    .init_resource::<ViewLayout>()
+                    .init_resource::<rendering::Frame>()
+                    .init_resource::<rendering::RenderOptions>()
+                    .add_systems(Update, presentation::paint);
+                app.world_mut().spawn((
+                    Window {
+                        resolution: WindowResolution::new(width, height),
+                        ..default()
+                    },
+                    PrimaryWindow,
+                ));
+                app.update();
+                let layout = app.world().resource::<ViewLayout>();
+                for hit in &layout.hits {
+                    assert!(
+                        hit.rect.min.x >= 0.0
+                            && hit.rect.min.y >= 0.0
+                            && hit.rect.max.x <= width as f32 + 0.1
+                            && hit.rect.max.y <= height as f32 - 33.0,
+                        "{width}x{height} size{size}: {:?}",
+                        hit.rect
+                    );
+                }
+                let board = layout.sudoku.as_ref().unwrap();
+                assert!(board.cell >= 32.0);
+                let n = usize::from(size);
+                let p = board.origin + Vec2::splat((n as f32 - 0.5) * board.cell);
+                assert!(
+                    board.clip.contains(p),
+                    "selected last cell must be reachable"
+                );
+                assert_eq!(board.index(p, n, n), Some(n * n - 1));
+            }
+        }
+    }
+
     #[test]
     fn baccarat_settles_before_animation_and_settings_preserve_the_round() {
         use baccarat::{BetSide, Command as Bc, Phase};
@@ -1761,6 +2072,7 @@ fn capture_tools(
                 Screen::Settings => "settings",
                 Screen::Blackjack => "blackjack",
                 Screen::Baccarat => "baccarat",
+                Screen::Sudoku => "sudoku",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {
