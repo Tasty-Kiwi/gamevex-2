@@ -291,6 +291,9 @@ test('Blackjack deals one hand, resolves it, and restores the round after reload
 });
 
 test('Baccarat settles, persists, and starts the next round with the same balance', async ({ page }) => {
+  // The software WebGPU runner can take seconds per rendered frame. The
+  // staged deal still has to finish and match the saved round before reload.
+  if (process.env.CI) test.setTimeout(60_000);
   await openReady(page);
   const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
   const baccarat = center(lobby.baccarat);
@@ -321,7 +324,7 @@ test('Baccarat settles, persists, and starts the next round with the same balanc
     const view = JSON.parse(el.dataset.baccaratView);
     return !view.animating && view.playerCards === JSON.parse(el.dataset.session).baccarat.player.length
       && view.bankerCards === JSON.parse(el.dataset.session).baccarat.banker.length;
-  })).toBe(true);
+  }), { timeout: process.env.CI ? 30_000 : 8_000 }).toBe(true);
 
   const settled = await baccaratSave();
   expect(settled.result).toMatch(/^(player|banker|tie)$/);
