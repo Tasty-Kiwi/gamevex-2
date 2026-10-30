@@ -153,31 +153,42 @@ test('Klondike draw, undo, and reload preserve the exact saved gameplay', async 
   await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Lobby');
 });
 
-test('FreeCell hint and coordinate selection execute a move through hit bounds', async ({ page }) => {
-  await openPatience(page, 'FreeCell');
-  const initial = (await save(page)).freecell;
-  expect(initial.variant).toBe('FreeCell');
-  await clickAction(page, 'hint');
-  await expect.poll(async () => view(page)).toMatchObject({ variant: 'FreeCell' });
-  const hintView = await view(page);
-  expect(hintView.selected).not.toBeNull();
+for (const delayedFrames of [false, true]) {
+  test(`FreeCell hint and coordinate selection execute a move through hit bounds${delayedFrames ? ' with delayed frames' : ''}`, async ({ page }) => {
+    await openPatience(page, 'FreeCell');
+    const initial = (await save(page)).freecell;
+    expect(initial.variant).toBe('FreeCell');
+    if (delayedFrames) {
+      // Delay application frames without delaying pointer input or DOM reads.
+      // The hint's variant is already FreeCell before its selection is published.
+      await page.evaluate(() => {
+        const nextFrame = window.requestAnimationFrame.bind(window);
+        window.requestAnimationFrame = (callback) => nextFrame((time) => setTimeout(() => callback(time), 300));
+      });
+    }
+    await clickAction(page, 'hint');
+    await expect.poll(async () => (await view(page)).selected).not.toBeNull();
+    await expect.poll(async () => (await save(page)).freecell.assisted).toBe(true);
+    const hintView = await view(page);
+    expect(hintView.selected).not.toBeNull();
 
-  // Hit keys encode the selected source and target piles. Click both through
-  // their published card bounds so this exercises the same pointer path.
-  const [pile, index] = (await view(page)).selected;
-  expect(pile).toMatch(/^(Tableau|Cell|Waste|Foundation)/);
-  const sourceKey = `pick${pile}_${index}`;
-  await expect.poll(async () => (await actions(page))[sourceKey]).toHaveLength(4);
-  const published = await actions(page);
-  const candidates = Object.keys(published).filter((key) => key.startsWith('target')
-    && Array.isArray(published[key]) && published[key].length === 4);
-  expect(candidates.length).toBeGreaterThan(0);
-  for (const target of candidates) {
-    await clickAction(page, target);
-    if ((await save(page)).freecell.moves > initial.moves) break;
-  }
-  await expect.poll(async () => (await save(page)).freecell.moves).toBeGreaterThan(initial.moves);
-});
+    // Hit keys encode the selected source and target piles. Click both through
+    // their published card bounds so this exercises the same pointer path.
+    const [pile, index] = hintView.selected;
+    expect(pile).toMatch(/^(Tableau|Cell|Waste|Foundation)/);
+    const sourceKey = `pick${pile}_${index}`;
+    await expect.poll(async () => (await actions(page))[sourceKey]).toHaveLength(4);
+    const published = await actions(page);
+    const candidates = Object.keys(published).filter((key) => key.startsWith('target')
+      && Array.isArray(published[key]) && published[key].length === 4);
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const target of candidates) {
+      await clickAction(page, target);
+      if ((await save(page)).freecell.moves > initial.moves) break;
+    }
+    await expect.poll(async () => (await save(page)).freecell.moves).toBeGreaterThan(initial.moves);
+  });
+}
 
 test('switching patience families keeps each game and canceling a new mode protects all cabinets', async ({ page }) => {
   await openPatience(page, 'Solitaire');

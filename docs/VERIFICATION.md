@@ -10,7 +10,7 @@ Verified locally on 29–30 October 2026. Implementation and artifacts live in `
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
 - Shell scripts passed `bash -n`; the custom browser loader passed `node --check`.
-- The current 37-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader verification of the new Mahjong cabinet remains pending; local browser results do not establish physical-phone or other-browser compatibility.
+- The current 38-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader results for the current PR are described in the CI repair section below; local browser results do not establish physical-phone or other-browser compatibility.
 
 Tests cover first-reveal protection over every difficulty and 32 seeds, mine/adjacency counts, flood behavior and pre-existing flags, correct/wrong-flag chording, win/loss and completed-command rejection, zero-seed determinism, save round trips and invalid-state checks, bounded elapsed time, record improvement, repeatable cards, valid/invalid/occupied drops, drag cancellation, native atomic file replacement, board picking with a clipped/panned viewport, modal focus restoration, timer transition/fractional-millisecond accounting, curved-monitor input mapping, old-save defaults for the added settings, and complete saved-data reset.
 
@@ -226,6 +226,12 @@ All 170 Rust tests, formatting, and strict workspace Clippy pass. Application te
 ![FreeCell](screenshots/freecell.png)
 
 ![Spider](screenshots/spider.png)
+
+## PR #3 browser regression repair — 30 October 2026
+
+The push run 41069194414 and PR run 41070624930 each passed 36 browser cases and failed only FreeCell hint selection, including its retry. The test clicked Hint but polled a variant that was already FreeCell before the click. It then read a null selection before the slow software-rendered application frame consumed the pointer input.
+
+The repaired test waits for the actual selection and the saved assistance flag before using the hinted card bounds. A second case deliberately delays application animation callbacks by 300 ms while leaving pointer input and DOM inspection responsive. The old assertion failed all three delayed-frame reproductions locally; the repaired normal and delayed cases passed all six repeated runs. The complete 38-case suite also passes locally with Chromium/Metal and retries disabled. No production behavior, timeout, or retry policy changed. Hosted verification of the pushed repair remains pending.
 
 ## Screenshots
 
