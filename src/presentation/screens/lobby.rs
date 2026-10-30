@@ -36,7 +36,7 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
     let row_gap = if compact_layout { 8.0 } else { 10.0 };
     let roster_y = y + if compact_layout { 50.0 } else { 76.0 };
     let reserved = 48.0;
-    let row_h = ((f.size.y - roster_y - reserved - row_gap * 4.0) / 5.0).clamp(50.0, 96.0);
+    let row_h = ((f.size.y - roster_y - reserved - row_gap * 5.0) / 6.0).clamp(42.0, 96.0);
     let a = rect(m, roster_y, w, row_h);
     cabinet(
         f,
@@ -97,7 +97,18 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
         CYAN,
         Action::Open(Screen::Sudoku),
     );
-    let records_y = roster_y + row_h * 5.0 + row_gap * 4.0 + 23.0;
+    cabinet(
+        f,
+        s,
+        l,
+        rect(m, roster_y + (row_h + row_gap) * 5.0, w, row_h),
+        "MAHJONG",
+        "Match free tiles. Clear the stack.",
+        "PLAY",
+        GREEN,
+        Action::Open(Screen::Mahjong),
+    );
+    let records_y = roster_y + row_h * 6.0 + row_gap * 5.0 + 23.0;
     if records_y + 75.0 < f.size.y - 40.0 {
         f.text(
             Vec2::new(m, records_y),
@@ -191,6 +202,7 @@ fn cabinet(
             "BLACKJACK" => "Five hands. One shoe. Play local.",
             "BACCARAT" => "Player, Banker or Tie. Closest to 9.",
             "SUDOKU" => "Every row, column and box.",
+            "MAHJONG" => "Match free ends. Clear the stack.",
             _ => "Card interaction sandbox.",
         };
         let desc_y = if short_row {
@@ -198,12 +210,14 @@ fn cabinet(
         } else {
             53.0
         };
-        f.text(
-            r.min + Vec2::new(24.0, desc_y),
-            short_desc,
-            if short_row { 10.0 } else { 12.0 },
-            MUTED,
-        );
+        if r.height() >= 50.0 {
+            f.text(
+                r.min + Vec2::new(24.0, desc_y),
+                short_desc,
+                if short_row { 10.0 } else { 12.0 },
+                MUTED,
+            );
+        }
     }
     f.text(
         Vec2::new(r.max.x - if small { 64.0 } else { 112.0 }, r.min.y + 26.0),

@@ -5,12 +5,12 @@ Verified locally on 29–30 October 2026. Implementation and artifacts live in `
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 124 tests passed (70 core, 54 application/platform).
+- `cargo test --workspace --locked`: 151 tests passed (89 core, 62 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
 - Shell scripts passed `bash -n`; the custom browser loader passed `node --check`.
-- The earlier 13-spec browser suite passed locally with the Chromium/Metal override described in the Sudoku section. The current 23-spec suite passed locally after the CI repairs described below, using the macOS/Metal override. Hosted Linux/SwiftShader validation of those repairs remains pending. Hosted CI and its default software-WebGPU setup remain unverified.
+- The current 31-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader verification of the new Mahjong cabinet remains pending; local browser results do not establish physical-phone or other-browser compatibility.
 
 Tests cover first-reveal protection over every difficulty and 32 seeds, mine/adjacency counts, flood behavior and pre-existing flags, correct/wrong-flag chording, win/loss and completed-command rejection, zero-seed determinism, save round trips and invalid-state checks, bounded elapsed time, record improvement, repeatable cards, valid/invalid/occupied drops, drag cancellation, native atomic file replacement, board picking with a clipped/panned viewport, modal focus restoration, timer transition/fractional-millisecond accounting, curved-monitor input mapping, old-save defaults for the added settings, and complete saved-data reset.
 
@@ -68,8 +68,8 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 38,088,327 | 6,215,839 |
-| Generated JavaScript | 108,170 | 17,530 |
+| WASM | 38,204,526 | 6,248,202 |
+| Generated JavaScript | 108,170 | 17,527 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
 
@@ -190,6 +190,28 @@ Reviewed [run 41019736687, job 123944690509](https://github.com/Tasty-Kiwi/gamev
 - CI ran two CPU-rendered WebGPU instances with both video and trace screencasts recording continuously. Artifact snapshots show multi-second gaps between application updates; Card Lab was still settling after twelve seconds, Baccarat was still revealing cards, and queued bet sounds appeared during the audio-drain assertion. CI now uses one worker and omits continuous screen recording while retaining API/DOM/source traces and failure screenshots. The audio test waits for each chosen bet to reach the model before checking voice cleanup. Software-Vulkan flags and all gameplay assertions remain enabled. General waits and retries remain unchanged. The first hosted verification run passed 22 of 23 tests and isolated one remaining failure: Baccarat’s eight-second animation deadline. That test now allows 30 seconds for the staged deal on CI, within a 60-second test budget; the local eight-second animation deadline remains unchanged.
 
 The final 23-test suite passed on its first attempts in 34.4 seconds using Playwright 1.64.1, the installed Chrome for Testing 151 headless shell, macOS Metal, one worker, final trace settings, and retries disabled. All 124 Rust tests, formatting, Clippy, and JavaScript syntax checks passed, and the WASM package rebuilt successfully. Local Linux Docker reproductions on ARM64 and emulated x64 used the pinned Playwright image and checked-in Vulkan flags; both failed before gameplay with a WebGPU `mappedAtCreation` buffer allocation error. Neither setup is counted as a passed browser run. Hosted run [41047632499](https://github.com/Tasty-Kiwi/gamevex-2/actions/runs/41047632499) passed native validation/builds and 22 of 23 Linux browser cases; only Baccarat’s animation deadline failed. The focused Baccarat test passed locally after the CI-specific budget adjustment. A new hosted run validates that final adjustment.
+
+## Mahjong classic port — 30 October 2026
+
+The playable classic cabinet includes Turtle, Arena, and Monument (144 tiles each), layered tile picking, free/blocked styling, flower/season family matches, hints, persisted pair undo, repeat/new deal confirmation, and stuck-board shuffling. Hints can reveal either tile of a pair on a clipped phone board. Best times are separate per layout and exclude hinted or shuffled runs. Completion shows a result panel with a short pulse; reduced motion keeps it static. Version 5 migrates all earlier Rust saves while preserving the other four games and their records/bankrolls. Reset clears Mahjong too. Zen auto-shuffling was added in the follow-up below; shared ticket/shop progression remains outside this phase.
+
+The original TypeScript checkout stayed unchanged. `scripts/generate-mahjong-fixtures.ts [oracle-checkout] [output-json]` regenerates the oracle fixture using Bun and records the original Git revision and engine SHA-256. Parity tests compare all 432 layout coordinates, all 1,764 face combinations, and twelve half-offset/stack blocker cases. Rust generation uses its own deterministic random stream; identical numeric seeds are not claimed to produce the same deal as TypeScript. Full 72-pair solution traces are exercised over all layouts and representative seeds. Separate tests check deal diversity across 33 seeds per layout, fixed-seed face fingerprints, invalid saves, remaining-face parity, history, shuffle inventory, completed clocks, record eligibility, replacement cancellation, reset, keyboard scope, and timer pauses. Layout checks cover 1280×720, 390×844, 1000×560, 390×560, and 360×560; the desktop board fits fully and all tile hit regions stay inside its clip.
+
+All 142 Rust tests, formatting, workspace Clippy, native release packaging, WASM release packaging, and generated-JavaScript syntax checks pass. The five new browser regressions exercise CRT-aware pair removal, assistance/undo, reload preservation, replacement cancellation with adjacent-game isolation, and actual touch layout selection/tile selection/panning at 390×844. The complete 28-test suite passes locally with Chromium/Metal, one worker, and retries disabled. No hosted run or physical-phone check is claimed for this branch.
+
+Actual native macOS interaction exercised keyboard lobby navigation, Hint, mouse selection/removal (144 → 142 tiles), and Undo (142 → 144); the isolated native save retained assistance and an empty restored history. Actual Chrome inspection confirmed the full desktop board and phone clipping/hint reveal. Native QA used a temporary save directory and browser QA used the separate local-storage namespace. The native capture below has been refreshed for the latest tile-artwork and Zen update. Rendering and gameplay have been checked locally; audible sound quality, prolonged play, and a manual full-board solve remain unverified.
+
+![Mahjong classic cabinet](screenshots/mahjong.png)
+
+## Mahjong Zen mode and tile artwork — 30 October 2026
+
+Zen mode is now available beside Timed. It starts an untimed deal, automatically shuffles remaining faces when a legal match leaves no moves, and excludes the run from best times. Switching modes preserves the current board until replacement is confirmed. Restart and new layout keep the chosen mode. Saves without the added mode metadata default to Timed.
+
+Automatic shuffles preserve Undo through bounded face snapshots (four shuffle boundaries, at most 80 pair entries); after repeated shuffles the oldest prefix is dropped together. Undo restores the exact pre-shuffle faces and removed pair after reload. Manual Shuffle keeps its earlier assistance/history-reset semantics. Additional core tests exercise real automatic shuffles, five-shuffle history truncation, malformed snapshots, and invalid changes to previously removed tiles. Application tests cover mode staging/cancel/confirmation, cabinet isolation, restart/layout mode retention, and Zen record exclusion.
+
+Tiles now follow the original web cabinet: square graphite faces, rounded rims, visible side/bottom bevels, neon ring-and-rank dots, bamboo stalks, a hand-drawn character mark, dashed wind frames, colored dragon diamonds, and distinct flower/season symbols. Selection is pink, hints are gold, and blocked tiles are muted. Graphics and hit targets use the same layer projection and board clip. Label occlusion checks the actual text bounds so unrelated overlapping corners do not hide visible ranks. Two regressions cover that case and a true text overlap. Phone tiles remain at least 40 logical pixels; desktop fitting may use 32-pixel faces.
+
+The updated suite has 151 Rust tests and 31 browser cases. Browser additions exercise mouse/touch Zen selection, an untimed clock over a 600 ms observation, reload restoration, and canceled/confirmed mode changes. Actual Chrome checks confirmed Zen at a zero elapsed clock and the revised artwork at desktop and 390×844 phone sizes. Native checks confirmed mode selection and the same artwork. All checks and builds pass locally. The complete 31-case suite passed with Chromium/Metal, one worker, and retries disabled; physical phone, other-browser, and hosted-CI coverage remain separate.
 
 ## Screenshots
 

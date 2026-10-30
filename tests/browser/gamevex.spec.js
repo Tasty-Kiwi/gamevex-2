@@ -20,7 +20,7 @@ async function openReady(page) {
   await expect.poll(async () => page.locator(canvas).evaluate((el) => {
     if (!el.dataset.session) return null;
     const save = JSON.parse(el.dataset.session);
-    return Boolean(save.version === 4 && save.minesweeper && save.blackjack && save.baccarat && save.sudoku);
+    return Boolean(save.version === 5 && save.mahjong && save.minesweeper && save.blackjack && save.baccarat && save.sudoku);
   })).toBe(true);
 }
 
