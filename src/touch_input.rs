@@ -11,6 +11,7 @@ enum Pan {
     Mines,
     Sudoku,
     Mahjong,
+    Patience,
     Settings,
 }
 
@@ -22,6 +23,7 @@ struct Context {
     mines_seed: u64,
     sudoku_seed: u64,
     mahjong_seed: u64,
+    patience_seed: u64,
 }
 
 impl Context {
@@ -33,6 +35,7 @@ impl Context {
             mines_seed: s.save.minesweeper.game.seed,
             sudoku_seed: s.save.sudoku.game.seed,
             mahjong_seed: s.save.mahjong.seed,
+            patience_seed: s.patience_game().seed,
         }
     }
 }
@@ -128,6 +131,8 @@ impl TouchPointer {
                     Some(Pan::Sudoku)
                 } else if l.mahjong_clip.is_some_and(|r| r.contains(surface)) {
                     Some(Pan::Mahjong)
+                } else if l.patience_clip.is_some_and(|r| r.contains(surface)) {
+                    Some(Pan::Patience)
                 } else if l.settings_clip.is_some_and(|r| r.contains(surface)) {
                     Some(Pan::Settings)
                 } else {
@@ -171,6 +176,10 @@ impl TouchPointer {
                             Some(Pan::Mahjong) => {
                                 s.mahjong_ui.pan =
                                     (s.mahjong_ui.pan - delta).clamp(Vec2::ZERO, l.mahjong_max_pan);
+                            }
+                            Some(Pan::Patience) => {
+                                s.patience_ui.pan = (s.patience_ui.pan - delta)
+                                    .clamp(Vec2::ZERO, l.patience_max_pan);
                             }
                             Some(Pan::Settings) => {
                                 s.settings_scroll =

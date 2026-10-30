@@ -5,12 +5,12 @@ Verified locally on 29–30 October 2026. Implementation and artifacts live in `
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 151 tests passed (89 core, 62 application/platform).
+- `cargo test --workspace --locked`: 170 tests passed (106 core, 64 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
 - Shell scripts passed `bash -n`; the custom browser loader passed `node --check`.
-- The current 31-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader verification of the new Mahjong cabinet remains pending; local browser results do not establish physical-phone or other-browser compatibility.
+- The current 37-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader verification of the new Mahjong cabinet remains pending; local browser results do not establish physical-phone or other-browser compatibility.
 
 Tests cover first-reveal protection over every difficulty and 32 seeds, mine/adjacency counts, flood behavior and pre-existing flags, correct/wrong-flag chording, win/loss and completed-command rejection, zero-seed determinism, save round trips and invalid-state checks, bounded elapsed time, record improvement, repeatable cards, valid/invalid/occupied drops, drag cancellation, native atomic file replacement, board picking with a clipped/panned viewport, modal focus restoration, timer transition/fractional-millisecond accounting, curved-monitor input mapping, old-save defaults for the added settings, and complete saved-data reset.
 
@@ -68,7 +68,7 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 38,204,526 | 6,248,202 |
+| WASM | 38,320,468 | 6,280,561 |
 | Generated JavaScript | 108,170 | 17,527 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
@@ -212,6 +212,20 @@ Automatic shuffles preserve Undo through bounded face snapshots (four shuffle bo
 Tiles now follow the original web cabinet: square graphite faces, rounded rims, visible side/bottom bevels, neon ring-and-rank dots, bamboo stalks, a hand-drawn character mark, dashed wind frames, colored dragon diamonds, and distinct flower/season symbols. Selection is pink, hints are gold, and blocked tiles are muted. Graphics and hit targets use the same layer projection and board clip. Label occlusion checks the actual text bounds so unrelated overlapping corners do not hide visible ranks. Two regressions cover that case and a true text overlap. Phone tiles remain at least 40 logical pixels; desktop fitting may use 32-pixel faces.
 
 The updated suite has 151 Rust tests and 31 browser cases. Browser additions exercise mouse/touch Zen selection, an untimed clock over a 600 ms observation, reload restoration, and canceled/confirmed mode changes. Actual Chrome checks confirmed Zen at a zero elapsed clock and the revised artwork at desktop and 390×844 phone sizes. Native checks confirmed mode selection and the same artwork. All checks and builds pass locally. The complete 31-case suite passed with Chromium/Metal, one worker, and retries disabled; physical phone, other-browser, and hosted-CI coverage remain separate.
+
+## Solitaire family first pass — 30 October 2026
+
+Klondike Draw 1/3, standard FreeCell, and Spider 1/2/4 suits share a table view with independent saved deals, bounded undo, hints, first-action foreground timers, per-mode unassisted best times, mode/redeal confirmation, and mouse drag or touch selection. Tables pan in both axes and preserve readable 48-pixel minimum card widths. Exposed cards display rank and suit without leaking covered central artwork through the separate text layer. Empty piles identify stock, waste, free cells, and Ace foundations. Save version 6 migrates existing Rust-demo games without replacing them.
+
+TypeScript oracle fixtures cover stock/waste recycling, foundation return, FreeCell supermove capacity and empty-target exclusion, Spider mixed-suit placement versus suited-run movement, stock-deal ordering, empty-column rejection, and automatic completed-run extraction. The parity check found and corrected reversed Spider stock-row order. Every mode also has a complete save/load round-trip regression; validation accepts both Klondike draw modes and all three Spider suit counts. Each saved history snapshot is validated. A save containing sixteen history snapshots in each of the three new games measured 178,146 bytes, below the 256 KiB limit. Assistance remains set after Undo.
+
+All 170 Rust tests, formatting, and strict workspace Clippy pass. Application tests cover replacement cancellation, game isolation, settings return/reset, responsive hit bounds, and FreeCell foundations. The browser suite now has 37 cases, adding stock/undo/reload, FreeCell hints, family/mode isolation, phone bounds/pan, mouse dragging, and actual touch card movement. All 37 browser cases pass locally on Chromium/Metal with one worker and retries disabled (55.2 seconds). Native release packaging and WASM packaging pass. Actual native checks rendered all three tables, dealt Klondike stock, moved FreeCell’s exposed 8 of Clubs to a free cell (persisted moves=1), and dealt Spider’s stock row (stock=40, moves=1). Chrome checks rendered all families, exercised stock input, restored Spider 2 suits after reload, and inspected a 390×740 viewport. QA used isolated native and browser saves. No hosted CI or physical-phone pass is claimed for this branch. Relaxed FreeCell, automatic finish, richer card transitions, physical-device testing, and shared ticket/shop progression remain follow-up work.
+
+![Solitaire](screenshots/solitaire.png)
+
+![FreeCell](screenshots/freecell.png)
+
+![Spider](screenshots/spider.png)
 
 ## Screenshots
 

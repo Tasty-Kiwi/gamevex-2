@@ -3,6 +3,7 @@ mod browser_audio;
 mod casino_audio;
 mod casino_feedback;
 mod mahjong_app;
+mod patience_app;
 mod platform;
 mod presentation;
 mod rendering;
@@ -51,6 +52,7 @@ pub(crate) struct Arcade {
     pub casino_feedback: casino_feedback::CasinoFeedback,
     pub sudoku_ui: sudoku_app::SudokuUi,
     pub mahjong_ui: mahjong_app::MahjongUi,
+    pub patience_ui: patience_app::PatienceUi,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -72,6 +74,7 @@ pub(crate) enum Pending {
     NewSudoku(u8, sudoku::Difficulty),
     SudokuSetup,
     NewMahjong(mahjong::Layout, u64, bool),
+    NewPatience(patience::Variant, u64),
 }
 
 impl Arcade {
@@ -121,6 +124,7 @@ impl Arcade {
             casino_feedback: Default::default(),
             sudoku_ui: Default::default(),
             mahjong_ui: Default::default(),
+            patience_ui: Default::default(),
             message,
             persistence,
             protected_save,
@@ -191,6 +195,9 @@ impl Arcade {
         }
         if screen == Screen::Mahjong && self.screen != Screen::Settings {
             self.mahjong_ui = Default::default();
+        }
+        if patience_app::is_family(screen) && self.screen != Screen::Settings {
+            self.patience_ui = Default::default();
         }
         self.screen = screen;
         if !matches!(screen, Screen::Blackjack | Screen::Settings) {
@@ -312,6 +319,7 @@ impl Arcade {
                 Some(Pending::New(difficulty, repeat)) => self.new_game(difficulty, repeat),
                 Some(Pending::NewSudoku(size, difficulty)) => self.new_sudoku(size, difficulty),
                 Some(Pending::NewMahjong(layout, seed, zen)) => self.new_mahjong(layout, seed, zen),
+                Some(Pending::NewPatience(v, seed)) => self.new_patience(v, seed),
                 Some(Pending::SudokuSetup) => self.restore_modal_focus(),
                 Some(Pending::Recover) => {
                     self.reset_saved_data();
@@ -372,6 +380,34 @@ impl Arcade {
                         _ => self.focus,
                     };
                     self.persist();
+                }
+            }
+            Action::PatiencePick(p, i) => self.patience_pick(p, i),
+            Action::PatienceTarget(p) => self.patience_target(p),
+            Action::PatienceNew(v, repeat) => self.request_patience(v, repeat),
+            Action::PatienceDeal => {
+                if self.patience_game_mut().deal() {
+                    self.patience_changed("Dealt cards.");
+                } else {
+                    self.patience_ui.message =
+                        "No deal available. Spider needs every column filled.".into();
+                }
+            }
+            Action::PatienceUndo => {
+                if self.patience_game_mut().undo() {
+                    self.patience_changed("Move restored.");
+                }
+            }
+            Action::PatienceHint => {
+                if let Some((p, i, to)) = self.patience_game_mut().hint() {
+                    self.patience_ui.selected = Some((p, i));
+                    self.patience_ui.message = format!(
+                        "Hint: move to {}. Assisted run.",
+                        patience_app::pile_name(to)
+                    );
+                    self.persist();
+                } else {
+                    self.patience_ui.message = "No move found. Try the stock or undo.".into();
                 }
             }
             Action::MahjongTile(i) => self.mahjong_tile(i),
@@ -517,6 +553,7 @@ impl Arcade {
         self.casino_feedback.clear();
         self.sudoku_ui = Default::default();
         self.mahjong_ui = Default::default();
+        self.patience_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -655,7 +692,12 @@ fn lifecycle(
     let active = foreground
         && matches!(
             state.screen,
-            Screen::Mines | Screen::Sudoku | Screen::Mahjong
+            Screen::Mines
+                | Screen::Sudoku
+                | Screen::Mahjong
+                | Screen::Solitaire
+                | Screen::FreeCell
+                | Screen::Spider
         )
         && state.modal.is_none();
     let delta = time.delta_secs_f64();
@@ -666,6 +708,9 @@ fn lifecycle(
         transitioned,
         &mut state.fractional_ms,
     );
+    if patience_app::is_family(state.screen) && state.patience_game().has_progress() {
+        state.patience_game_mut().advance_time(millis);
+    }
     if state.screen == Screen::Mahjong {
         state.save.mahjong.advance_time(millis);
         if active && let Some(age) = &mut state.mahjong_ui.completion_age {
@@ -748,7 +793,8 @@ fn lifecycle(
             && ((state.screen == Screen::Mines
                 && state.save.minesweeper.game.status == Status::Playing)
                 || (state.screen == Screen::Sudoku && !state.save.sudoku.game.complete)
-                || (state.screen == Screen::Mahjong && !state.save.mahjong.won()))
+                || (state.screen == Screen::Mahjong && !state.save.mahjong.won())
+                || (patience_app::is_family(state.screen) && !state.patience_game().won()))
             && state.save_age >= 5.0)
     {
         state.persist();
@@ -884,7 +930,35 @@ fn handle_pointer_input(
                 continue;
             }
             match event.state {
-                ButtonState::Pressed => pointer_pressed(&mut state, &layout, event.button),
+                ButtonState::Pressed => {
+                    pointer_pressed(&mut state, &layout, event.button);
+                    if patience_app::is_family(state.screen)
+                        && state.modal.is_none()
+                        && event.button == MouseButton::Left
+                    {
+                        state.patience_ui.drag_start = state.cursor;
+                    }
+                }
+                ButtonState::Released
+                    if event.button == MouseButton::Left
+                        && patience_app::is_family(state.screen) =>
+                {
+                    if let (Some(start), Some(end)) =
+                        (state.patience_ui.drag_start.take(), state.cursor)
+                        && start.distance(end) > 8.0
+                        && let Some(pile) = layout
+                            .hits
+                            .iter()
+                            .rev()
+                            .find(|h| h.rect.contains(end))
+                            .and_then(|h| match h.action {
+                                Action::PatiencePick(p, _) | Action::PatienceTarget(p) => Some(p),
+                                _ => None,
+                            })
+                    {
+                        state.patience_target(pile);
+                    }
+                }
                 ButtonState::Released
                     if event.button == MouseButton::Left && state.lab.drag.is_some() =>
                 {
@@ -1104,6 +1178,7 @@ fn handle_input(
     }
     sudoku_app::board_keys(&mut state, &keys, &layout);
     mahjong_app::keys(&mut state, &keys, &layout);
+    patience_app::keys(&mut state, &keys, &layout);
     if state.screen == Screen::Mines && board_focused {
         let cols = state.save.minesweeper.game.cols();
         let rows = state.save.minesweeper.game.rows();
@@ -1194,6 +1269,20 @@ fn handle_input(
     }
     for event in wheel.read() {
         state.keyboard = false;
+        if patience_app::is_family(state.screen)
+            && state.modal.is_none()
+            && layout
+                .patience_clip
+                .is_some_and(|r| state.cursor.is_some_and(|p| r.contains(p)))
+        {
+            let scale = if event.unit == MouseScrollUnit::Line {
+                36.0
+            } else {
+                1.0
+            };
+            state.patience_ui.pan = (state.patience_ui.pan - Vec2::new(event.x, event.y) * scale)
+                .clamp(Vec2::ZERO, layout.patience_max_pan);
+        }
         if state.screen == Screen::Mahjong
             && state.modal.is_none()
             && layout
@@ -1469,6 +1558,7 @@ mod tests {
             casino_feedback: Default::default(),
             sudoku_ui: Default::default(),
             mahjong_ui: Default::default(),
+            patience_ui: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -2822,6 +2912,81 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn patience_family_isolation_cancel_restart_and_reset() {
+        let mut state = test_arcade();
+        state.open(Screen::Solitaire);
+        state.act(Action::PatienceDeal);
+        let before = state.save.clone();
+        state.act(Action::PatienceNew(patience::Variant::Klondike3, false));
+        assert!(matches!(state.modal, Some(Pending::NewPatience(..))));
+        state.act(Action::Cancel);
+        assert_eq!(state.save, before);
+        state.open(Screen::FreeCell);
+        let hint = state.patience_game_mut().hint().unwrap();
+        state.patience_pick(hint.0, hint.1);
+        state.patience_target(hint.2);
+        assert!(state.save.freecell.moves > 0);
+        assert_eq!(state.save.solitaire, before.solitaire);
+        assert_eq!(state.save.spider, before.spider);
+        let moves = state.save.freecell.moves;
+        state.open(Screen::Settings);
+        state.act(Action::Back);
+        assert_eq!(state.save.freecell.moves, moves);
+        state.reset_saved_data();
+        assert_eq!(state.save.freecell.moves, 0);
+        assert!(state.patience_ui.selected.is_none());
+        assert!(state.save.validate().is_ok());
+    }
+    #[test]
+    fn patience_tables_fit_and_all_foundations_are_reachable() {
+        for (width, height) in [(1280, 720), (390, 844), (360, 560)] {
+            for variant in patience::Variant::ALL {
+                let mut state = test_arcade();
+                state.screen = match variant {
+                    patience::Variant::FreeCell => Screen::FreeCell,
+                    patience::Variant::Spider1
+                    | patience::Variant::Spider2
+                    | patience::Variant::Spider4 => Screen::Spider,
+                    _ => Screen::Solitaire,
+                };
+                *state.patience_game_mut() = patience::Game::new(variant, 42);
+                let mut app = App::new();
+                app.insert_resource(state)
+                    .insert_resource(Time::<()>::default())
+                    .init_resource::<ViewLayout>()
+                    .init_resource::<rendering::Frame>()
+                    .init_resource::<rendering::RenderOptions>()
+                    .add_systems(Update, presentation::paint);
+                app.world_mut().spawn((
+                    Window {
+                        resolution: WindowResolution::new(width, height),
+                        ..default()
+                    },
+                    PrimaryWindow,
+                ));
+                app.update();
+                let l = app.world().resource::<ViewLayout>();
+                assert!(l.patience_clip.is_some());
+                for hit in &l.hits {
+                    assert!(
+                        hit.rect.min.x >= 0.0
+                            && hit.rect.min.y >= 0.0
+                            && hit.rect.max.x <= width as f32 + 0.1
+                            && hit.rect.max.y <= height as f32 - 33.0,
+                        "{variant:?} {width}x{height} {:?}",
+                        hit.rect
+                    );
+                }
+                if width >= 1280 && variant == patience::Variant::FreeCell {
+                    for i in 0..4 {
+                        assert!(l.hits.iter().any(|h|matches!(h.action,Action::PatienceTarget(patience::Pile::Foundation(j)) if i==j)));
+                    }
+                }
+            }
+        }
+    }
 }
 
 // Developer keys capture the actual rendered surface and frame timings.
@@ -2853,6 +3018,9 @@ fn capture_tools(
                 Screen::Baccarat => "baccarat",
                 Screen::Sudoku => "sudoku",
                 Screen::Mahjong => "mahjong",
+                Screen::Solitaire => "solitaire",
+                Screen::FreeCell => "freecell",
+                Screen::Spider => "spider",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

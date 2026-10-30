@@ -26,6 +26,9 @@ pub enum Screen {
     Baccarat,
     Sudoku,
     Mahjong,
+    Solitaire,
+    FreeCell,
+    Spider,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -71,6 +74,12 @@ pub enum Action {
     MahjongRestart,
     MahjongNew(gamevex_core::mahjong::Layout),
     MahjongZen(bool),
+    PatiencePick(gamevex_core::patience::Pile, usize),
+    PatienceTarget(gamevex_core::patience::Pile),
+    PatienceDeal,
+    PatienceUndo,
+    PatienceHint,
+    PatienceNew(gamevex_core::patience::Variant, bool),
 }
 pub struct Hit {
     pub rect: Rect,
@@ -112,6 +121,8 @@ pub struct ViewLayout {
     pub sudoku_max_pan: Vec2,
     pub mahjong_clip: Option<Rect>,
     pub mahjong_max_pan: Vec2,
+    pub patience_clip: Option<Rect>,
+    pub patience_max_pan: Vec2,
 }
 
 pub fn paint(
@@ -141,6 +152,8 @@ pub fn paint(
     layout.sudoku = None;
     layout.sudoku_max_pan = Vec2::ZERO;
     layout.mahjong_clip = None;
+    layout.patience_clip = None;
+    layout.patience_max_pan = Vec2::ZERO;
     layout.mahjong_max_pan = Vec2::ZERO;
     layout.card_order.clear();
     layout.settings_max_scroll = 0.0;
@@ -203,6 +216,9 @@ pub fn paint(
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Baccarat => baccarat::baccarat(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Sudoku => sudoku::sudoku(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Solitaire | Screen::FreeCell | Screen::Spider => {
+            patience::patience(&mut frame, &mut state, &mut layout, margin, w)
+        }
         Screen::Mahjong => mahjong::mahjong(&mut frame, &mut state, &mut layout, margin, w),
     }
     publish_diagnostics(&state, &layout, size);
@@ -244,6 +260,7 @@ mod blackjack;
 pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
 mod mahjong;
+mod patience;
 mod screens;
 mod sudoku;
 
@@ -270,6 +287,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             Some(Pending::SudokuSetup) => Some("sudoku-setup"),
             Some(Pending::NewSudoku(..)) => Some("sudoku-replace"),
             Some(Pending::NewMahjong(..)) => Some("mahjong-replace"),
+            Some(Pending::NewPatience(..))=>Some("patience-replace"),
             Some(_) => Some("dialog"), None => None,
         },
         "selectedCard": state.lab.selected,
@@ -322,6 +340,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "baccarat": action_bounds(Screen::Baccarat),
             "sudoku": action_bounds(Screen::Sudoku),
             "mahjong": action_bounds(Screen::Mahjong),
+            "solitaire":action_bounds(Screen::Solitaire),
         });
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
@@ -387,6 +406,51 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             })
             .to_string(),
         );
+    }
+    if crate::patience_app::is_family(state.screen) {
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::PatiencePick(p, i) => format!("pick{p:?}_{i}"),
+                Action::PatienceTarget(p) => format!("target{p:?}"),
+                Action::PatienceDeal => "deal".into(),
+                Action::PatienceUndo => "undo".into(),
+                Action::PatienceHint => "hint".into(),
+                Action::PatienceNew(_, true) => "restart".into(),
+                Action::PatienceNew(v, false) if v == state.patience_game().variant => "new".into(),
+                Action::PatienceNew(v, false) => format!("mode{v:?}"),
+                Action::Open(screen) => format!("family{screen:?}"),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
+                _ => continue,
+            };
+            if let Action::PatienceNew(v, false) = hit.action {
+                bounds.insert(
+                    format!("mode{v:?}"),
+                    serde_json::json!([
+                        hit.rect.min.x,
+                        hit.rect.min.y,
+                        hit.rect.width(),
+                        hit.rect.height()
+                    ]),
+                );
+            }
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        let g = state.patience_game();
+        platform::diagnostics_attribute("data-patience-view",&serde_json::json!({"variant":g.variant,"selected":state.patience_ui.selected.map(|(p,i)|(format!("{p:?}"),i)),"pan":[state.patience_ui.pan.x,state.patience_ui.pan.y],"won":g.won(),"clip":layout.patience_clip.map(|r|[r.min.x,r.min.y,r.width(),r.height()]),"maxPan":[layout.patience_max_pan.x,layout.patience_max_pan.y]}).to_string());
     }
     if state.screen == Screen::Mahjong {
         let mut bounds = serde_json::Map::new();
