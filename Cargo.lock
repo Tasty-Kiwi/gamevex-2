@@ -2075,6 +2075,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "gamevex-core",
+ "rodio",
  "serde_json",
  "wasm-bindgen",
  "web-sys",

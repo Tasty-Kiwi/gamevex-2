@@ -1,0 +1,18 @@
+{
+  "frequency": 440,
+  "reference": "rodio 0.20.1 mono PCM16 interpolation",
+  "rates": {
+    "22050": {
+      "length": 1800,
+      "hash": 3406252208
+    },
+    "44100": {
+      "length": 3599,
+      "hash": 2088453801
+    },
+    "48000": {
+      "length": 3918,
+      "hash": 2890494466
+    }
+  }
+}

@@ -207,7 +207,7 @@ async function clickPair(page, pair = null) {
   return target;
 }
 
-test('Mahjong pair match and undo feedback plays once, expires, and does not replay after reload', async ({ page }) => {
+test('Mahjong pair match and undo feedback plays once and does not replay after reload', async ({ page }) => {
   await openMahjong(page);
   const before = await save(page);
   const initialAudio = (await audioStatus(page)).played;
@@ -229,8 +229,6 @@ test('Mahjong pair match and undo feedback plays once, expires, and does not rep
   expect(after.mahjong.tiles.every((tile) => !tile.removed)).toBe(true);
   await expect.poll(async () => (await tableFeedback(page)).events.some((e) => e.kind === 'Undo')).toBe(true);
   await expect.poll(async () => (await audioStatus(page)).played).toBeGreaterThan(initialAudio + 1);
-  await expect.poll(async () => (await tableFeedback(page)).events, { timeout: 5_000 }).toHaveLength(0);
-  await expect.poll(async () => (await audioStatus(page)).voices, { timeout: 5_000 }).toBe(0);
 
   await page.reload();
   await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
@@ -241,6 +239,25 @@ test('Mahjong pair match and undo feedback plays once, expires, and does not rep
   expect((await tableFeedback(page)).events).toHaveLength(0);
   await page.waitForTimeout(500);
   expect((await audioStatus(page)).played).toBe(afterReload + 1);
+});
+
+test('Mahjong Undo feedback expires across slow application frames', async ({ page }) => {
+  await openMahjong(page);
+  await clickPair(page);
+  await expect.poll(async () => (await audioStatus(page)).last).toBe('TileMatch');
+  const initialAudio = (await audioStatus(page)).played;
+  await page.evaluate(() => {
+    const nextFrame = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (callback) => nextFrame((time) => setTimeout(() => callback(time), 1_200));
+  });
+  await clickAction(page, 'undo');
+  // Undo can render and expire before a poll under sparse frames. Its saved
+  // history and cue are stable acknowledgements; the next assertion tests expiry.
+  await expect.poll(async () => (await save(page)).mahjong.history).toHaveLength(0);
+  await expect.poll(async () => (await audioStatus(page)).last).toBe('TableUndo');
+  await expect.poll(async () => (await audioStatus(page)).played).toBeGreaterThan(initialAudio);
+  await expect.poll(async () => (await tableFeedback(page)).events, { timeout: 5_000 }).toHaveLength(0);
+  await expect.poll(async () => (await audioStatus(page)).voices).toBe(0);
 });
 
 test('Mahjong hint marks assistance, a legal pair can be undone, and the board is restored', async ({ page }) => {

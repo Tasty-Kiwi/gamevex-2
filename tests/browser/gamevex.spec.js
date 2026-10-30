@@ -395,6 +395,37 @@ test('Baccarat settles, persists, and starts the next round with the same balanc
   expect(nextRound.banker).toEqual([]);
 });
 
+for (const rate of [44_100, 48_000]) {
+  test(`button beep matches native PCM at ${rate} Hz`, async ({ page }) => {
+    const { readFile } = await import('node:fs/promises');
+    const reference = JSON.parse(await readFile(new URL('../fixtures/native-button-beep.json', import.meta.url), 'utf8')).rates[rate];
+    await page.addInitScript((rate) => {
+      const Context = window.AudioContext;
+      window.AudioContext = class extends Context {
+        constructor() { super({ sampleRate: rate }); }
+      };
+      window.__qaAudioBuffers = [];
+      const copy = AudioBuffer.prototype.copyToChannel;
+      AudioBuffer.prototype.copyToChannel = function (samples, channel, offset = 0) {
+        copy.call(this, samples, channel, offset);
+        let hash = 2166136261;
+        for (const byte of new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength)) {
+          hash = Math.imul(hash ^ byte, 16777619) >>> 0;
+        }
+        // Bevy also keeps a silent stereo output stream alive. Capture the
+        // app's mono cue buffers, not that backend's 2048-frame stream blocks.
+        if (this.numberOfChannels === 1) window.__qaAudioBuffers.push({ rate: this.sampleRate, length: this.length, hash });
+      };
+    }, rate);
+    await enterCards(page);
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+    await expect.poll(async () => page.evaluate(() => window.__qaAudioBuffers.length)).toBeGreaterThan(0);
+    const buffers = await page.evaluate(() => window.__qaAudioBuffers);
+    for (const buffer of buffers) expect(buffer).toEqual({ rate, ...reference });
+  });
+}
+
 test('casino audio starts on a gesture, caches cues, and releases finished voices', async ({ page }) => {
   await openReady(page);
   const c = page.locator(canvas);

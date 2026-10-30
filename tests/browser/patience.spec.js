@@ -54,7 +54,9 @@ async function dragTouch(page, from, to) {
     }
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   } finally {
-    await cdp.detach();
+    // A test timeout can close the page while a slow renderer is still
+    // acknowledging the last CDP event. Preserve that original failure.
+    await cdp.detach().catch(() => {});
   }
 }
 
@@ -254,28 +256,33 @@ for (const delayedFrames of [false, true]) {
   });
 }
 
-test('lobby opens each patience game and canceling a new mode protects all cabinets', async ({ page }) => {
+for (const family of ['FreeCell', 'Spider']) {
+  test(`lobby opens ${family} and preserves the Solitaire cabinet`, async ({ page }) => {
+    await openPatience(page, 'Solitaire');
+    await clickAction(page, 'deal');
+    await expect.poll(async () => (await save(page)).solitaire.moves).toBe(1);
+    const solitaire = gameplay((await save(page)).solitaire);
+    await clickAction(page, 'lobby');
+    await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Lobby');
+    await clickLobbyAction(page, family.toLowerCase());
+    await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe(family);
+    if (family === 'Spider') {
+      await clickAction(page, 'deal');
+      await expect.poll(async () => (await save(page)).spider.moves).toBe(1);
+    }
+    expect(gameplay((await save(page)).solitaire)).toEqual(solitaire);
+    await clickAction(page, 'lobby');
+    await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Lobby');
+    await clickLobbyAction(page, 'solitaire');
+    await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Solitaire');
+    await expect.poll(async () => (await save(page)).solitaire.moves).toBe(1);
+  });
+}
+
+test('canceling and confirming a new Solitaire mode protects other cabinets', async ({ page }) => {
   await openPatience(page, 'Solitaire');
   await clickAction(page, 'deal');
   await expect.poll(async () => (await save(page)).solitaire.moves).toBe(1);
-  const afterDeal = await save(page);
-  await clickAction(page, 'lobby');
-  await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Lobby');
-  await clickLobbyAction(page, 'freecell');
-  await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('FreeCell');
-  const freecell = (await save(page)).freecell;
-  await clickAction(page, 'lobby');
-  await clickLobbyAction(page, 'spider');
-  await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Spider');
-  await clickAction(page, 'deal');
-  await expect.poll(async () => (await save(page)).spider.moves).toBe(1);
-  const spider = (await save(page)).spider;
-  await clickAction(page, 'lobby');
-  await clickLobbyAction(page, 'solitaire');
-  await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Solitaire');
-  await expect.poll(async () => (await save(page)).solitaire.moves).toBe(afterDeal.solitaire.moves);
-  expect(gameplay((await save(page)).solitaire)).toEqual(gameplay(afterDeal.solitaire));
-
   const before = await save(page);
   await clickAction(page, 'modeKlondike3');
   await expect.poll(async () => interaction(page).then((i) => i.modal)).toBe('patience-replace');
@@ -289,8 +296,6 @@ test('lobby opens each patience game and canceling a new mode protects all cabin
   await expect.poll(async () => (await save(page)).solitaire.variant).toBe('Klondike3');
   expect((await save(page)).freecell).toEqual(before.freecell);
   expect((await save(page)).spider).toEqual(before.spider);
-  expect(spider.variant).toBe('Spider1');
-  expect(freecell.variant).toBe('FreeCell');
 });
 
 test('patience controls fit on a phone and Spider supports horizontal swipe pan', async ({ page }) => {
@@ -345,24 +350,51 @@ test('FreeCell mouse press stays pending, then dragging moves an exposed card',a
  expect((await save(page)).freecell.cells[0]).toEqual(g.tableau[0][i]);
 });
 
-test('FreeCell touch drag moves a card and an invalid drop leaves the save unchanged',async({page})=>{
+test('FreeCell touch drag moves a card',async({page})=>{
  await openPatience(page,'FreeCell');const g=(await save(page)).freecell;const i=g.tableau[0].length-1;
  const b=await actions(page);const a=center(b[`pickTableau(0)_${i}`]),z=center(b['targetCell(0)']);
  await dragTouch(page,a,z);
  await expect.poll(async()=> (await save(page)).freecell.moves).toBe(1);
  expect((await save(page)).freecell.cells[0]).toEqual(g.tableau[0][i]);
- await clickAction(page,'restart');
- await expect.poll(async()=> (await interaction(page)).modal).toBe('patience-replace');
- await clickAction(page,'confirm');
- await expect.poll(async()=> (await save(page)).freecell.moves).toBe(0);
- const restarted=(await save(page)).freecell;
- const bounds=await actions(page);const source=center(bounds[`pickTableau(0)_${restarted.tableau[0].length-1}`]);
- await dragTouch(page,source,{x:12,y:12});
- await expect.poll(async()=> (await view(page)).dragActive).toBe(false);
- expect(gameplay((await save(page)).freecell)).toEqual(gameplay(restarted));
 });
 
-test('FreeCell move and undo feedback plays once, expires, and does not replay after reload',async({page})=>{
+test('FreeCell restart confirms before restoring the same saved deal', async ({ page }) => {
+  await openPatience(page, 'FreeCell');
+  const initial = (await save(page)).freecell;
+  const index = initial.tableau[0].length - 1;
+  await clickAction(page, `pickTableau(0)_${index}`);
+  await expect.poll(async () => (await view(page)).selected).toEqual(['Tableau(0)', index]);
+  await clickAction(page, 'targetCell(0)');
+  await expect.poll(async () => (await save(page)).freecell.moves).toBe(1);
+  await clickAction(page, 'restart');
+  await expect.poll(async () => (await interaction(page)).modal).toBe('patience-replace');
+  expect((await save(page)).freecell.moves).toBe(1);
+  await clickAction(page, 'confirm');
+  await expect.poll(async () => gameplay((await save(page)).freecell)).toEqual(gameplay(initial));
+});
+
+test('an invalid FreeCell touch drop leaves the save unchanged',async({page})=>{
+ await openPatience(page,'FreeCell');
+ const before=(await save(page)).freecell;
+ const index=before.tableau[0].length-1;
+ const bounds=await actions(page);
+ const source=center(bounds[`pickTableau(0)_${index}`]);
+ await dragTouch(page,source,{x:12,y:12});
+ await expect.poll(async()=> (await view(page)).dragActive).toBe(false);
+ expect(gameplay((await save(page)).freecell)).toEqual(gameplay(before));
+});
+
+test('a canceled FreeCell touch drag leaves the save unchanged',async({page})=>{
+ await openPatience(page,'FreeCell');
+ const before=(await save(page)).freecell;
+ const index=before.tableau[0].length-1;
+ const bounds=await actions(page);
+ const source=center(bounds[`pickTableau(0)_${index}`]);
+ await cancelActiveTouchDrag(page,source);
+ expect(gameplay((await save(page)).freecell)).toEqual(gameplay(before));
+});
+
+test('FreeCell move and undo feedback plays once and does not replay after reload',async({page})=>{
  await openPatience(page,'FreeCell');
  const initialAudio=(await audioStatus(page)).played;
  const game=(await save(page)).freecell;
@@ -381,9 +413,6 @@ test('FreeCell move and undo feedback plays once, expires, and does not replay a
  await expect.poll(async()=> (await save(page)).freecell.moves).toBe(0);
  await expect.poll(async()=> (await tableFeedback(page)).events.some(e=>e.kind==='Undo')).toBe(true);
  await expect.poll(async()=> (await audioStatus(page)).played).toBeGreaterThan(initialAudio+1);
- await expect.poll(async()=> (await tableFeedback(page)).events,{timeout:5_000}).toHaveLength(0);
- await expect.poll(async()=> (await audioStatus(page)).voices,{timeout:5_000}).toBe(0);
-
  await page.reload();
  await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('Lobby');
  const afterReload=(await audioStatus(page)).played;
@@ -393,6 +422,31 @@ test('FreeCell move and undo feedback plays once, expires, and does not replay a
  expect((await tableFeedback(page)).events).toHaveLength(0);
  await page.waitForTimeout(500);
  expect((await audioStatus(page)).played).toBe(afterReload+1);
+});
+
+test('FreeCell Undo feedback expires across slow application frames',async({page})=>{
+ await openPatience(page,'FreeCell');
+ const initialAudio=(await audioStatus(page)).played;
+ const game=(await save(page)).freecell;
+ const index=game.tableau[0].length-1;
+ const bounds=await actions(page);
+ const from=center(bounds[`pickTableau(0)_${index}`]);
+ const to=center(bounds['targetCell(0)']);
+ const start=await screenPoint(page,from.x,from.y),end=await screenPoint(page,to.x,to.y);
+ await page.mouse.move(start.x,start.y);await page.mouse.down();
+ await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
+ await expect.poll(async()=> (await save(page)).freecell.moves).toBe(1);
+ await expect.poll(async()=> (await tableFeedback(page)).events.some(e=>e.kind==='Move')).toBe(true);
+ await page.evaluate(() => {
+  const nextFrame=window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame=(callback)=>nextFrame((time)=>setTimeout(()=>callback(time),1_200));
+ });
+ await clickAction(page,'undo');
+ await expect.poll(async()=> (await save(page)).freecell.moves).toBe(0);
+ await expect.poll(async()=> (await audioStatus(page)).last).toBe('TableUndo');
+ await expect.poll(async()=> (await audioStatus(page)).played).toBeGreaterThan(initialAudio+1);
+ await expect.poll(async()=> (await tableFeedback(page)).events,{timeout:5_000}).toHaveLength(0);
+ await expect.poll(async()=> (await audioStatus(page)).voices).toBe(0);
 });
 
 test.describe('Phone card selection',()=>{

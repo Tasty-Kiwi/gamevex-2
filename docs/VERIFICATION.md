@@ -5,12 +5,12 @@ Verified locally on 29–30 October 2026. Implementation and artifacts live in `
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 180 tests passed (106 core, 74 application/platform).
+- `cargo test --workspace --locked`: 182 tests passed (106 core, 76 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
 - Shell scripts passed `bash -n`; the custom browser loader passed `node --check`.
-- The current 43-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader results for the current PR are described in the CI repair section below; local browser results do not establish physical-phone or other-browser compatibility.
+- The current 52-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader failures are described in the CI repair sections below; local browser results do not establish physical-phone or other-browser compatibility.
 
 Tests cover first-reveal protection over every difficulty and 32 seeds, mine/adjacency counts, flood behavior and pre-existing flags, correct/wrong-flag chording, win/loss and completed-command rejection, zero-seed determinism, save round trips and invalid-state checks, bounded elapsed time, record improvement, repeatable cards, valid/invalid/occupied drops, drag cancellation, native atomic file replacement, board picking with a clipped/panned viewport, modal focus restoration, timer transition/fractional-millisecond accounting, curved-monitor input mapping, old-save defaults for the added settings, and complete saved-data reset.
 
@@ -254,6 +254,14 @@ Eleven new deterministic PCM cues distinguish card picks/moves/deals, woody tile
 ![Mahjong match effects](screenshots/mahjong-effects.png)
 
 [Table sound preview](audio/table-preview.wav)
+
+## Main CI repair and audio parity — 30 October 2026
+
+[Run 41110546224](https://github.com/Tasty-Kiwi/gamevex-2/actions/runs/41110546224) passed macOS validation and deployment, but its browser job failed four cases. Both table feedback cases saw Undo age at only 0.3 seconds after a 5-second expiration wait: `TableFeedback::tick` discarded elapsed time above 0.1 seconds per frame. The software renderer therefore stretched short effects over many seconds. Feedback now ages using the actual finite, nonnegative delta and expires after a stalled frame. Separate focused 1,200 ms-frame regressions for Mahjong and FreeCell both failed against the previous WASM and pass against the repair. The other failures were the 45-second budgets for compound cabinet navigation and two consecutive touch drags with restart/confirmation between them; these scenarios are split into independently initialized tests with the same interaction/save assertions. Test timeouts and retry policy are unchanged. CDP teardown preserves the original error when a timed-out test has already closed its page.
+
+Native playback previously linearly interpolated PCM16 through rodio, while browser playback handed 22,050 Hz cue buffers to Web Audio's resampler. Web playback now interpolates in the same integer sample domain and creates buffers at the AudioContext sample rate. The existing cue bytes, gain, volume/mute, voice limit, and cache limit remain. Host tests compare every sample against Bevy AudioSource decoding and rodio 0.20.1 UniformSourceIterator for all 27 cues plus 160/440/650/1040 Hz tones at 22,050, 44,100, and 48,000 Hz. Browser tests intercept the actual mono AudioBuffers for a button click and compare lengths and full sample fingerprints with the native reference at 44,100 and 48,000 Hz; both pass. The fixture is tests/fixtures/native-button-beep.json and was generated from crate::tone(440) through the native decoder/interpolator. The silent stereo stream maintained by Bevy is excluded from that test capture. This establishes software-buffer parity, not a hardware loopback comparison.
+
+All 182 Rust tests, strict Clippy, formatting, and the WASM release build pass locally. The complete 52-case browser suite passes with Chromium/Metal, one worker, and retries disabled (1.2 minutes). The two slow-frame expiry tests also pass all six repetitions. Restart confirmation remains covered in its own short test. Hosted verification of these local changes still requires a new push/run.
 
 ## Screenshots
 

@@ -86,13 +86,9 @@ impl TableFeedback {
         }
     }
     pub fn tick(&mut self, dt: f32) {
-        let dt = if dt.is_finite() {
-            dt.clamp(0.0, 0.1)
-        } else {
-            0.0
-        };
+        let dt = if dt.is_finite() { dt.max(0.0) } else { 0.0 };
         for event in &mut self.events {
-            event.age += dt;
+            event.age = (event.age + dt).min(event.duration());
         }
         self.events.retain(|e| e.age < e.duration());
     }
@@ -120,6 +116,23 @@ mod tests {
         }
         assert!(f.events.is_empty());
     }
+    #[test]
+    fn expiry_uses_elapsed_seconds_even_when_frames_are_slow() {
+        let mut f = TableFeedback::default();
+        f.emit(EffectKind::Undo, &[]);
+        f.tick(0.6);
+        assert!((f.events[0].age - 0.6).abs() < 0.001);
+        f.tick(0.6);
+        assert!(f.events.is_empty());
+        f.emit(EffectKind::Win, &[]);
+        f.tick(5.0);
+        assert!(f.events.is_empty());
+        f.emit(EffectKind::Move, &[]);
+        f.tick(-1.0);
+        f.tick(f32::NAN);
+        assert_eq!(f.events[0].age, 0.0);
+    }
+
     #[test]
     fn different_table_actions_have_distinct_audio_and_clear_drops_pending_events() {
         let mut f = TableFeedback::default();

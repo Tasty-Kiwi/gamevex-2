@@ -17,9 +17,10 @@ pub use wasm::{install, play, status, update};
 
 const SAMPLE_RATE: u32 = 22_050;
 const MAX_WAV_BYTES: usize = 2 * 1024 * 1024;
+const MAX_CONTEXT_SAMPLE_RATE: u32 = 384_000;
 
-/// Returns validated mono PCM16 samples from the cue WAV format.
-fn pcm16_mono_samples(wav: &[u8]) -> Option<Vec<f32>> {
+/// Returns validated PCM16 samples before conversion to Web Audio's float format.
+fn pcm16_mono_values(wav: &[u8]) -> Option<Vec<i16>> {
     if wav.len() < 12 || wav.len() > MAX_WAV_BYTES || &wav[..4] != b"RIFF" || &wav[8..12] != b"WAVE"
     {
         return None;
@@ -71,14 +72,72 @@ fn pcm16_mono_samples(wav: &[u8]) -> Option<Vec<f32>> {
         pcm.as_chunks::<2>()
             .0
             .iter()
-            .map(|sample| i16::from_le_bytes([sample[0], sample[1]]) as f32 / 32768.0)
+            .map(|sample| i16::from_le_bytes([sample[0], sample[1]]))
             .collect(),
     )
 }
 
+/// Resamples like rodio 0.20's `UniformSourceIterator` for mono PCM16 input.
+/// Rodio interpolates in the integer sample domain, truncating each lerp toward zero.
+fn resample_pcm16(samples: &[i16], source_rate: u32, target_rate: u32) -> Option<Vec<i16>> {
+    if samples.is_empty()
+        || source_rate == 0
+        || target_rate == 0
+        || target_rate > MAX_CONTEXT_SAMPLE_RATE
+    {
+        return None;
+    }
+    if source_rate == target_rate {
+        return Some(samples.to_vec());
+    }
+
+    let divisor = gcd(source_rate, target_rate);
+    let from = source_rate / divisor;
+    let to = target_rate / divisor;
+    // Generated cues and legacy tones are far shorter than this; keep this
+    // conversion bounded for malformed or unexpectedly large WAV data.
+    if samples.len() > 32_768 {
+        return None;
+    }
+    let capacity = samples
+        .len()
+        .checked_mul(to as usize)?
+        .checked_add(from as usize - 1)?
+        / from as usize;
+    let mut output = Vec::with_capacity(capacity);
+    let mut output_frame = 0u64;
+    loop {
+        let source_position = output_frame.checked_mul(from as u64)?;
+        let left_index = (source_position / to as u64) as usize;
+        if left_index >= samples.len() {
+            break;
+        }
+        let left = samples[left_index];
+        let Some(&right) = samples.get(left_index + 1) else {
+            // rodio drains the final current frame unchanged when the next
+            // interpolation frame is unavailable.
+            output.push(left);
+            break;
+        };
+        let numerator = (source_position % to as u64) as i32;
+        let denominator = to as i32;
+        let value = left as i32 + (right as i32 - left as i32) * numerator / denominator;
+        output.push(value as i16);
+        output_frame += 1;
+    }
+    Some(output)
+}
+
+fn gcd(mut a: u32, mut b: u32) -> u32 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm {
-    use super::{Status, pcm16_mono_samples};
+    use super::{Status, pcm16_mono_values, resample_pcm16};
     use std::{cell::RefCell, collections::HashMap};
     use wasm_bindgen::{JsCast, closure::Closure};
     use web_sys::{
@@ -227,13 +286,26 @@ mod wasm {
                 dispose(&mut evicted);
             }
 
+            let target_rate = context.sample_rate().round() as u32;
+            if target_rate == 0 || target_rate > super::MAX_CONTEXT_SAMPLE_RATE {
+                return false;
+            }
             let buffer = if let Some(buffer) = audio.buffers.get(&key) {
                 buffer.clone()
             } else {
-                let Some(samples) = pcm16_mono_samples(wav) else {
+                let Some(samples) = pcm16_mono_values(wav) else {
                     return false;
                 };
-                let Ok(buffer) = context.create_buffer(1, samples.len() as u32, 22_050.0) else {
+                let Some(samples) = resample_pcm16(&samples, super::SAMPLE_RATE, target_rate)
+                else {
+                    return false;
+                };
+                let samples: Vec<f32> = samples
+                    .into_iter()
+                    .map(|sample| sample as f32 / 32768.0)
+                    .collect();
+                let Ok(buffer) = context.create_buffer(1, samples.len() as u32, target_rate as f32)
+                else {
                     return false;
                 };
                 if buffer.copy_to_channel(&samples, 0).is_err() {
@@ -347,9 +419,11 @@ mod wasm {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::pcm16_mono_samples;
+    use super::{pcm16_mono_values, resample_pcm16};
+    use bevy::audio::{AudioSource, Decodable};
+    use rodio::source::UniformSourceIterator;
 
     fn wav(samples: &[i16]) -> Vec<u8> {
         let data_len = (samples.len() * 2) as u32;
@@ -375,13 +449,42 @@ mod tests {
     #[test]
     fn parses_expected_pcm_samples_and_rejects_malformed_wavs() {
         assert_eq!(
-            pcm16_mono_samples(&wav(&[0, i16::MAX, i16::MIN])),
-            Some(vec![0.0, 32767.0 / 32768.0, -1.0])
+            pcm16_mono_values(&wav(&[0, i16::MAX, i16::MIN])),
+            Some(vec![0, i16::MAX, i16::MIN])
         );
-        assert_eq!(pcm16_mono_samples(b"RIFF"), None);
-        assert_eq!(pcm16_mono_samples(&wav(&[])), None);
+        assert_eq!(pcm16_mono_values(b"RIFF"), None);
+        assert_eq!(pcm16_mono_values(&wav(&[])), None);
         let mut wrong_rate = wav(&[1]);
         wrong_rate[24..28].copy_from_slice(&44_100u32.to_le_bytes());
-        assert_eq!(pcm16_mono_samples(&wrong_rate), None);
+        assert_eq!(pcm16_mono_values(&wrong_rate), None);
+    }
+
+    #[test]
+    fn resampling_matches_rodio_for_every_generated_cue_and_legacy_tone() {
+        let mut waves: Vec<(&str, Vec<u8>)> = crate::casino_audio::ALL
+            .into_iter()
+            .map(|cue| ("cue", crate::casino_audio::synthesize(cue)))
+            .collect();
+        waves.extend(
+            [160.0, 440.0, 650.0, 1040.0].map(|frequency| ("tone", crate::tone(frequency))),
+        );
+
+        for (label, wav) in waves {
+            let samples = pcm16_mono_values(&wav).expect("generated PCM WAV is valid");
+            for target_rate in [22_050, 44_100, 48_000] {
+                let actual: Vec<f32> = resample_pcm16(&samples, 22_050, target_rate)
+                    .expect("supported sample rate")
+                    .into_iter()
+                    .map(|sample| sample as f32 / 32768.0)
+                    .collect();
+                let source = AudioSource {
+                    bytes: wav.clone().into(),
+                };
+                let decoder = source.decoder();
+                let expected: Vec<f32> =
+                    UniformSourceIterator::<_, f32>::new(decoder, 1, target_rate).collect();
+                assert_eq!(actual, expected, "{label} at {target_rate} Hz");
+            }
+        }
     }
 }
