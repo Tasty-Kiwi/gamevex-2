@@ -2,7 +2,7 @@
 
 A local-first Rust arcade prototype. The workspace lives here; the existing GameVex web application remains separate.
 
-Play at **https://tasty-kiwi.github.io/gamevex-2/** in a desktop browser with WebGPU support. Successful CI runs on `main` build the game, run the browser regressions, and publish `web/` to GitHub Pages. The CI workflow can also be run manually from GitHub Actions.
+Play at **https://tasty-kiwi.github.io/gamevex-2/** in a desktop browser with WebGPU support. On `main`, successful Rust checks and release builds publish `web/` to GitHub Pages. Browser regressions run in a separate CI job. The CI workflow can also be run manually from GitHub Actions.
 
 ## Architecture
 
