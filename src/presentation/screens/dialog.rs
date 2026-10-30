@@ -41,6 +41,8 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             "Your current Blackjack bets will be forfeited.\nUnspent credits will be kept."
         } else if recover {
             "Saved settings, records, and progress\nwill be replaced with a fresh session."
+        } else if matches!(s.modal, Some(Pending::NewMahjong(..))) {
+            "Your Mahjong progress will be replaced.\nCancel to keep the current board."
         } else if sudoku {
             "Your Sudoku entries and notes will be replaced.\nCancel to keep playing this puzzle."
         } else {

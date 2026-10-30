@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 4;
+pub const SAVE_VERSION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -143,6 +143,8 @@ pub struct Save {
     pub blackjack: crate::blackjack::Blackjack,
     pub baccarat: crate::baccarat::Baccarat,
     pub sudoku: crate::sudoku::Session,
+    pub mahjong: crate::mahjong::Game,
+    pub mahjong_records: [Option<u64>; 3],
 }
 
 #[derive(Deserialize)]
@@ -167,6 +169,15 @@ struct LegacyV3 {
     baccarat: crate::baccarat::Baccarat,
 }
 
+#[derive(Deserialize)]
+struct LegacyV4 {
+    settings: Settings,
+    minesweeper: MinesweeperSave,
+    blackjack: crate::blackjack::Blackjack,
+    baccarat: crate::baccarat::Baccarat,
+    sudoku: crate::sudoku::Session,
+}
+
 impl Default for Save {
     fn default() -> Self {
         Self::new(0x4756_585f_5255_5354)
@@ -185,6 +196,11 @@ impl Save {
             blackjack: crate::blackjack::Blackjack::new(seed ^ 0x424c_4143_4b4a_4143),
             baccarat: crate::baccarat::Baccarat::new(seed ^ 0x4241_4343_4152_4154),
             sudoku: crate::sudoku::Session::new(seed ^ 0x5355_444f_4b55),
+            mahjong_records: [None; 3],
+            mahjong: crate::mahjong::Game::new(
+                crate::mahjong::Layout::Turtle,
+                seed ^ 0x004d_4148_4a4f_4e47,
+            ),
         }
     }
 
@@ -198,6 +214,15 @@ impl Save {
         self.blackjack.validate()?;
         self.baccarat.validate()?;
         self.sudoku.validate()?;
+        self.mahjong.validate()?;
+        if self
+            .mahjong_records
+            .iter()
+            .flatten()
+            .any(|t| *t == 0 || *t > MAX_ELAPSED_MS)
+        {
+            return Err("invalid Mahjong record".into());
+        }
         Ok(())
     }
 
@@ -242,7 +267,18 @@ impl Save {
                 migrated.baccarat = old.baccarat;
                 migrated
             }
-            4 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            4 => {
+                let old: LegacyV4 = serde_json::from_value(value)
+                    .map_err(|e| format!("invalid version-4 save: {e}"))?;
+                let mut migrated = Self::new(old.minesweeper.game.seed);
+                migrated.settings = old.settings;
+                migrated.minesweeper = old.minesweeper;
+                migrated.blackjack = old.blackjack;
+                migrated.baccarat = old.baccarat;
+                migrated.sudoku = old.sudoku;
+                migrated
+            }
+            5 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -408,6 +444,52 @@ mod tests {
         let mut corrupt = serde_json::to_value(migrated).unwrap();
         corrupt["sudoku"]["game"]["notes"][empty] = 1_000_000.into();
         assert!(Save::from_json(&corrupt.to_string()).is_err());
+    }
+
+    #[test]
+    fn version_four_migration_preserves_all_existing_state_and_round_trips() {
+        let mut old = Save::new(0x1234_5678);
+        old.minesweeper.game.command(crate::Command::Reveal(40));
+        old.minesweeper.records.beginner = Some(4321);
+        old.blackjack.command(crate::blackjack::Command::Deal);
+        old.baccarat.command(crate::baccarat::Command::Select(
+            crate::baccarat::BetSide::Player,
+        ));
+        old.baccarat.command(crate::baccarat::Command::Deal);
+        let mut history = crate::sudoku::History::default();
+        old.sudoku
+            .command(crate::sudoku::Command::Hint, &mut history);
+        old.sudoku.game.advance_time(987);
+        old.settings.color_scheme = ColorScheme::Amber;
+        old.settings.volume = 0.23;
+
+        let value = serde_json::json!({"version":4,"settings":old.settings,
+            "minesweeper":old.minesweeper,"blackjack":old.blackjack,
+            "baccarat":old.baccarat,"sudoku":old.sudoku});
+        let migrated = Save::from_json(&value.to_string()).unwrap();
+        assert_eq!(migrated.version, SAVE_VERSION);
+        assert_eq!(migrated.settings, old.settings);
+        assert_eq!(migrated.minesweeper, old.minesweeper);
+        assert_eq!(migrated.blackjack, old.blackjack);
+        assert_eq!(migrated.baccarat, old.baccarat);
+        assert_eq!(migrated.sudoku, old.sudoku);
+        assert_eq!(
+            migrated.mahjong,
+            Save::new(old.minesweeper.game.seed).mahjong
+        );
+        assert_eq!(
+            Save::from_json(&migrated.to_json().unwrap()).unwrap(),
+            migrated
+        );
+    }
+
+    #[test]
+    fn current_schema_requires_mahjong_and_new_save_uses_turtle_default() {
+        let save = Save::default();
+        assert_eq!(save.mahjong, Save::new(0x4756_585f_5255_5354).mahjong);
+        let mut value = serde_json::to_value(&save).unwrap();
+        value.as_object_mut().unwrap().remove("mahjong");
+        assert!(Save::from_json(&value.to_string()).is_err());
     }
 
     #[test]

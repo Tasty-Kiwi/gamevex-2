@@ -25,6 +25,7 @@ pub enum Screen {
     Blackjack,
     Baccarat,
     Sudoku,
+    Mahjong,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -63,6 +64,13 @@ pub enum Action {
     SudokuChooseDifficulty(gamevex_core::sudoku::Difficulty),
     SudokuStart,
     SudokuHighlights,
+    MahjongTile(usize),
+    MahjongHint,
+    MahjongUndo,
+    MahjongShuffle,
+    MahjongRestart,
+    MahjongNew(gamevex_core::mahjong::Layout),
+    MahjongZen(bool),
 }
 pub struct Hit {
     pub rect: Rect,
@@ -102,6 +110,8 @@ pub struct ViewLayout {
     pub settings_clip: Option<Rect>,
     pub sudoku: Option<BoardLayout>,
     pub sudoku_max_pan: Vec2,
+    pub mahjong_clip: Option<Rect>,
+    pub mahjong_max_pan: Vec2,
 }
 
 pub fn paint(
@@ -130,6 +140,8 @@ pub fn paint(
     layout.board = None;
     layout.sudoku = None;
     layout.sudoku_max_pan = Vec2::ZERO;
+    layout.mahjong_clip = None;
+    layout.mahjong_max_pan = Vec2::ZERO;
     layout.card_order.clear();
     layout.settings_max_scroll = 0.0;
     layout.settings_clip = None;
@@ -191,6 +203,7 @@ pub fn paint(
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Baccarat => baccarat::baccarat(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Sudoku => sudoku::sudoku(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Mahjong => mahjong::mahjong(&mut frame, &mut state, &mut layout, margin, w),
     }
     publish_diagnostics(&state, &layout, size);
     if state.screen == Screen::Cards {
@@ -230,6 +243,7 @@ pub(crate) mod baccarat_motion;
 mod blackjack;
 pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
+mod mahjong;
 mod screens;
 mod sudoku;
 
@@ -255,6 +269,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         "modal": match state.modal {
             Some(Pending::SudokuSetup) => Some("sudoku-setup"),
             Some(Pending::NewSudoku(..)) => Some("sudoku-replace"),
+            Some(Pending::NewMahjong(..)) => Some("mahjong-replace"),
             Some(_) => Some("dialog"), None => None,
         },
         "selectedCard": state.lab.selected,
@@ -306,6 +321,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "blackjack": action_bounds(Screen::Blackjack),
             "baccarat": action_bounds(Screen::Baccarat),
             "sudoku": action_bounds(Screen::Sudoku),
+            "mahjong": action_bounds(Screen::Mahjong),
         });
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
@@ -371,6 +387,38 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             })
             .to_string(),
         );
+    }
+    if state.screen == Screen::Mahjong {
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::MahjongTile(i) => format!("tile{i}"),
+                Action::MahjongHint => "hint".into(),
+                Action::MahjongZen(true) => "zen".into(),
+                Action::MahjongZen(false) => "classic".into(),
+                Action::MahjongUndo => "undo".into(),
+                Action::MahjongShuffle => "shuffle".into(),
+                Action::MahjongRestart => "restart".into(),
+                Action::MahjongNew(layout) => format!("new{}", layout.label().to_ascii_lowercase()),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        platform::diagnostics_attribute("data-mahjong-view", &serde_json::json!({"selected":state.mahjong_ui.selected,"hint":state.mahjong_ui.hint,"pan":[state.mahjong_ui.pan.x,state.mahjong_ui.pan.y],"remaining":state.save.mahjong.remaining(),"zen":state.save.mahjong.zen,"shuffles":state.save.mahjong.shuffles,"won":state.save.mahjong.won(),"stuck":state.save.mahjong.stuck(),"clip":layout.mahjong_clip.map(|r|[r.min.x,r.min.y,r.width(),r.height()]),"maxPan":[layout.mahjong_max_pan.x,layout.mahjong_max_pan.y]}).to_string());
     }
     if state.screen == Screen::Sudoku {
         let mut bounds = serde_json::Map::new();

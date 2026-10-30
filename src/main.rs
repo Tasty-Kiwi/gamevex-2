@@ -2,6 +2,7 @@
 mod browser_audio;
 mod casino_audio;
 mod casino_feedback;
+mod mahjong_app;
 mod platform;
 mod presentation;
 mod rendering;
@@ -49,6 +50,7 @@ pub(crate) struct Arcade {
     pub baccarat_motion: presentation::baccarat_motion::BaccaratMotion,
     pub casino_feedback: casino_feedback::CasinoFeedback,
     pub sudoku_ui: sudoku_app::SudokuUi,
+    pub mahjong_ui: mahjong_app::MahjongUi,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -69,6 +71,7 @@ pub(crate) enum Pending {
     LeaveBlackjack(Screen),
     NewSudoku(u8, sudoku::Difficulty),
     SudokuSetup,
+    NewMahjong(mahjong::Layout, u64, bool),
 }
 
 impl Arcade {
@@ -117,6 +120,7 @@ impl Arcade {
             baccarat_motion: Default::default(),
             casino_feedback: Default::default(),
             sudoku_ui: Default::default(),
+            mahjong_ui: Default::default(),
             message,
             persistence,
             protected_save,
@@ -184,6 +188,9 @@ impl Arcade {
             self.sudoku_ui.follow = true;
             self.sudoku_ui.message.clear();
             self.sudoku_ui.completion_age = None;
+        }
+        if screen == Screen::Mahjong && self.screen != Screen::Settings {
+            self.mahjong_ui = Default::default();
         }
         self.screen = screen;
         if !matches!(screen, Screen::Blackjack | Screen::Settings) {
@@ -304,6 +311,7 @@ impl Arcade {
             Action::Confirm => match self.modal.take() {
                 Some(Pending::New(difficulty, repeat)) => self.new_game(difficulty, repeat),
                 Some(Pending::NewSudoku(size, difficulty)) => self.new_sudoku(size, difficulty),
+                Some(Pending::NewMahjong(layout, seed, zen)) => self.new_mahjong(layout, seed, zen),
                 Some(Pending::SudokuSetup) => self.restore_modal_focus(),
                 Some(Pending::Recover) => {
                     self.reset_saved_data();
@@ -366,6 +374,30 @@ impl Arcade {
                     self.persist();
                 }
             }
+            Action::MahjongTile(i) => self.mahjong_tile(i),
+            Action::MahjongHint => self.mahjong_hint(),
+            Action::MahjongUndo => {
+                if self.save.mahjong.undo() {
+                    self.mahjong_ui.completion_age = None;
+                    self.mahjong_ui.message = "Pair restored.".into();
+                    self.mahjong_ui.selected = None;
+                    self.mahjong_ui.hint = None;
+                    self.persist();
+                }
+            }
+            Action::MahjongShuffle => {
+                if self.save.mahjong.stuck() && self.save.mahjong.shuffle(fresh_seed()) {
+                    self.mahjong_ui.selected = None;
+                    self.mahjong_ui.hint = None;
+                    self.mahjong_ui.message = "Faces shuffled. Finish not guaranteed.".into();
+                    self.persist();
+                }
+            }
+            Action::MahjongRestart => {
+                self.request_mahjong(self.save.mahjong.layout, self.save.mahjong.seed)
+            }
+            Action::MahjongNew(layout) => self.request_mahjong(layout, fresh_seed()),
+            Action::MahjongZen(zen) => self.request_mahjong_mode(zen),
             Action::Sudoku(command) => self.sudoku_command(command),
             Action::SudokuCell => {}
             Action::SudokuSetup => self.open_sudoku_setup(),
@@ -484,6 +516,7 @@ impl Arcade {
         self.baccarat_motion.clear();
         self.casino_feedback.clear();
         self.sudoku_ui = Default::default();
+        self.mahjong_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -620,7 +653,10 @@ fn lifecycle(
     let transitioned = focused.read().count() > 0 || epoch != state.lifecycle;
     let foreground = window.focused && platform::visible();
     let active = foreground
-        && matches!(state.screen, Screen::Mines | Screen::Sudoku)
+        && matches!(
+            state.screen,
+            Screen::Mines | Screen::Sudoku | Screen::Mahjong
+        )
         && state.modal.is_none();
     let delta = time.delta_secs_f64();
     let millis = account_play_time(
@@ -630,7 +666,12 @@ fn lifecycle(
         transitioned,
         &mut state.fractional_ms,
     );
-    if state.screen == Screen::Mines {
+    if state.screen == Screen::Mahjong {
+        state.save.mahjong.advance_time(millis);
+        if active && let Some(age) = &mut state.mahjong_ui.completion_age {
+            *age = (*age + delta.min(0.1) as f32).min(2.0);
+        }
+    } else if state.screen == Screen::Mines {
         state.save.minesweeper.game.advance_elapsed(millis, active);
     } else if state.screen == Screen::Sudoku {
         state.save.sudoku.game.advance_time(millis);
@@ -706,7 +747,8 @@ fn lifecycle(
         || (active
             && ((state.screen == Screen::Mines
                 && state.save.minesweeper.game.status == Status::Playing)
-                || (state.screen == Screen::Sudoku && !state.save.sudoku.game.complete))
+                || (state.screen == Screen::Sudoku && !state.save.sudoku.game.complete)
+                || (state.screen == Screen::Mahjong && !state.save.mahjong.won()))
             && state.save_age >= 5.0)
     {
         state.persist();
@@ -1061,6 +1103,7 @@ fn handle_input(
         }
     }
     sudoku_app::board_keys(&mut state, &keys, &layout);
+    mahjong_app::keys(&mut state, &keys, &layout);
     if state.screen == Screen::Mines && board_focused {
         let cols = state.save.minesweeper.game.cols();
         let rows = state.save.minesweeper.game.rows();
@@ -1151,6 +1194,20 @@ fn handle_input(
     }
     for event in wheel.read() {
         state.keyboard = false;
+        if state.screen == Screen::Mahjong
+            && state.modal.is_none()
+            && layout
+                .mahjong_clip
+                .is_some_and(|r| state.cursor.is_some_and(|p| r.contains(p)))
+        {
+            let scale = if event.unit == MouseScrollUnit::Line {
+                36.0
+            } else {
+                1.0
+            };
+            state.mahjong_ui.pan = (state.mahjong_ui.pan - Vec2::new(event.x, event.y) * scale)
+                .clamp(Vec2::ZERO, layout.mahjong_max_pan);
+        }
         if state.screen == Screen::Settings {
             let scale = if event.unit == MouseScrollUnit::Line {
                 36.0
@@ -1411,6 +1468,7 @@ mod tests {
             baccarat_motion: Default::default(),
             casino_feedback: Default::default(),
             sudoku_ui: Default::default(),
+            mahjong_ui: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -2534,6 +2592,236 @@ mod tests {
         );
         assert!((fractional - 0.2).abs() < 1e-9);
     }
+
+    #[test]
+    fn mahjong_replacement_cancel_restart_and_reset_preserve_other_cabinets() {
+        let mut state = test_arcade();
+        state.open(Screen::Mahjong);
+        let initial = state.save.mahjong.clone();
+        let [a, b] = initial.available_pairs()[0];
+        state.mahjong_tile(a);
+        state.mahjong_tile(b);
+        assert_eq!(state.save.mahjong.remaining(), 142);
+        let before = state.save.clone();
+        state.request_mahjong(mahjong::Layout::Arena, 88);
+        assert!(matches!(state.modal, Some(Pending::NewMahjong(..))));
+        state.act(Action::Cancel);
+        assert_eq!(state.save, before);
+        state.act(Action::MahjongRestart);
+        state.act(Action::Confirm);
+        assert_eq!(state.save.mahjong, initial);
+        assert_eq!(state.save.sudoku, before.sudoku);
+        assert_eq!(state.save.blackjack, before.blackjack);
+        assert_eq!(state.save.baccarat, before.baccarat);
+        assert_eq!(state.save.minesweeper, before.minesweeper);
+        state.save.mahjong_records[0] = Some(1000);
+        state.mahjong_hint();
+        state.reset_saved_data();
+        assert_eq!(state.save.mahjong.remaining(), 144);
+        assert!(!state.save.mahjong.assisted);
+        assert_eq!(state.save.mahjong_records, [None; 3]);
+        assert!(state.mahjong_ui.hint.is_none());
+    }
+
+    #[test]
+    fn mahjong_completion_records_only_unassisted_runs_and_undo_keeps_assistance() {
+        for (assisted, zen) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut state = test_arcade();
+            state.open(Screen::Mahjong);
+            let game = &mut state.save.mahjong;
+            game.zen = zen;
+            game.elapsed_ms = if zen { 0 } else { 12_345 };
+            let solution = mahjong::solution_pairs(game.layout, game.seed);
+            if assisted {
+                state.mahjong_hint();
+            }
+            for [a, b] in solution {
+                state.mahjong_tile(a);
+                state.mahjong_tile(b);
+            }
+            assert!(state.save.mahjong.won());
+            assert_eq!(
+                state.save.mahjong_records[0],
+                (!assisted && !zen).then_some(12_345)
+            );
+            state.act(Action::MahjongUndo);
+            assert_eq!(state.save.mahjong.remaining(), 2);
+            assert_eq!(state.save.mahjong.assisted, assisted);
+            assert!(state.save.validate().is_ok());
+        }
+    }
+
+    #[test]
+    fn mahjong_modes_stage_replacement_preserve_other_games_and_survive_restart() {
+        let mut state = test_arcade();
+        state.open(Screen::Mahjong);
+        state.act(Action::MahjongZen(true));
+        assert!(state.modal.is_none());
+        assert!(state.save.mahjong.zen);
+        assert_eq!(state.save.mahjong.elapsed_ms, 0);
+        let [a, b] = state.save.mahjong.available_pairs()[0];
+        state.mahjong_tile(a);
+        state.mahjong_tile(b);
+        let before = state.save.clone();
+        state.act(Action::MahjongZen(false));
+        assert!(matches!(
+            state.modal,
+            Some(Pending::NewMahjong(_, _, false))
+        ));
+        assert_eq!(state.save, before);
+        state.act(Action::Cancel);
+        assert_eq!(state.save, before);
+        state.act(Action::MahjongRestart);
+        state.act(Action::Confirm);
+        assert!(state.save.mahjong.zen);
+        assert_eq!(state.save.mahjong.seed, before.mahjong.seed);
+        assert_eq!(state.save.mahjong.remaining(), 144);
+        state.act(Action::MahjongNew(mahjong::Layout::Monument));
+        assert!(state.save.mahjong.zen);
+        assert_eq!(state.save.mahjong.layout, mahjong::Layout::Monument);
+        state.act(Action::MahjongZen(false));
+        assert!(!state.save.mahjong.zen);
+        assert_eq!(state.save.sudoku, before.sudoku);
+        assert_eq!(state.save.blackjack, before.blackjack);
+        assert_eq!(state.save.baccarat, before.baccarat);
+        assert_eq!(state.save.minesweeper, before.minesweeper);
+        assert_eq!(
+            Save::from_json(&state.save.to_json().unwrap()).unwrap(),
+            state.save
+        );
+    }
+
+    #[test]
+    fn mahjong_rejects_blocked_tiles_and_scopes_keyboard_shortcuts() {
+        let mut state = test_arcade();
+        state.open(Screen::Mahjong);
+        let blocked = (0..144)
+            .find(|i| !state.save.mahjong.selectable(*i))
+            .unwrap();
+        let before = state.save.clone();
+        state.mahjong_tile(blocked);
+        assert_eq!(state.save, before);
+        assert!(state.mahjong_ui.selected.is_none());
+        let mut keys = ButtonInput::default();
+        keys.press(KeyCode::KeyH);
+        state.open(Screen::Lobby);
+        mahjong_app::keys(&mut state, &keys, &ViewLayout::default());
+        assert!(!state.save.mahjong.assisted);
+        state.open(Screen::Mahjong);
+        state.open_modal(Pending::NewMahjong(mahjong::Layout::Arena, 2, false));
+        mahjong_app::keys(&mut state, &keys, &ViewLayout::default());
+        assert!(!state.save.mahjong.assisted);
+        state.act(Action::Cancel);
+        mahjong_app::keys(&mut state, &keys, &ViewLayout::default());
+        assert!(state.save.mahjong.assisted);
+        assert!(state.mahjong_ui.reveal_hint);
+    }
+
+    #[test]
+    fn mahjong_clock_pauses_in_settings_and_dialogs_without_advancing_other_games() {
+        use std::time::Duration;
+        let mut state = test_arcade();
+        state.open(Screen::Mahjong);
+        let mut app = App::new();
+        app.insert_resource(state)
+            .insert_resource(Time::<Real>::default())
+            .add_message::<WindowFocused>()
+            .add_message::<WindowCloseRequested>()
+            .add_systems(Update, lifecycle);
+        app.world_mut().spawn((
+            Window {
+                focused: true,
+                ..default()
+            },
+            PrimaryWindow,
+        ));
+        let tick = |app: &mut App| {
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .advance_by(Duration::from_millis(125));
+            app.update();
+        };
+        tick(&mut app);
+        tick(&mut app);
+        assert_eq!(
+            app.world().resource::<Arcade>().save.mahjong.elapsed_ms,
+            125
+        );
+        app.world_mut()
+            .resource_mut::<Arcade>()
+            .open(Screen::Settings);
+        tick(&mut app);
+        tick(&mut app);
+        app.world_mut().resource_mut::<Arcade>().act(Action::Back);
+        tick(&mut app);
+        tick(&mut app);
+        app.world_mut()
+            .resource_mut::<Arcade>()
+            .open_modal(Pending::NewMahjong(mahjong::Layout::Arena, 2, false));
+        tick(&mut app);
+        tick(&mut app);
+        let state = app.world().resource::<Arcade>();
+        assert_eq!(state.save.mahjong.elapsed_ms, 250);
+        assert_eq!(state.save.minesweeper.game.elapsed_ms, 0);
+        assert_eq!(state.save.sudoku.game.elapsed_ms, 0);
+    }
+
+    #[test]
+    fn mahjong_controls_and_clipped_tile_hits_fit_all_supported_layouts() {
+        for (width, height) in [(1280, 720), (390, 844), (1000, 560), (390, 560), (360, 560)] {
+            for board in mahjong::Layout::ALL {
+                let mut state = test_arcade();
+                state.open(Screen::Mahjong);
+                state.save.mahjong = mahjong::Game::new(board, 3);
+                state.mahjong_hint();
+                let first = state.mahjong_ui.hint.unwrap()[0];
+                let mut app = App::new();
+                app.insert_resource(state)
+                    .insert_resource(Time::<()>::default())
+                    .init_resource::<ViewLayout>()
+                    .init_resource::<rendering::Frame>()
+                    .init_resource::<rendering::RenderOptions>()
+                    .add_systems(Update, presentation::paint);
+                app.world_mut().spawn((
+                    Window {
+                        resolution: WindowResolution::new(width, height),
+                        ..default()
+                    },
+                    PrimaryWindow,
+                ));
+                app.update();
+                let layout = app.world().resource::<ViewLayout>();
+                if width >= 1280 {
+                    assert!(
+                        layout.mahjong_max_pan.max_element() < 0.001,
+                        "desktop board should fit"
+                    );
+                }
+                for hit in &layout.hits {
+                    assert!(
+                        hit.rect.min.x >= 0.0
+                            && hit.rect.min.y >= 0.0
+                            && hit.rect.max.x <= width as f32 + 0.1
+                            && hit.rect.max.y <= height as f32 - 33.0,
+                        "{width}x{height} {board:?}: {:?}",
+                        hit.rect
+                    );
+                    if matches!(hit.action, Action::MahjongTile(_)) {
+                        let clip = layout.mahjong_clip.unwrap();
+                        assert!(clip.contains(hit.rect.center()));
+                    }
+                }
+                assert!(
+                    layout
+                        .hits
+                        .iter()
+                        .any(|h| matches!(h.action, Action::MahjongTile(i) if i == first)),
+                    "hinted first tile reachable"
+                );
+                assert!(!app.world().resource::<Arcade>().mahjong_ui.reveal_hint);
+            }
+        }
+    }
 }
 
 // Developer keys capture the actual rendered surface and frame timings.
@@ -2564,6 +2852,7 @@ fn capture_tools(
                 Screen::Blackjack => "blackjack",
                 Screen::Baccarat => "baccarat",
                 Screen::Sudoku => "sudoku",
+                Screen::Mahjong => "mahjong",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

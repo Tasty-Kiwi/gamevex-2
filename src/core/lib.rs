@@ -1,6 +1,7 @@
 pub mod baccarat;
 pub mod blackjack;
 pub mod cards;
+pub mod mahjong;
 pub mod minesweeper;
 pub mod save;
 pub mod sudoku;
