@@ -1,4 +1,3 @@
-use super::screens::button;
 use super::*;
 use gamevex_core::sudoku::{Command, Difficulty};
 
@@ -65,8 +64,50 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
 
     let board_top = info_y + 55.0;
     let footer_top = f.size.y - 34.0;
+    let selection_notice = game.givens.get(selected).copied().unwrap_or(0) != 0
+        || (s.sudoku_ui.pencil && game.board[selected] != 0);
+    let standard_cols = match n {
+        4 => 2,
+        6 | 9 => 3,
+        _ => 4,
+    };
+    let compact_rows = n.div_ceil(n.min(8));
+    let standard_rows = n.div_ceil(standard_cols);
+    let short_controls = 23.0
+        + compact_rows as f32 * 36.0
+        + 142.0
+        + if s.sudoku_ui.show_highlights {
+            35.0
+        } else {
+            0.0
+        }
+        + if !s.sudoku_ui.message.is_empty() {
+            26.0
+        } else {
+            0.0
+        }
+        + if selection_notice { 12.0 } else { 0.0 };
+    let normal_controls = 23.0
+        + standard_rows as f32 * 47.0
+        + 144.0
+        + if s.sudoku_ui.show_highlights {
+            35.0
+        } else {
+            0.0
+        }
+        + if !s.sudoku_ui.message.is_empty() {
+            26.0
+        } else {
+            0.0
+        }
+        + if selection_notice { 12.0 } else { 0.0 };
     let board_bottom = if mobile {
-        footer_top - if short { 230.0 } else { 278.0 }
+        footer_top
+            - if short {
+                short_controls
+            } else {
+                normal_controls
+            }
     } else {
         footer_top - 8.0
     };
@@ -253,61 +294,41 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
     }
 
     let panel_x = m + board_w + panel_gap;
-    let panel_y = board_top;
+    // The side panel can start beside the header, leaving the full height for
+    // the board and the bank on short desktop windows.
+    let panel_y = if !mobile && short {
+        board_top - 22.0
+    } else {
+        board_top
+    };
     if !mobile {
-        f.text(
-            Vec2::new(panel_x, panel_y),
-            "VALUES / REMAINING",
-            11.0,
-            MUTED,
-        );
-        let bank_cols = if n > 9 && short {
-            8
-        } else if n > 9 {
-            4
-        } else {
-            n.min(5)
+        let cols = match n {
+            4 => 2,
+            6 | 9 => 3,
+            16 if short => 8,
+            16 => 4,
+            _ => n.min(5),
         };
-        let gap = 5.0;
-        let bw = (panel_w - gap * (bank_cols as f32 - 1.0)) / bank_cols as f32;
-        for value in 1..=n {
-            let x = panel_x + ((value - 1) % bank_cols) as f32 * (bw + gap);
-            let y = panel_y + 18.0 + ((value - 1) / bank_cols) as f32 * 35.0;
-            number_button(f, s, l, rect(x, y, bw, 30.0), value as u8, selected);
-        }
-        let rows = n.div_ceil(bank_cols);
-        let controls_y = panel_y + 22.0 + rows as f32 * 35.0;
-        let controls_bottom = panel_controls(f, s, l, panel_x, controls_y, panel_w, false, short);
-        keyboard_help(f, panel_x, controls_bottom + 3.0, n);
+        let controls_bottom = draw_panel(f, s, l, panel_x, panel_y, panel_w, cols, short, selected);
         if !s.sudoku_ui.message.is_empty() {
             draw_message(
                 f,
                 &s.sudoku_ui.message,
                 panel_x,
-                controls_bottom + 17.0,
+                controls_bottom + 3.0,
                 (panel_w / 6.0) as usize,
             );
         }
     } else {
-        let bank_y = board_bottom + 9.0;
-        f.text(Vec2::new(m, bank_y), "VALUES / REMAINING", 9.0, MUTED);
-        let cols = if n > 9 { 8 } else { n };
-        let gap = 3.0;
-        let bw = (w - gap * (cols as f32 - 1.0)) / cols as f32;
-        for value in 1..=n {
-            let x = m + ((value - 1) % cols) as f32 * (bw + gap);
-            let y = bank_y + 14.0 + ((value - 1) / cols) as f32 * 31.0;
-            number_button(f, s, l, rect(x, y, bw, 27.0), value as u8, selected);
-        }
-        let control_y = bank_y + 18.0 + n.div_ceil(cols) as f32 * 31.0;
-        let controls_bottom = panel_controls(f, s, l, m, control_y, w, true, short);
-        keyboard_help(f, m, controls_bottom + 3.0, n);
+        let bank_y = board_bottom + 7.0;
+        let cols = if short { n.min(8) } else { standard_cols };
+        let controls_bottom = draw_mobile(f, s, l, m, bank_y, w, cols, selected, short);
         if !s.sudoku_ui.message.is_empty() {
             draw_message(
                 f,
                 &s.sudoku_ui.message,
                 m,
-                (controls_bottom + 17.0).max(f.size.y - 78.0),
+                controls_bottom + 1.0,
                 (w / 6.0) as usize,
             );
         }
@@ -331,182 +352,274 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
 }
 
 #[allow(clippy::too_many_arguments)]
-fn panel_controls(
+fn draw_panel(
     f: &mut Frame,
     s: &Arcade,
     l: &mut ViewLayout,
     x: f32,
     y: f32,
     w: f32,
-    mobile: bool,
+    cols: usize,
+    dense: bool,
+    selected: usize,
+) -> f32 {
+    let n = usize::from(s.save.sudoku.game.size);
+    bank_heading(f, s, x, y, w);
+    let gap = 5.0;
+    let button_h = if dense { 38.0 } else { 46.0 };
+    let bw = (w - gap * (cols as f32 - 1.0)) / cols as f32;
+    let rows = n.div_ceil(cols);
+    for value in 1..=n {
+        let bx = x + ((value - 1) % cols) as f32 * (bw + gap);
+        let by = y + 18.0 + ((value - 1) / cols) as f32 * (button_h + gap);
+        number_button(f, s, l, rect(bx, by, bw, button_h), value as u8, selected);
+    }
+    draw_editor_controls(
+        f,
+        s,
+        l,
+        x,
+        y + 22.0 + rows as f32 * (button_h + gap),
+        w,
+        dense,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_mobile(
+    f: &mut Frame,
+    s: &Arcade,
+    l: &mut ViewLayout,
+    x: f32,
+    y: f32,
+    w: f32,
+    cols: usize,
+    selected: usize,
     dense: bool,
 ) -> f32 {
-    let gap = if dense { 3.0 } else { 6.0 };
-    let cols = if dense || (mobile && w > 340.0) {
-        4
-    } else if mobile {
-        3
-    } else {
-        2
-    };
+    let n = usize::from(s.save.sudoku.game.size);
+    bank_heading(f, s, x, y, w);
+    let gap = 4.0;
+    let button_h = if dense { 32.0 } else { 42.0 };
+    let row_gap = if dense { 4.0 } else { 5.0 };
     let bw = (w - gap * (cols as f32 - 1.0)) / cols as f32;
-    let bh = if dense {
-        25.0
-    } else if mobile {
-        29.0
-    } else {
-        34.0
-    };
-    let mut row = 0;
-    let mut col = 0;
-    let mut add = |label: &str,
-                   action: Action,
-                   active: bool,
-                   f: &mut Frame,
-                   s: &Arcade,
-                   l: &mut ViewLayout| {
+    let rows = n.div_ceil(cols);
+    for value in 1..=n {
+        let bx = x + ((value - 1) % cols) as f32 * (bw + gap);
+        let by = y + 16.0 + ((value - 1) / cols) as f32 * (button_h + row_gap);
+        number_button(f, s, l, rect(bx, by, bw, button_h), value as u8, selected);
+    }
+    draw_editor_controls(
+        f,
+        s,
+        l,
+        x,
+        y + 16.0 + rows as f32 * (button_h + row_gap),
+        w,
+        dense,
+        true,
+    )
+}
+
+fn bank_heading(f: &mut Frame, s: &Arcade, x: f32, y: f32, w: f32) {
+    f.text(
+        Vec2::new(x, y),
+        if s.sudoku_ui.pencil {
+            "ADD NOTES"
+        } else {
+            "ENTER VALUE"
+        },
+        10.0,
+        MUTED,
+    );
+    f.text(Vec2::new(x + w - 128.0, y), "REMAINING", 10.0, MUTED);
+    f.text(
+        Vec2::new(x + w - 62.0, y),
+        if s.sudoku_ui.pencil {
+            "NOTES ON"
+        } else {
+            "NOTES OFF"
+        },
+        8.5,
+        if s.sudoku_ui.pencil { GOLD } else { MUTED },
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_editor_controls(
+    f: &mut Frame,
+    s: &Arcade,
+    l: &mut ViewLayout,
+    x: f32,
+    y: f32,
+    w: f32,
+    dense: bool,
+    mobile: bool,
+) -> f32 {
+    let game = &s.save.sudoku.game;
+    let selected = s.sudoku_ui.selected.min(game.board.len().saturating_sub(1));
+    let completed = game.complete;
+    let given = game.givens.get(selected).copied().unwrap_or(0) != 0;
+    let has_value = game.board.get(selected).copied().unwrap_or(0) != 0;
+    let has_notes = game.notes.get(selected).copied().unwrap_or(0) != 0;
+    let gap = if dense { 4.0 } else { 6.0 };
+    let bh = if mobile { 32.0 } else { 34.0 };
+    let cols = if mobile || dense { 4 } else { 2 };
+    let bw = (w - gap * (cols as f32 - 1.0)) / cols as f32;
+    let actions = [
+        (
+            if s.sudoku_ui.pencil {
+                "NOTES ON"
+            } else {
+                "NOTES OFF"
+            },
+            Action::SudokuPencil,
+            !completed,
+            s.sudoku_ui.pencil,
+        ),
+        (
+            "ERASE",
+            Action::Sudoku(Command::Erase(selected)),
+            !completed && !given && (has_value || has_notes),
+            false,
+        ),
+        (
+            "UNDO  U",
+            Action::Sudoku(Command::Undo),
+            !completed && !s.sudoku_ui.history.is_empty(),
+            false,
+        ),
+        (
+            "HINT  H",
+            Action::Sudoku(Command::Hint),
+            hint_available(s),
+            false,
+        ),
+    ];
+    for (i, (label, action, enabled, active)) in actions.iter().enumerate() {
+        let col = i % cols;
+        let row = i / cols;
         let r = rect(
             x + col as f32 * (bw + gap),
             y + row as f32 * (bh + gap),
             bw,
             bh,
         );
-        button(f, s, l, r, label, action, active);
-        col += 1;
-        if col == cols {
-            col = 0;
-            row += 1;
-        }
-    };
-    add(
-        if s.sudoku_ui.pencil {
-            "PENCIL ON"
-        } else {
-            "PENCIL"
-        },
-        Action::SudokuPencil,
-        s.sudoku_ui.pencil,
-        f,
-        s,
-        l,
-    );
-    add(
-        "ERASE",
-        Action::Sudoku(Command::Erase(s.sudoku_ui.selected)),
-        false,
-        f,
-        s,
-        l,
-    );
-    add(
-        "UNDO",
-        Action::Sudoku(Command::Undo),
-        !s.sudoku_ui.history.is_empty(),
-        f,
-        s,
-        l,
-    );
-    add("HINT", Action::Sudoku(Command::Hint), false, f, s, l);
-    add(
-        if s.save.sudoku.highlight_errors {
-            "ERRORS ON"
-        } else {
-            "ERRORS OFF"
-        },
-        Action::SudokuErrors,
-        s.save.sudoku.highlight_errors,
-        f,
-        s,
-        l,
-    );
-    add(
-        if s.save.sudoku.highlight_same {
-            "SAME ON"
-        } else {
-            "SAME OFF"
-        },
-        Action::SudokuSame,
-        s.save.sudoku.highlight_same,
-        f,
-        s,
-        l,
-    );
-    add(
-        &format!("SIZE > {}", next_size(s.save.sudoku.game.size)),
-        Action::SudokuNew(
-            next_size(s.save.sudoku.game.size),
-            s.save.sudoku.game.difficulty,
-        ),
-        false,
-        f,
-        s,
-        l,
-    );
-    add(
-        &format!(
-            "DIFF > {}",
-            difficulty_short(next_difficulty(s.save.sudoku.game.difficulty))
-        ),
-        Action::SudokuNew(
-            s.save.sudoku.game.size,
-            next_difficulty(s.save.sudoku.game.difficulty),
-        ),
-        false,
-        f,
-        s,
-        l,
-    );
-    if col > 0 {
-        row += 1;
+        control_button(f, s, l, r, label, *action, *enabled, *active);
     }
-    let new_w = (w - gap) * 0.5;
-    button(
+    let mut cursor = y + (bh + gap) * actions.len().div_ceil(cols) as f32;
+    f.text(
+        Vec2::new(x, cursor),
+        if hint_available(s) {
+            "Hint marks this run assisted."
+        } else {
+            hint_reason(s)
+        },
+        9.0,
+        MUTED,
+    );
+    cursor += 12.0;
+    let disclosure_h = 32.0;
+    control_button(
         f,
         s,
         l,
-        rect(x, y + row as f32 * (bh + gap), new_w, bh),
-        "NEW BOARD",
-        Action::SudokuNew(s.save.sudoku.game.size, s.save.sudoku.game.difficulty),
-        false,
+        rect(x, cursor, w, disclosure_h),
+        if s.sudoku_ui.show_highlights {
+            "HIGHLIGHTS -"
+        } else {
+            "HIGHLIGHTS +"
+        },
+        Action::SudokuHighlights,
+        true,
+        s.sudoku_ui.show_highlights,
     );
+    cursor += disclosure_h + 3.0;
+    if s.sudoku_ui.show_highlights {
+        let pw = (w - gap) * 0.5;
+        control_button(
+            f,
+            s,
+            l,
+            rect(x, cursor, pw, 32.0),
+            if s.save.sudoku.highlight_errors {
+                "ERRORS  ON"
+            } else {
+                "ERRORS  OFF"
+            },
+            Action::SudokuErrors,
+            true,
+            s.save.sudoku.highlight_errors,
+        );
+        control_button(
+            f,
+            s,
+            l,
+            rect(x + pw + gap, cursor, pw, 32.0),
+            if s.save.sudoku.highlight_same {
+                "SAME  ON"
+            } else {
+                "SAME  OFF"
+            },
+            Action::SudokuSame,
+            true,
+            s.save.sudoku.highlight_same,
+        );
+        cursor += 35.0;
+    }
+    control_button(
+        f,
+        s,
+        l,
+        rect(x, cursor, w, if mobile { 32.0 } else { 34.0 }),
+        "NEW PUZZLE",
+        Action::SudokuSetup,
+        true,
+        true,
+    );
+    cursor += if mobile { 35.0 } else { 37.0 };
     f.text(
-        Vec2::new(x, y + (row + 1) as f32 * (bh + gap) + 2.0),
-        if s.save.sudoku.game.size == 16 {
-            "16x16 experimental / hints off"
+        Vec2::new(x, cursor),
+        if game.size == 16 {
+            "16x16 experimental - hints off"
         } else {
             "Difficulty sets clue density"
         },
         9.0,
         MUTED,
     );
-    y + (row + 1) as f32 * (bh + gap) + 12.0
-}
-
-fn keyboard_help(f: &mut Frame, x: f32, y: f32, size: usize) {
+    cursor += 12.0;
     f.text(
-        Vec2::new(x, y),
-        if size == 16 {
-            "Keys: arrows, 1-9/A-G, P notes, U undo"
+        Vec2::new(x, cursor),
+        if game.size == 16 {
+            "Arrows / 1-9,A-G / P notes / U undo"
         } else {
-            "Keys: arrows, 1-9, P notes, U undo, H hint"
+            "Arrows / 1-9 / P notes / U undo / H hint"
         },
-        9.0,
+        if mobile { 8.5 } else { 9.0 },
         MUTED,
     );
+    cursor += 12.0;
+    if given || (s.sudoku_ui.pencil && has_value) {
+        f.text(
+            Vec2::new(x, cursor),
+            if given {
+                "Given clue. Choose an empty cell."
+            } else {
+                "Erase this value before adding notes."
+            },
+            9.0,
+            GOLD,
+        );
+        cursor += 12.0;
+    }
+    cursor
 }
 
 fn draw_message(f: &mut Frame, message: &str, x: f32, y: f32, width: usize) {
     for (i, line) in wrap_lines(message, width, 2).iter().enumerate() {
         f.text(Vec2::new(x, y + i as f32 * 13.0), line, 10.0, GOLD);
-    }
-}
-
-fn difficulty_short(difficulty: Difficulty) -> &'static str {
-    match difficulty {
-        Difficulty::Easy => "EASY",
-        Difficulty::Medium => "MED",
-        Difficulty::Hard => "HARD",
-        Difficulty::Expert => "EXP",
     }
 }
 
@@ -519,6 +632,7 @@ fn number_button(
     selected: usize,
 ) {
     let n = usize::from(s.save.sudoku.game.size);
+    let game = &s.save.sudoku.game;
     let remaining = s
         .save
         .sudoku
@@ -529,11 +643,24 @@ fn number_button(
         .count();
     let count = n.saturating_sub(remaining);
     let idx = l.hits.len();
-    let focused = s.keyboard && s.focus == idx;
+    let selected_cell = selected.min(game.board.len().saturating_sub(1));
+    let selected_mark = game.board.get(selected_cell).copied().unwrap_or(0) == value
+        || (game.board.get(selected_cell).copied().unwrap_or(0) == 0
+            && game
+                .notes
+                .get(selected_cell)
+                .is_some_and(|notes| notes & (1u16 << (value - 1)) != 0));
+    let enabled = !game.complete
+        && game.givens.get(selected_cell).copied().unwrap_or(0) == 0
+        && (!s.sudoku_ui.pencil || game.board[selected_cell] == 0);
+    let focused = enabled && s.keyboard && s.focus == idx;
+    let hovered = enabled && s.cursor.is_some_and(|p| r.contains(p));
     f.rect(
         r.min,
         r.size(),
-        if focused {
+        if !enabled {
+            Color::srgb(0.018, 0.035, 0.05)
+        } else if focused || hovered {
             Color::srgb(0.055, 0.14, 0.18)
         } else {
             PANEL
@@ -542,35 +669,258 @@ fn number_button(
     f.outline(
         r.min,
         r.size(),
-        if focused { 2.0 } else { 1.0 },
-        if focused { GOLD } else { CYAN },
+        if focused || selected_mark { 2.0 } else { 1.0 },
+        if focused || selected_mark {
+            GOLD
+        } else if enabled {
+            CYAN
+        } else {
+            EDGE
+        },
     );
-    let fs = if r.width() < 34.0 { 11.0 } else { 14.0 };
+    if selected_mark {
+        f.rect(r.min, Vec2::new(3.0, r.height()), GOLD);
+    }
+    let fs = if r.width() < 50.0 { 16.0 } else { 19.0 };
     f.text(
-        Vec2::new(r.min.x + 4.0, r.min.y + (r.height() - fs) * 0.5),
+        Vec2::new(r.min.x + 6.0, r.min.y + (r.height() - fs) * 0.5),
         symbol(value),
         fs,
-        if count == 0 { MUTED } else { INK },
+        if !enabled || count == 0 { MUTED } else { INK },
     );
     let count_font = if r.width() < 50.0 { 8.0 } else { 10.0 };
     let count_label = count.to_string();
     f.text(
         Vec2::new(
-            r.max.x - 4.0 - count_label.len() as f32 * count_font * 0.6,
-            r.min.y + (r.height() - count_font) * 0.5,
+            r.max.x - 5.0 - count_label.len() as f32 * count_font * 0.6,
+            r.min.y + r.height() - count_font - 3.0,
         ),
         count_label,
         count_font,
+        if enabled { MUTED } else { EDGE },
+    );
+    if enabled {
+        l.hits.push(Hit {
+            rect: r,
+            action: Action::Sudoku(Command::Enter {
+                index: selected,
+                value,
+                pencil: s.sudoku_ui.pencil,
+            }),
+        });
+    }
+}
+
+pub(super) fn setup_dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
+    let width = (f.size.x - 2.0 * m).min(590.0);
+    let height = (f.size.y - 32.0).min(500.0);
+    let r = rect(
+        (f.size.x - width) * 0.5,
+        (f.size.y - height) * 0.5,
+        width,
+        height,
+    );
+    let inner_x = r.min.x + 22.0;
+    let inner_w = width - 44.0;
+    let gap = 8.0;
+    let footer_y = r.max.y - 58.0;
+    let bw = (inner_w - gap) * 0.5;
+    let (draft_size, draft_difficulty) = s
+        .sudoku_ui
+        .setup
+        .unwrap_or((s.save.sudoku.game.size, s.save.sudoku.game.difficulty));
+    f.outline(
+        r.min - Vec2::splat(6.0),
+        r.size() + Vec2::splat(12.0),
+        1.0,
+        EDGE,
+    );
+    f.rect(r.min, r.size(), PANEL);
+    f.rounded_outline(r.min, r.size(), 8.0, 2.0, GOLD);
+    // Register Cancel first to make it the default modal keyboard focus.
+    // Its footer region does not overlap the choices drawn afterward.
+    control_button(
+        f,
+        s,
+        l,
+        rect(inner_x, footer_y, bw, 40.0),
+        "CANCEL",
+        Action::Cancel,
+        true,
+        false,
+    );
+    f.text(
+        r.min + Vec2::new(22.0, 22.0),
+        "NEW SUDOKU PUZZLE",
+        if width < 400.0 { 23.0 } else { 28.0 },
+        INK,
+    );
+    f.text(
+        r.min + Vec2::new(22.0, 56.0),
+        "Choose a board size and clue density.",
+        12.0,
         MUTED,
     );
-    l.hits.push(Hit {
-        rect: r,
-        action: Action::Sudoku(Command::Enter {
-            index: selected,
-            value,
-            pencil: s.sudoku_ui.pencil,
-        }),
-    });
+    f.text(r.min + Vec2::new(22.0, 87.0), "BOARD SIZE", 10.0, CYAN);
+    let size_w = (inner_w - gap) * 0.5;
+    for (i, size) in [4u8, 6, 9, 16].into_iter().enumerate() {
+        let row = i / 2;
+        let col = i % 2;
+        let option = rect(
+            inner_x + col as f32 * (size_w + gap),
+            r.min.y + 108.0 + row as f32 * 49.0,
+            size_w,
+            42.0,
+        );
+        let label = if size == 16 {
+            "16x16  EXPERIMENTAL".to_owned()
+        } else {
+            format!("{size}x{size}")
+        };
+        control_button(
+            f,
+            s,
+            l,
+            option,
+            &label,
+            Action::SudokuChooseSize(size),
+            true,
+            draft_size == size,
+        );
+    }
+    f.text(r.min + Vec2::new(22.0, 216.0), "DIFFICULTY", 10.0, CYAN);
+    for (i, difficulty) in Difficulty::ALL.into_iter().enumerate() {
+        let row = i / 2;
+        let col = i % 2;
+        let option = rect(
+            inner_x + col as f32 * (size_w + gap),
+            r.min.y + 237.0 + row as f32 * 49.0,
+            size_w,
+            42.0,
+        );
+        control_button(
+            f,
+            s,
+            l,
+            option,
+            difficulty.label(),
+            Action::SudokuChooseDifficulty(difficulty),
+            true,
+            draft_difficulty == difficulty,
+        );
+    }
+    f.text(
+        r.min + Vec2::new(22.0, 350.0),
+        if draft_size == 16 {
+            "16x16 is experimental - hints unavailable."
+        } else {
+            "Difficulty controls clue density."
+        },
+        10.0,
+        MUTED,
+    );
+    control_button(
+        f,
+        s,
+        l,
+        rect(inner_x + bw + gap, footer_y, bw, 40.0),
+        if s.sudoku_ui.setup.is_some() {
+            "START PUZZLE"
+        } else {
+            "NEW PUZZLE"
+        },
+        Action::SudokuStart,
+        true,
+        true,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn control_button(
+    f: &mut Frame,
+    s: &Arcade,
+    l: &mut ViewLayout,
+    r: Rect,
+    label: &str,
+    action: Action,
+    enabled: bool,
+    active: bool,
+) {
+    let idx = l.hits.len();
+    let focused = enabled && s.keyboard && s.focus == idx;
+    let hovered = enabled && s.cursor.is_some_and(|p| r.contains(p));
+    f.rect(
+        r.min,
+        r.size(),
+        if !enabled {
+            Color::srgb(0.018, 0.035, 0.05)
+        } else if focused || hovered {
+            Color::srgb(0.055, 0.14, 0.18)
+        } else {
+            PANEL
+        },
+    );
+    let edge = if !enabled {
+        Color::srgb(0.045, 0.09, 0.12)
+    } else if focused {
+        GOLD
+    } else if active {
+        CYAN
+    } else {
+        EDGE
+    };
+    f.outline(r.min, r.size(), if focused { 2.0 } else { 1.0 }, edge);
+    if active && enabled {
+        f.rect(r.min, Vec2::new(3.0, r.height()), CYAN);
+    }
+    let font: f32 = if r.width() < 62.0 {
+        8.5
+    } else if r.width() < 100.0 {
+        10.0
+    } else {
+        12.0
+    };
+    let fit = (r.width() - 8.0) / (label.chars().count().max(1) as f32 * 0.58);
+    let font = font.min(fit.max(7.0));
+    f.text(
+        Vec2::new(
+            r.min.x + (r.width() - label.chars().count() as f32 * font * 0.58).max(0.0) * 0.5,
+            r.min.y + (r.height() - font) * 0.5,
+        ),
+        label,
+        font,
+        if !enabled {
+            EDGE
+        } else if focused || active {
+            INK
+        } else {
+            Color::srgb(0.6, 0.78, 0.85)
+        },
+    );
+    if enabled {
+        l.hits.push(Hit { rect: r, action });
+    }
+}
+
+fn hint_available(s: &Arcade) -> bool {
+    let game = &s.save.sudoku.game;
+    game.size != 16
+        && !game.complete
+        && !(0..game.board.len()).any(|i| game.conflict(i))
+        && game.find_hint().is_some()
+}
+
+fn hint_reason(s: &Arcade) -> &'static str {
+    let game = &s.save.sudoku.game;
+    if game.size == 16 {
+        "16x16 is experimental; hints unavailable."
+    } else if game.complete {
+        "Puzzle complete."
+    } else if (0..game.board.len()).any(|i| game.conflict(i)) {
+        "Resolve conflicts before asking for a hint."
+    } else {
+        "No safe single-step hint is available."
+    }
 }
 
 fn symbol(value: u8) -> String {
@@ -604,19 +954,6 @@ fn wrap_lines(message: &str, width: usize, limit: usize) -> Vec<String> {
         lines.push(line);
     }
     lines
-}
-
-fn next_size(size: u8) -> u8 {
-    match size {
-        4 => 6,
-        6 => 9,
-        9 => 16,
-        _ => 4,
-    }
-}
-fn next_difficulty(d: Difficulty) -> Difficulty {
-    let i = Difficulty::ALL.iter().position(|&v| v == d).unwrap_or(0);
-    Difficulty::ALL[(i + 1) % Difficulty::ALL.len()]
 }
 
 #[cfg(test)]

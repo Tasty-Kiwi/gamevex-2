@@ -1,16 +1,16 @@
 # GameVex Rust demo verification
 
-Verified locally on 29 October 2026. Implementation and artifacts live in `gamevex-2` (Rust code in `src/`); the original GameVex repository was used only as a read-only rules/palette reference. Focused implementation and review work used Luna subagents.
+Verified locally on 29–30 October 2026. Implementation and artifacts live in `gamevex-2` (Rust code in `src/`); the original GameVex repository was used only as a read-only rules/palette reference. Focused implementation and review work used Luna subagents.
 
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 115 tests passed (70 core, 45 application/platform).
+- `cargo test --workspace --locked`: 124 tests passed (70 core, 54 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
 - Shell scripts passed `bash -n`; the custom browser loader passed `node --check`.
-- All 13 browser regressions passed locally with the Chromium/Metal override described in the Sudoku section; hosted CI and its default software-WebGPU setup remain unverified.
+- The earlier 13-spec browser suite passed locally with the Chromium/Metal override described in the Sudoku section. The current 23-spec suite has passed JavaScript syntax checking but was not rerun as a suite after the controls/touch updates; actual browser checks are listed below. Hosted CI and its default software-WebGPU setup remain unverified.
 
 Tests cover first-reveal protection over every difficulty and 32 seeds, mine/adjacency counts, flood behavior and pre-existing flags, correct/wrong-flag chording, win/loss and completed-command rejection, zero-seed determinism, save round trips and invalid-state checks, bounded elapsed time, record improvement, repeatable cards, valid/invalid/occupied drops, drag cancellation, native atomic file replacement, board picking with a clipped/panned viewport, modal focus restoration, timer transition/fractional-millisecond accounting, curved-monitor input mapping, old-save defaults for the added settings, and complete saved-data reset.
 
@@ -68,7 +68,7 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 38,071,320 | 6,211,451 |
+| WASM | 38,088,153 | 6,215,783 |
 | Generated JavaScript | 108,170 | 17,530 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
@@ -159,9 +159,37 @@ Native release packaging and the WASM release build succeeded. All 13 Playwright
 
 Executing the suite also fixed missing page-evaluation arguments and reload/navigation readiness in test helpers. Its rapid-click test now targets two exposed cards: selecting the first card promotes it above the adjacent card, so a stale coordinate on that neighbor was not a stable second target. Ordered event behavior still has the existing focused application tests. The final native screenshot attempt was prevented by the Mac lock; the earlier actual native screenshot is retained below. No new performance benchmark is claimed.
 
+## Sudoku controls update — 30 October 2026
+
+Replaced the flat value/action button wall with a larger value pad (3x3 for 9x9), visible Notes toggle, separate edit controls, and a collapsible Highlights group. Unavailable controls are dimmed, do not receive pointer hits, and are skipped by Tab. Given cells and filled cells in Notes mode explain why entry is unavailable; Hint explains its restrictions or assisted-run effect. Entering the cabinet selects an editable cell. Successful mouse edits return keyboard focus to the board; Undo selects and reveals the changed cell.
+
+New puzzle opens explicit size/difficulty choices without mutating the live game. Cancel and Escape discard the draft. Start uses the chosen mode and retains the existing edited-puzzle confirmation. Cancel is the initial keyboard target; the setup dialog uses actual hit actions for Tab/Enter rather than the two-button assumption used by ordinary confirmations. Save schema and puzzle rules remain unchanged.
+
+All 118 Rust tests (70 core, 48 application/platform), formatting, and warning-free workspace Clippy passed. Added checks cover draft/cancel/confirm preservation, safe modal keyboard activation, mouse-to-keyboard continuity, Undo selection, and non-overlapping controls across four sizes, four viewport dimensions, and both Highlights states. Native release packaging and the WASM release build succeeded. The browser spec file now contains 17 cases and passes `node --check`; the updated suite was not executed through the Playwright runner this turn.
+
+Actual native Metal checks rendered the new value pad, disabled controls, and explicit setup chooser, with current-run before/after captures of the same isolated 9x9 Medium puzzle. Actual in-app browser WebGPU checks exercised keypad click followed by keyboard entry, Notes/Erase/Undo, Undo returning to the changed cell, Highlights disclosure, staged 16x16 Expert choices, Cancel, Enter on the safe default, and a complete ten-item Tab cycle back to Cancel. Edited-puzzle replacement opened its confirmation; Cancel preserved entries/notes and Confirm started the chosen 9x9 Medium mode. The setup timer stayed exactly 38,678 ms across the observed pause. Reload restored the exact gameplay state; Minesweeper, Blackjack, Baccarat, and shared settings remained unchanged. The browser reported no warning/error logs in the final session.
+
+Visual inspection covered 1280x720, 1000x560, 390x844, and 390x560. The short 16x16 layout retained 32-pixel cells, a compact two-row symbol pad, disabled hints with a reason, and a reachable setup dialog. Temporary browser viewport/cache overrides were reset. All runtime checks used isolated QA saves. These checks do not establish touch-device or screen-reader acceptance; the existing canvas accessibility limitations still apply. See [the focused UX report](SUDOKU_UX.md) for the before/after comparison.
+
+## Phone touch input repair — 30 October 2026
+
+The ordered input handler consumed mouse buttons/cursor events but ignored `WindowEvent::TouchInput`. Winit emits a separate touch stream, and the loader suppresses compatibility mouse handling, so phone gestures never reached the game. Added an ordered primary-finger path using the existing CSS-pixel conversion and CRT surface mapping. No synthetic mouse bridge or save-schema change was introduced.
+
+Taps activate buttons/cells on release; moving more than eight surface pixels cancels the tap. Card Lab picks immediately and drops at the release position. Swipes pan the Minesweeper/Sudoku grid or scroll the settings list without triggering the underlying cell/control. Canceled drags do not commit. Secondary contacts cannot steal the gesture or generate extra actions. Resize, focus, surface/mode, and lifecycle invalidation clear pending interactions; lifecycle recovery also clears orphaned secondary contacts when a browser omits an end event. A focused Luna review identified that last recovery case, and its regression now passes.
+
+All 124 Rust tests (70 core, 54 application/platform), formatting, and workspace Clippy passed. Six new application tests cover release-only activation, canceled/moved taps, queued touch drags, multi-finger ownership and lost-end recovery, both board swipe paths, settings scrolling without mutation, and focus/resize/lifecycle interruption. The browser spec file adds six 390x844 touch cases using actual touchscreen/CDP input, bringing it to 23 specs; `node --check` passes. The Playwright suite was not executed this turn.
+
+Actual Chrome/WebGPU verification used native CDP touch events at 390x844 and 390x560 with device scale factor 3 and CRT enabled. It exercised canceled lobby taps; touch-only Sudoku navigation, cell selection, Notes/keypad entry, staged setup and Cancel; confirmed replacement to 16x16; two-axis swipe panning with unchanged values and selection; short-screen settings scrolling with unchanged settings; canceled and successful Card Lab drops; and Minesweeper Flag-mode taps, safe reveal, and swipe panning without additional reveals. The final bundle also passed touch navigation/cancellation after an uncached reload, and mouse setup/Cancel still worked after touch emulation was disabled. The browser reported no error logs. Native release packaging and the final WASM release build succeeded. Temporary touch/device/viewport overrides were reset after checking. This is phone emulation on macOS, not a physical Android/iPhone or mobile Safari result. The in-app browser's CDP implementation could not emit touch input, so Chrome was used for these checks.
+
 ## Screenshots
 
 Actual native render captures, excluding window chrome.
+
+![Updated Sudoku controls](screenshots/sudoku-controls-after.png)
+
+![New Sudoku puzzle chooser](screenshots/sudoku-new-puzzle.png)
+
+Earlier Sudoku port capture:
 
 ![Sudoku](screenshots/sudoku.png)
 

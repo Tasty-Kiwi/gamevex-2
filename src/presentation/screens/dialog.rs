@@ -1,6 +1,10 @@
 use super::*;
 
 pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
+    if matches!(s.modal, Some(Pending::SudokuSetup)) {
+        super::super::sudoku::setup_dialog(f, s, l, m);
+        return;
+    }
     let width = (f.size.x - 2.0 * m).min(590.0);
     let r = rect(
         (f.size.x - width) * 0.5,

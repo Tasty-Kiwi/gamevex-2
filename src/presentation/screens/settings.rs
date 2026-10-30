@@ -9,6 +9,7 @@ pub(crate) fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     );
     let top = 184.0;
     let bottom = f.size.y - 94.0;
+    l.settings_clip = Some(rect(m, top, w, bottom - top));
     let row_h = 46.0;
     let labels = [
         "Display",

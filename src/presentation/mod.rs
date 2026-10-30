@@ -55,10 +55,14 @@ pub enum Action {
     Baccarat(gamevex_core::baccarat::Command),
     Sudoku(gamevex_core::sudoku::Command),
     SudokuCell,
-    SudokuNew(u8, gamevex_core::sudoku::Difficulty),
     SudokuPencil,
     SudokuErrors,
     SudokuSame,
+    SudokuSetup,
+    SudokuChooseSize(u8),
+    SudokuChooseDifficulty(gamevex_core::sudoku::Difficulty),
+    SudokuStart,
+    SudokuHighlights,
 }
 pub struct Hit {
     pub rect: Rect,
@@ -95,6 +99,7 @@ pub struct ViewLayout {
     pub slots: [Rect; 3],
     pub card_order: Vec<usize>,
     pub settings_max_scroll: f32,
+    pub settings_clip: Option<Rect>,
     pub sudoku: Option<BoardLayout>,
     pub sudoku_max_pan: Vec2,
 }
@@ -127,6 +132,7 @@ pub fn paint(
     layout.sudoku_max_pan = Vec2::ZERO;
     layout.card_order.clear();
     layout.settings_max_scroll = 0.0;
+    layout.settings_clip = None;
     options.scale_factor = metrics.map(|[_, _, d]| d).unwrap_or(window.scale_factor());
     options.pixel = state.save.settings.display_preset == DisplayPreset::PixelCrt;
     frame.min_stroke = if options.pixel { 2.0 } else { 0.0 };
@@ -166,6 +172,7 @@ pub fn paint(
     if state.modal.is_some() {
         dialog(&mut frame, &state, &mut layout, margin);
         platform::publish_board(None);
+        publish_diagnostics(&state, &layout, size);
         return;
     }
     header(&mut frame, &state, &mut layout, margin);
@@ -243,6 +250,11 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
     }).to_string());
     let mut interaction = serde_json::json!({
         "screen": format!("{:?}", state.screen),
+        "modal": match state.modal {
+            Some(Pending::SudokuSetup) => Some("sudoku-setup"),
+            Some(Pending::NewSudoku(..)) => Some("sudoku-replace"),
+            Some(_) => Some("dialog"), None => None,
+        },
         "selectedCard": state.lab.selected,
         // The browser harness uses true to mean face-down.
         "flipped": std::array::from_fn::<_, 5, _>(|i| {
@@ -370,17 +382,17 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 Action::Sudoku(gamevex_core::sudoku::Command::Undo) => "undo".into(),
                 Action::Sudoku(gamevex_core::sudoku::Command::Hint) => "hint".into(),
                 Action::SudokuPencil => "pencil".into(),
+                Action::SudokuSetup => "setup".into(),
+                Action::SudokuHighlights => "highlights".into(),
+                Action::SudokuChooseSize(size) => format!("size{size}"),
+                Action::SudokuChooseDifficulty(difficulty) => {
+                    difficulty.label().to_ascii_lowercase()
+                }
+                Action::SudokuStart => "start".into(),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
                 Action::SudokuErrors => "errors".into(),
                 Action::SudokuSame => "same".into(),
-                Action::SudokuNew(size, difficulty) => {
-                    if size != state.save.sudoku.game.size {
-                        "size".into()
-                    } else if difficulty != state.save.sudoku.game.difficulty {
-                        "difficulty".into()
-                    } else {
-                        "new".into()
-                    }
-                }
                 _ => continue,
             };
             bounds.insert(
@@ -397,14 +409,18 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "data-action-bounds",
             &serde_json::Value::Object(bounds).to_string(),
         );
-        if let Some(board) = &layout.sudoku {
-            platform::diagnostics_attribute("data-sudoku-view", &serde_json::json!({
-                "origin":[board.origin.x,board.origin.y], "clip":[board.clip.min.x,board.clip.min.y,board.clip.width(),board.clip.height()],
-                "cell":board.cell, "selected":state.sudoku_ui.selected, "pencil":state.sudoku_ui.pencil,
-                "undo":state.sudoku_ui.history.len(), "message":state.sudoku_ui.message,
-            }).to_string());
-        }
+        let board = layout.sudoku.as_ref();
+        platform::diagnostics_attribute("data-sudoku-view", &serde_json::json!({
+            "origin": board.map(|b| [b.origin.x,b.origin.y]),
+            "clip": board.map(|b| [b.clip.min.x,b.clip.min.y,b.clip.width(),b.clip.height()]),
+            "cell": board.map(|b| b.cell), "selected":state.sudoku_ui.selected,
+            "pencil":state.sudoku_ui.pencil, "undo":state.sudoku_ui.history.len(),
+            "message":state.sudoku_ui.message,
+            "highlights":state.sudoku_ui.show_highlights,
+            "setup":state.sudoku_ui.setup.map(|(size,difficulty)| serde_json::json!({"size":size,"difficulty":difficulty})),
+        }).to_string());
     }
+
     if state.screen == Screen::Mines {
         let bounds = Difficulty::ALL.map(|difficulty| {
             layout

@@ -15,12 +15,22 @@ pub(crate) struct SudokuUi {
     pub message: String,
     pub history: History,
     pub completion_age: Option<f32>,
+    pub show_highlights: bool,
+    pub setup: Option<(u8, Difficulty)>,
 }
 
 impl Arcade {
     pub(crate) fn new_sudoku(&mut self, size: u8, difficulty: Difficulty) {
         self.save.sudoku.game = Sudoku::new(size, difficulty, fresh_seed());
         self.sudoku_ui = SudokuUi {
+            selected: self
+                .save
+                .sudoku
+                .game
+                .givens
+                .iter()
+                .position(|v| *v == 0)
+                .unwrap_or(0),
             follow: true,
             ..default()
         };
@@ -29,6 +39,22 @@ impl Arcade {
         self.last_active = false;
         self.focus = 3;
         self.persist();
+    }
+
+    pub(crate) fn open_sudoku_setup(&mut self) {
+        self.sudoku_ui.setup = Some((self.save.sudoku.game.size, self.save.sudoku.game.difficulty));
+        self.open_modal(Pending::SudokuSetup);
+    }
+
+    pub(crate) fn start_sudoku_setup(&mut self) {
+        if !matches!(self.modal, Some(Pending::SudokuSetup)) {
+            return;
+        }
+        let Some((size, difficulty)) = self.sudoku_ui.setup.take() else {
+            return;
+        };
+        self.restore_modal_focus();
+        self.request_sudoku(size, difficulty);
     }
 
     pub(crate) fn request_sudoku(&mut self, size: u8, difficulty: Difficulty) {
@@ -61,11 +87,35 @@ impl Arcade {
             .then(|| self.save.sudoku.game.find_hint())
             .flatten();
         let was_complete = self.save.sudoku.game.complete;
+        let undo_before = (command == Command::Undo).then(|| {
+            (
+                self.save.sudoku.game.board.clone(),
+                self.save.sudoku.game.notes.clone(),
+            )
+        });
         if self
             .save
             .sudoku
             .command(command, &mut self.sudoku_ui.history)
         {
+            // Mouse actions return entry focus to the board so typing can continue.
+            self.focus = 3;
+            if let Some((board, notes)) = undo_before
+                && let Some(index) =
+                    self.save
+                        .sudoku
+                        .game
+                        .board
+                        .iter()
+                        .enumerate()
+                        .find_map(|(i, value)| {
+                            (board[i] != *value || notes[i] != self.save.sudoku.game.notes[i])
+                                .then_some(i)
+                        })
+            {
+                self.sudoku_ui.selected = index;
+                self.sudoku_ui.follow = true;
+            }
             self.sudoku_ui.message = match command {
                 Command::Hint => {
                     let hint = hint.unwrap();

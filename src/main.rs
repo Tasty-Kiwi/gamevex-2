@@ -6,6 +6,7 @@ mod platform;
 mod presentation;
 mod rendering;
 mod sudoku_app;
+mod touch_input;
 
 use bevy::{
     audio::{AudioSink, AudioSinkPlayback, AudioSource, Volume},
@@ -67,6 +68,7 @@ pub(crate) enum Pending {
     Recover,
     LeaveBlackjack(Screen),
     NewSudoku(u8, sudoku::Difficulty),
+    SudokuSetup,
 }
 
 impl Arcade {
@@ -170,7 +172,14 @@ impl Arcade {
             self.sudoku_ui.history.clear();
         }
         if screen == Screen::Sudoku && self.screen != Screen::Settings {
-            self.sudoku_ui.selected = 0;
+            self.sudoku_ui.selected = self
+                .save
+                .sudoku
+                .game
+                .givens
+                .iter()
+                .position(|v| *v == 0)
+                .unwrap_or(0);
             self.sudoku_ui.pan = Vec2::ZERO;
             self.sudoku_ui.follow = true;
             self.sudoku_ui.message.clear();
@@ -254,7 +263,18 @@ impl Arcade {
     }
 
     fn act(&mut self, action: Action) {
-        if self.modal.is_some() && !matches!(action, Action::Confirm | Action::Cancel) {
+        let allowed_in_modal = match self.modal {
+            Some(Pending::SudokuSetup) => matches!(
+                action,
+                Action::Cancel
+                    | Action::SudokuChooseSize(_)
+                    | Action::SudokuChooseDifficulty(_)
+                    | Action::SudokuStart
+            ),
+            Some(_) => matches!(action, Action::Confirm | Action::Cancel),
+            None => true,
+        };
+        if !allowed_in_modal {
             return;
         }
         self.sound = if matches!(action, Action::Blackjack(_) | Action::Baccarat(_)) {
@@ -284,6 +304,7 @@ impl Arcade {
             Action::Confirm => match self.modal.take() {
                 Some(Pending::New(difficulty, repeat)) => self.new_game(difficulty, repeat),
                 Some(Pending::NewSudoku(size, difficulty)) => self.new_sudoku(size, difficulty),
+                Some(Pending::SudokuSetup) => self.restore_modal_focus(),
                 Some(Pending::Recover) => {
                     self.reset_saved_data();
                     self.persist();
@@ -294,7 +315,12 @@ impl Arcade {
                 }
                 None => {}
             },
-            Action::Cancel => self.restore_modal_focus(),
+            Action::Cancel => {
+                if matches!(self.modal, Some(Pending::SudokuSetup)) {
+                    self.sudoku_ui.setup = None;
+                }
+                self.restore_modal_focus();
+            }
             Action::Blackjack(command) => {
                 if self.blackjack_motion.busy() && !self.save.settings.reduced_motion {
                     return;
@@ -342,8 +368,29 @@ impl Arcade {
             }
             Action::Sudoku(command) => self.sudoku_command(command),
             Action::SudokuCell => {}
-            Action::SudokuNew(size, difficulty) => self.request_sudoku(size, difficulty),
-            Action::SudokuPencil => self.sudoku_ui.pencil = !self.sudoku_ui.pencil,
+            Action::SudokuSetup => self.open_sudoku_setup(),
+            Action::SudokuStart => self.start_sudoku_setup(),
+            Action::SudokuChooseSize(size) => {
+                if sudoku::SIZES.contains(&size)
+                    && let Some(mode) = &mut self.sudoku_ui.setup
+                {
+                    mode.0 = size;
+                }
+            }
+            Action::SudokuChooseDifficulty(difficulty) => {
+                if let Some(mode) = &mut self.sudoku_ui.setup {
+                    mode.1 = difficulty;
+                }
+            }
+            Action::SudokuHighlights => {
+                self.sudoku_ui.show_highlights = !self.sudoku_ui.show_highlights
+            }
+            Action::SudokuPencil => {
+                if !self.save.sudoku.game.complete {
+                    self.sudoku_ui.pencil = !self.sudoku_ui.pencil;
+                    self.focus = 3;
+                }
+            }
             Action::SudokuErrors => {
                 self.save.sudoku.highlight_errors = !self.save.sudoku.highlight_errors;
                 self.persist();
@@ -701,6 +748,7 @@ fn handle_pointer_input(
     layout: Res<ViewLayout>,
     mut state: ResMut<Arcade>,
     mut pointer: Local<Option<Vec2>>,
+    mut touch: Local<touch_input::TouchPointer>,
 ) {
     let Ok(window) = windows.single() else {
         return;
@@ -713,9 +761,14 @@ fn handle_pointer_input(
         .map(|[_, _, density]| window.scale_factor() / density)
         .unwrap_or(1.0);
     let mut layout_valid = layout.size == size;
+    touch.sync_lifecycle(&mut state, &mut pointer);
     // Browser canvas metrics can change before winit emits a resize event.
     if !layout_valid {
         state.lab.cancel_drag();
+        touch.reset(&mut state, &mut pointer);
+    }
+    if !window.focused || !platform::visible() {
+        touch.reset(&mut state, &mut pointer);
     }
     let difficulty = state.save.minesweeper.game.difficulty;
     let sudoku_mode = (
@@ -723,19 +776,45 @@ fn handle_pointer_input(
         state.save.sudoku.game.difficulty,
     );
     for event in events.read() {
+        let input_valid = layout_valid
+            && window.focused
+            && platform::visible()
+            && state.save.minesweeper.game.difficulty == difficulty
+            && sudoku_mode
+                == (
+                    state.save.sudoku.game.size,
+                    state.save.sudoku.game.difficulty,
+                )
+            && layout.surface == Some(state.screen)
+            && layout.modal == state.modal.is_some();
+        if let WindowEvent::TouchInput(event) = event {
+            touch.handle(
+                event,
+                event.position * to_css,
+                input_valid,
+                &mut state,
+                &layout,
+                &mut pointer,
+            );
+            continue;
+        }
         match event {
-            WindowEvent::CursorMoved(event) => *pointer = Some(event.position * to_css),
-            WindowEvent::CursorLeft(_) => {
+            WindowEvent::CursorMoved(event) if !touch.active() => {
+                *pointer = Some(event.position * to_css)
+            }
+            WindowEvent::CursorLeft(_) if !touch.active() => {
                 *pointer = None;
                 state.lab.cancel_drag();
             }
             WindowEvent::WindowResized(_) | WindowEvent::WindowScaleFactorChanged(_) => {
                 state.lab.cancel_drag();
+                touch.reset(&mut state, &mut pointer);
                 layout_valid = false;
             }
             WindowEvent::WindowFocused(event) if !event.focused => {
                 *pointer = None;
                 state.lab.cancel_drag();
+                touch.reset(&mut state, &mut pointer);
             }
             _ => {}
         }
@@ -759,16 +838,7 @@ fn handle_pointer_input(
         if let WindowEvent::MouseButtonInput(event) = event {
             // A preceding event may have navigated or opened a dialog. Wait for
             // paint to build the new surface before accepting another action.
-            if !layout_valid
-                || state.save.minesweeper.game.difficulty != difficulty
-                || sudoku_mode
-                    != (
-                        state.save.sudoku.game.size,
-                        state.save.sudoku.game.difficulty,
-                    )
-                || layout.surface != Some(state.screen)
-                || layout.modal != state.modal.is_some()
-            {
+            if touch.active() || !input_valid {
                 continue;
             }
             match event.state {
@@ -935,11 +1005,7 @@ fn handle_input(
         wheel.clear();
         return;
     }
-    let focus_count = if state.modal.is_some() {
-        2
-    } else {
-        layout.hits.len()
-    };
+    let focus_count = layout.hits.len();
     if keys.just_pressed(KeyCode::Tab) && focus_count > 0 {
         state.keyboard = true;
         let backwards = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
@@ -955,13 +1021,10 @@ fn handle_input(
         .get(state.focus)
         .is_some_and(|h| matches!(h.action, Action::Board));
     if state.modal.is_some() {
-        if keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space) {
-            let action = if state.focus == 0 {
-                Action::Cancel
-            } else {
-                Action::Confirm
-            };
-            state.act(action);
+        if (keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space))
+            && let Some(hit) = layout.hits.get(state.focus)
+        {
+            state.act(hit.action);
         }
         wheel.clear();
         return;
@@ -1407,6 +1470,257 @@ mod tests {
         ));
     }
 
+    fn touch_event(
+        app: &mut App,
+        window: Entity,
+        id: u64,
+        phase: bevy::input::touch::TouchPhase,
+        x: f32,
+        y: f32,
+    ) {
+        app.world_mut()
+            .write_message(WindowEvent::TouchInput(bevy::input::touch::TouchInput {
+                window,
+                id,
+                phase,
+                position: Vec2::new(x, y),
+                force: None,
+            }));
+    }
+
+    #[test]
+    fn touch_buttons_activate_once_on_release_and_cancelled_or_moved_taps_do_nothing() {
+        use bevy::input::touch::TouchPhase::*;
+        let (mut app, window) = pointer_app(Screen::Mines);
+        app.world_mut()
+            .resource_mut::<ViewLayout>()
+            .hits
+            .push(presentation::Hit {
+                rect: Rect::from_corners(Vec2::ZERO, Vec2::splat(100.0)),
+                action: Action::FlagMode,
+            });
+        touch_event(&mut app, window, 1, Started, 30.0, 30.0);
+        app.update();
+        assert!(!app.world().resource::<Arcade>().flag_mode);
+        touch_event(&mut app, window, 1, Ended, 30.0, 30.0);
+        app.update();
+        assert!(app.world().resource::<Arcade>().flag_mode);
+        assert!(app.world().resource::<Arcade>().cursor.is_none());
+        assert!(app.world().resource::<Arcade>().audio_started);
+        for phase in [Canceled, Ended] {
+            touch_event(&mut app, window, 2, Started, 30.0, 30.0);
+            if phase == Ended {
+                // Moving away and back must not become a tap on release.
+                touch_event(&mut app, window, 2, Moved, 60.0, 30.0);
+            }
+            touch_event(&mut app, window, 2, phase, 30.0, 30.0);
+            app.update();
+            assert!(app.world().resource::<Arcade>().flag_mode);
+        }
+    }
+
+    #[test]
+    fn touch_card_drag_uses_release_position_and_cancel_never_commits() {
+        use bevy::input::touch::TouchPhase::*;
+        for end in [Ended, Canceled] {
+            let (mut app, window) = pointer_app(Screen::Cards);
+            let mut layout = app.world_mut().resource_mut::<ViewLayout>();
+            layout.cards[0] = Rect::from_corners(Vec2::new(10.0, 400.0), Vec2::new(110.0, 540.0));
+            layout.card_hits = layout.cards;
+            layout.card_order = vec![0];
+            layout.slots[0] = Rect::from_corners(Vec2::new(200.0, 100.0), Vec2::new(300.0, 240.0));
+            touch_event(&mut app, window, 1, Started, 30.0, 420.0);
+            touch_event(&mut app, window, 1, Moved, 150.0, 300.0);
+            touch_event(&mut app, window, 1, end, 230.0, 150.0);
+            app.update();
+            let state = app.world().resource::<Arcade>();
+            assert_eq!(
+                state.lab.slots,
+                if end == Ended {
+                    [Some(0), None, None]
+                } else {
+                    [None; 3]
+                }
+            );
+            assert!(state.lab.drag.is_none());
+            assert!(state.cursor.is_none());
+        }
+    }
+
+    #[test]
+    fn extra_fingers_and_mouse_events_cannot_steal_or_duplicate_a_touch() {
+        use bevy::input::touch::TouchPhase::*;
+        let (mut app, window) = pointer_app(Screen::Mines);
+        app.world_mut()
+            .resource_mut::<ViewLayout>()
+            .hits
+            .push(presentation::Hit {
+                rect: Rect::from_corners(Vec2::ZERO, Vec2::splat(100.0)),
+                action: Action::FlagMode,
+            });
+        touch_event(&mut app, window, 1, Started, 30.0, 30.0);
+        touch_event(&mut app, window, 2, Started, 40.0, 40.0);
+        move_pointer(&mut app, window, 50.0, 50.0);
+        mouse_event(&mut app, window, MouseButton::Left, ButtonState::Pressed);
+        app.update();
+        assert!(!app.world().resource::<Arcade>().flag_mode);
+        assert!(
+            app.world()
+                .resource::<Arcade>()
+                .cursor
+                .unwrap()
+                .distance(Vec2::splat(30.0))
+                < 0.001
+        );
+        touch_event(&mut app, window, 1, Ended, 30.0, 30.0);
+        touch_event(&mut app, window, 2, Moved, 30.0, 30.0);
+        touch_event(&mut app, window, 2, Ended, 30.0, 30.0);
+        app.update();
+        assert!(app.world().resource::<Arcade>().flag_mode);
+        touch_event(&mut app, window, 3, Started, 30.0, 30.0);
+        touch_event(&mut app, window, 3, Ended, 30.0, 30.0);
+        app.update();
+        assert!(!app.world().resource::<Arcade>().flag_mode);
+        // The owner has ended, the remaining finger disappears while hidden,
+        // and no End event arrives. Lifecycle recovery must clear that contact.
+        touch_event(&mut app, window, 4, Started, 30.0, 30.0);
+        touch_event(&mut app, window, 5, Started, 40.0, 40.0);
+        touch_event(&mut app, window, 4, Ended, 30.0, 30.0);
+        app.update();
+        assert!(app.world().resource::<Arcade>().flag_mode);
+        app.world_mut().resource_mut::<Arcade>().lifecycle += 1;
+        touch_event(&mut app, window, 6, Started, 30.0, 30.0);
+        touch_event(&mut app, window, 6, Ended, 30.0, 30.0);
+        app.update();
+        assert!(!app.world().resource::<Arcade>().flag_mode);
+    }
+
+    #[test]
+    fn touch_swipes_pan_both_boards_without_revealing_or_selecting_a_cell() {
+        use bevy::input::touch::TouchPhase::*;
+        for screen in [Screen::Mines, Screen::Sudoku] {
+            let (mut app, window) = pointer_app(screen);
+            let before = app.world().resource::<Arcade>().save.clone();
+            let mut layout = app.world_mut().resource_mut::<ViewLayout>();
+            let clip = Rect::from_corners(Vec2::ZERO, Vec2::splat(288.0));
+            let board = presentation::BoardLayout {
+                origin: Vec2::ZERO,
+                clip,
+                cell: 32.0,
+            };
+            let action = if screen == Screen::Mines {
+                layout.board = Some(board);
+                Action::Board
+            } else {
+                layout.sudoku = Some(board);
+                layout.sudoku_max_pan = Vec2::splat(64.0);
+                Action::SudokuCell
+            };
+            layout.hits.push(presentation::Hit { rect: clip, action });
+            touch_event(&mut app, window, 1, Started, 160.0, 160.0);
+            touch_event(&mut app, window, 1, Moved, 80.0, 120.0);
+            touch_event(&mut app, window, 1, Ended, 60.0, 100.0);
+            app.update();
+            let state = app.world().resource::<Arcade>();
+            assert_eq!(state.save, before);
+            if screen == Screen::Mines {
+                assert!(state.pan.distance(Vec2::new(100.0, 60.0)) < 0.001);
+            } else {
+                assert!(state.sudoku_ui.pan.distance(Vec2::new(64.0, 60.0)) < 0.001);
+                assert!(!state.sudoku_ui.follow);
+            }
+        }
+    }
+
+    #[test]
+    fn touch_settings_swipe_scrolls_without_changing_the_setting_under_the_finger() {
+        use bevy::input::touch::TouchPhase::*;
+        let (mut app, window) = pointer_app(Screen::Settings);
+        let before = app.world().resource::<Arcade>().save.settings.clone();
+        let mut layout = app.world_mut().resource_mut::<ViewLayout>();
+        layout.settings_clip = Some(Rect::from_corners(Vec2::ZERO, Vec2::splat(400.0)));
+        layout.settings_max_scroll = 300.0;
+        layout.hits.push(presentation::Hit {
+            rect: Rect::from_corners(Vec2::ZERO, Vec2::splat(400.0)),
+            action: Action::Palette,
+        });
+        touch_event(&mut app, window, 1, Started, 200.0, 300.0);
+        touch_event(&mut app, window, 1, Moved, 200.0, 150.0);
+        touch_event(&mut app, window, 1, Ended, 200.0, 100.0);
+        app.update();
+        let state = app.world().resource::<Arcade>();
+        assert_eq!(state.settings_scroll, 200.0);
+        assert_eq!(state.save.settings, before);
+    }
+
+    #[test]
+    fn resize_focus_loss_and_lifecycle_changes_cancel_pending_touch_actions() {
+        use bevy::input::touch::TouchPhase::*;
+        for interruption in 0..3 {
+            let (mut app, window) = pointer_app(Screen::Mines);
+            app.world_mut()
+                .resource_mut::<ViewLayout>()
+                .hits
+                .push(presentation::Hit {
+                    rect: Rect::from_corners(Vec2::ZERO, Vec2::splat(100.0)),
+                    action: Action::FlagMode,
+                });
+            touch_event(&mut app, window, 1, Started, 30.0, 30.0);
+            app.update();
+            match interruption {
+                0 => {
+                    app.world_mut().write_message(WindowEvent::WindowResized(
+                        bevy::window::WindowResized {
+                            window,
+                            width: 1200.0,
+                            height: 800.0,
+                        },
+                    ));
+                }
+                1 => {
+                    app.world_mut()
+                        .write_message(WindowEvent::WindowFocused(WindowFocused {
+                            window,
+                            focused: false,
+                        }));
+                }
+                _ => {
+                    app.world_mut().resource_mut::<Arcade>().lifecycle += 1;
+                }
+            }
+            touch_event(&mut app, window, 1, Ended, 30.0, 30.0);
+            app.update();
+            assert!(!app.world().resource::<Arcade>().flag_mode);
+            // A second interruption can lose the end event entirely. A fresh
+            // contact must still work when the page resumes.
+            touch_event(&mut app, window, 2, Started, 30.0, 30.0);
+            app.update();
+            if interruption == 0 {
+                app.world_mut().write_message(WindowEvent::WindowResized(
+                    bevy::window::WindowResized {
+                        window,
+                        width: 1200.0,
+                        height: 800.0,
+                    },
+                ));
+                app.update();
+            } else if interruption == 1 {
+                app.world_mut()
+                    .write_message(WindowEvent::WindowFocused(WindowFocused {
+                        window,
+                        focused: false,
+                    }));
+                app.update();
+            } else {
+                app.world_mut().resource_mut::<Arcade>().lifecycle += 1;
+            }
+            touch_event(&mut app, window, 3, Started, 30.0, 30.0);
+            touch_event(&mut app, window, 3, Ended, 30.0, 30.0);
+            app.update();
+            assert!(app.world().resource::<Arcade>().flag_mode);
+        }
+    }
+
     #[test]
     fn queued_clicks_keep_their_own_cells_in_one_update() {
         let (mut app, window) = pointer_app(Screen::Mines);
@@ -1709,15 +2023,144 @@ mod tests {
     }
 
     #[test]
+    fn sudoku_mouse_edit_actions_return_keyboard_focus_and_undo_reveals_the_edited_cell() {
+        let mut state = sudoku_test_state();
+        let original = state.sudoku_ui.selected;
+        state.focus = 9;
+        state.act(Action::SudokuPencil);
+        assert_eq!(state.focus, 3);
+        state.focus = 9;
+        state.act(Action::Sudoku(sudoku::Command::Enter {
+            index: original,
+            value: 2,
+            pencil: true,
+        }));
+        assert_eq!(state.focus, 3);
+        state.sudoku_ui.selected = (original + 1) % state.save.sudoku.game.board.len();
+        state.focus = 10;
+        state.act(Action::Sudoku(sudoku::Command::Undo));
+        assert_eq!(state.focus, 3);
+        assert_eq!(state.sudoku_ui.selected, original);
+        assert_eq!(state.save.sudoku.game.notes[original], 0);
+        assert!(state.sudoku_ui.follow);
+    }
+
+    #[test]
+    fn sudoku_setup_stages_choices_without_touching_the_live_save() {
+        let mut state = sudoku_test_state();
+        state.act(Action::Sudoku(sudoku::Command::Hint));
+        state.focus = 7;
+        let before = state.save.clone();
+        let selected = state.sudoku_ui.selected;
+        let undo = state.sudoku_ui.history.len();
+        state.act(Action::SudokuSetup);
+        assert!(matches!(state.modal, Some(Pending::SudokuSetup)));
+        state.act(Action::SudokuChooseSize(16));
+        state.act(Action::SudokuChooseDifficulty(sudoku::Difficulty::Expert));
+        assert_eq!(
+            state.sudoku_ui.setup,
+            Some((16, sudoku::Difficulty::Expert))
+        );
+        assert_eq!(state.save, before);
+        state.act(Action::SudokuChooseSize(7));
+        assert_eq!(
+            state.sudoku_ui.setup,
+            Some((16, sudoku::Difficulty::Expert))
+        );
+        state.act(Action::Cancel);
+        assert!(state.modal.is_none());
+        assert!(state.sudoku_ui.setup.is_none());
+        assert_eq!(state.focus, 7);
+        assert_eq!(state.sudoku_ui.selected, selected);
+        assert_eq!(state.sudoku_ui.history.len(), undo);
+        assert_eq!(state.save, before);
+        state.act(Action::SudokuSetup);
+        state.act(Action::SudokuChooseSize(6));
+        state.act(Action::SudokuChooseDifficulty(sudoku::Difficulty::Hard));
+        state.act(Action::SudokuStart);
+        assert!(matches!(
+            state.modal,
+            Some(Pending::NewSudoku(6, sudoku::Difficulty::Hard))
+        ));
+        assert_eq!(state.save, before);
+        state.act(Action::Cancel);
+        assert_eq!(state.focus, 7);
+        assert_eq!(state.save, before);
+        state.act(Action::SudokuSetup);
+        state.act(Action::SudokuChooseSize(6));
+        state.act(Action::SudokuChooseDifficulty(sudoku::Difficulty::Hard));
+        state.act(Action::SudokuStart);
+        state.act(Action::Confirm);
+        assert_eq!(state.save.sudoku.game.size, 6);
+        assert_eq!(state.save.sudoku.game.difficulty, sudoku::Difficulty::Hard);
+        assert!(!state.save.sudoku.game.assisted);
+        assert_eq!(state.save.sudoku.game.givens[state.sudoku_ui.selected], 0);
+        assert_eq!(state.save.minesweeper, before.minesweeper);
+        assert_eq!(state.save.blackjack, before.blackjack);
+        assert_eq!(state.save.baccarat, before.baccarat);
+    }
+
+    #[test]
+    fn sudoku_setup_keyboard_activates_the_focused_option_and_keeps_cancel_safe() {
+        let (mut app, _) = pointer_app(Screen::Sudoku);
+        app.insert_resource(ButtonInput::<KeyCode>::default())
+            .add_message::<MouseWheel>()
+            .add_systems(Update, handle_input);
+        app.world_mut()
+            .resource_mut::<Arcade>()
+            .act(Action::SudokuSetup);
+        {
+            let mut layout = app.world_mut().resource_mut::<ViewLayout>();
+            layout.modal = true;
+            layout.hits = [
+                Action::Cancel,
+                Action::SudokuChooseSize(16),
+                Action::SudokuChooseDifficulty(sudoku::Difficulty::Expert),
+                Action::SudokuStart,
+            ]
+            .into_iter()
+            .map(|action| presentation::Hit {
+                rect: Rect::default(),
+                action,
+            })
+            .collect();
+        }
+        app.world_mut().resource_mut::<Arcade>().focus = 1;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert_eq!(app.world().resource::<Arcade>().save.sudoku.game.size, 9);
+        assert_eq!(
+            app.world().resource::<Arcade>().sudoku_ui.setup.unwrap().0,
+            16
+        );
+        assert!(matches!(
+            app.world().resource::<Arcade>().modal,
+            Some(Pending::SudokuSetup)
+        ));
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut().resource_mut::<Arcade>().focus = 0;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert!(app.world().resource::<Arcade>().modal.is_none());
+        assert_eq!(app.world().resource::<Arcade>().save.sudoku.game.size, 9);
+    }
+
+    #[test]
     fn replacing_sudoku_requires_confirmation_and_preserves_other_games() {
         let mut state = sudoku_test_state();
         state.act(Action::Sudoku(sudoku::Command::Hint));
         let before = state.save.clone();
-        state.act(Action::SudokuNew(16, sudoku::Difficulty::Expert));
+        state.request_sudoku(16, sudoku::Difficulty::Expert);
         assert!(matches!(state.modal, Some(Pending::NewSudoku(16, _))));
         state.act(Action::Cancel);
         assert_eq!(state.save, before);
-        state.act(Action::SudokuNew(16, sudoku::Difficulty::Expert));
+        state.request_sudoku(16, sudoku::Difficulty::Expert);
         state.act(Action::Confirm);
         assert!(state.modal.is_none());
         assert_eq!(state.save.sudoku.game.size, 16);
@@ -1735,18 +2178,28 @@ mod tests {
     #[test]
     fn sudoku_keyboard_values_are_scoped_and_hex_letters_remain_values() {
         let mut state = sudoku_test_state();
-        let mut layout = ViewLayout::default();
-        layout.hits.push(presentation::Hit {
-            rect: Rect::default(),
-            action: Action::SudokuCell,
-        });
-        state.focus = 0;
+        let mut layout = ViewLayout {
+            hits: [
+                Action::SudokuSetup,
+                Action::SudokuSetup,
+                Action::SudokuSetup,
+                Action::SudokuCell,
+            ]
+            .into_iter()
+            .map(|action| presentation::Hit {
+                rect: Rect::default(),
+                action,
+            })
+            .collect(),
+            ..default()
+        };
+        state.focus = 3;
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::Digit2);
         sudoku_app::board_keys(&mut state, &keys, &layout);
         let i = state.sudoku_ui.selected;
         assert_eq!(state.save.sudoku.game.board[i], 2);
-        layout.hits[0].action = Action::SudokuPencil;
+        layout.hits[3].action = Action::SudokuPencil;
         keys.reset_all();
         keys.press(KeyCode::Digit3);
         sudoku_app::board_keys(&mut state, &keys, &layout);
@@ -1760,7 +2213,7 @@ mod tests {
             .iter()
             .position(|v| *v == 0)
             .unwrap();
-        layout.hits[0].action = Action::SudokuCell;
+        layout.hits[3].action = Action::SudokuCell;
         keys.reset_all();
         keys.press(KeyCode::KeyA);
         sudoku_app::board_keys(&mut state, &keys, &layout);
@@ -1825,45 +2278,83 @@ mod tests {
     fn sudoku_controls_fit_supported_layouts_and_selection_can_pan_into_view() {
         for (width, height) in [(1280, 720), (390, 844), (1000, 560), (390, 560)] {
             for size in sudoku::SIZES {
-                let mut app = App::new();
-                let mut state = sudoku_test_state();
-                state.save.sudoku.game = sudoku::Sudoku::new(size, sudoku::Difficulty::Easy, 3);
-                state.sudoku_ui.selected = usize::from(size).pow(2) - 1;
-                state.sudoku_ui.follow = true;
-                app.insert_resource(state)
-                    .insert_resource(Time::<()>::default())
-                    .init_resource::<ViewLayout>()
-                    .init_resource::<rendering::Frame>()
-                    .init_resource::<rendering::RenderOptions>()
-                    .add_systems(Update, presentation::paint);
-                app.world_mut().spawn((
-                    Window {
-                        resolution: WindowResolution::new(width, height),
-                        ..default()
-                    },
-                    PrimaryWindow,
-                ));
-                app.update();
-                let layout = app.world().resource::<ViewLayout>();
-                for hit in &layout.hits {
+                for show_highlights in [false, true] {
+                    let mut app = App::new();
+                    let mut state = sudoku_test_state();
+                    state.save.sudoku.game = sudoku::Sudoku::new(size, sudoku::Difficulty::Easy, 3);
+                    state.sudoku_ui.selected = usize::from(size).pow(2) - 1;
+                    state.sudoku_ui.follow = true;
+                    state.sudoku_ui.show_highlights = show_highlights;
+                    app.insert_resource(state)
+                        .insert_resource(Time::<()>::default())
+                        .init_resource::<ViewLayout>()
+                        .init_resource::<rendering::Frame>()
+                        .init_resource::<rendering::RenderOptions>()
+                        .add_systems(Update, presentation::paint);
+                    app.world_mut().spawn((
+                        Window {
+                            resolution: WindowResolution::new(width, height),
+                            ..default()
+                        },
+                        PrimaryWindow,
+                    ));
+                    app.update();
+                    let layout = app.world().resource::<ViewLayout>();
+                    for hit in &layout.hits {
+                        assert!(
+                            hit.rect.min.x >= 0.0
+                                && hit.rect.min.y >= 0.0
+                                && hit.rect.max.x <= width as f32 + 0.1
+                                && hit.rect.max.y <= height as f32 - 33.0,
+                            "{width}x{height} size{size}: {:?}",
+                            hit.rect
+                        );
+                    }
+                    let board = layout.sudoku.as_ref().unwrap();
+                    assert!(board.cell >= 32.0);
+                    let n = usize::from(size);
+                    let p = board.origin + Vec2::splat((n as f32 - 0.5) * board.cell);
                     assert!(
-                        hit.rect.min.x >= 0.0
-                            && hit.rect.min.y >= 0.0
-                            && hit.rect.max.x <= width as f32 + 0.1
-                            && hit.rect.max.y <= height as f32 - 33.0,
-                        "{width}x{height} size{size}: {:?}",
-                        hit.rect
+                        board.clip.contains(p),
+                        "selected last cell must be reachable"
                     );
+                    assert_eq!(board.index(p, n, n), Some(n * n - 1));
+                    for (i, hit) in layout.hits.iter().enumerate() {
+                        for other in &layout.hits[i + 1..] {
+                            let overlap = hit.rect.intersect(other.rect);
+                            assert!(
+                                overlap.width() <= 0.0 || overlap.height() <= 0.0,
+                                "overlapping Sudoku controls at {width}x{height} size{size}: {:?} {:?}",
+                                hit.rect,
+                                other.rect
+                            );
+                        }
+                    }
+                    app.world_mut()
+                        .resource_mut::<Arcade>()
+                        .act(Action::SudokuSetup);
+                    app.update();
+                    let layout = app.world().resource::<ViewLayout>();
+                    assert!(matches!(
+                        layout.hits.first().unwrap().action,
+                        Action::Cancel
+                    ));
+                    assert!(matches!(
+                        layout.hits.last().unwrap().action,
+                        Action::SudokuStart
+                    ));
+                    for hit in &layout.hits {
+                        assert!(
+                            hit.rect.min.x >= 0.0
+                                && hit.rect.min.y >= 0.0
+                                && hit.rect.max.x <= width as f32 + 0.1
+                                && hit.rect.max.y <= height as f32
+                                && hit.rect.height() >= 32.0,
+                            "setup control out of bounds {width}x{height}: {:?}",
+                            hit.rect
+                        );
+                    }
                 }
-                let board = layout.sudoku.as_ref().unwrap();
-                assert!(board.cell >= 32.0);
-                let n = usize::from(size);
-                let p = board.origin + Vec2::splat((n as f32 - 0.5) * board.cell);
-                assert!(
-                    board.clip.contains(p),
-                    "selected last cell must be reachable"
-                );
-                assert_eq!(board.index(p, n, n), Some(n * n - 1));
             }
         }
     }
