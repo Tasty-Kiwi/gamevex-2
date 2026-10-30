@@ -328,6 +328,19 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
             rounded_outline_clipped(f, r.min, r.size(), 6.0, 2.0, NEON_GOLD, clip);
         }
     }
+    super::table_fx::draw(
+        f,
+        clip,
+        &s.mahjong_ui.feedback,
+        |anchor| match anchor {
+            crate::table_feedback::Anchor::Tile(index) => game.tiles.get(index).map(|_| {
+                let p = origin + unit_positions[index] * cell_w - pos_min * cell_w;
+                rect(p.x, p.y, cell_w, cell_h)
+            }),
+            crate::table_feedback::Anchor::Pile(_) => None,
+        },
+        s.save.settings.reduced_motion,
+    );
     if game.won() {
         let center = clip.center();
         let panel = rect(

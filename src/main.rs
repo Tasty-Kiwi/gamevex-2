@@ -8,6 +8,7 @@ mod platform;
 mod presentation;
 mod rendering;
 mod sudoku_app;
+mod table_feedback;
 mod touch_input;
 
 use bevy::{
@@ -43,6 +44,7 @@ pub(crate) struct Arcade {
     pub flag_mode: bool,
     pub pan: Vec2,
     pub settings_scroll: f32,
+    pub lobby_scroll: f32,
     pub cursor: Option<Vec2>,
     pub card_positions: [Vec2; 5],
     pub drag_offset: Vec2,
@@ -115,6 +117,7 @@ impl Arcade {
             flag_mode: false,
             pan: Vec2::ZERO,
             settings_scroll: 0.0,
+            lobby_scroll: 0.0,
             cursor: None,
             card_positions: [Vec2::splat(-1000.0); 5],
             drag_offset: Vec2::ZERO,
@@ -161,6 +164,7 @@ impl Arcade {
     }
 
     fn open(&mut self, screen: Screen) {
+        self.patience_ui.drag = None;
         if self.screen == Screen::Blackjack
             && !matches!(screen, Screen::Blackjack | Screen::Settings)
             && self.save.blackjack.legal(blackjack::Command::Abandon)
@@ -199,6 +203,8 @@ impl Arcade {
         if patience_app::is_family(screen) && self.screen != Screen::Settings {
             self.patience_ui = Default::default();
         }
+        self.mahjong_ui.feedback.clear();
+        self.patience_ui.feedback.clear();
         self.screen = screen;
         if !matches!(screen, Screen::Blackjack | Screen::Settings) {
             self.blackjack_motion.clear();
@@ -291,7 +297,28 @@ impl Arcade {
         if !allowed_in_modal {
             return;
         }
-        self.sound = if matches!(action, Action::Blackjack(_) | Action::Baccarat(_)) {
+        let table_action = matches!(
+            action,
+            Action::PatiencePick(..)
+                | Action::PatienceTarget(..)
+                | Action::PatienceNew(..)
+                | Action::PatienceDeal
+                | Action::PatienceUndo
+                | Action::PatienceHint
+                | Action::MahjongTile(..)
+                | Action::MahjongHint
+                | Action::MahjongUndo
+                | Action::MahjongShuffle
+                | Action::MahjongRestart
+                | Action::MahjongNew(..)
+                | Action::MahjongZen(..)
+        ) || (matches!(action, Action::Confirm)
+            && matches!(
+                self.modal,
+                Some(Pending::NewPatience(..) | Pending::NewMahjong(..))
+            ));
+        self.sound = if table_action || matches!(action, Action::Blackjack(_) | Action::Baccarat(_))
+        {
             None
         } else {
             Some(440.0)
@@ -388,19 +415,41 @@ impl Arcade {
             Action::PatienceDeal => {
                 if self.patience_game_mut().deal() {
                     self.patience_changed("Dealt cards.");
+                    let count = self.patience_game().variant.columns();
+                    let anchors: Vec<_> = (0..count)
+                        .map(|i| table_feedback::Anchor::Pile(patience::Pile::Tableau(i)))
+                        .collect();
+                    self.patience_ui
+                        .feedback
+                        .emit(table_feedback::EffectKind::Deal, &anchors);
                 } else {
                     self.patience_ui.message =
                         "No deal available. Spider needs every column filled.".into();
+                    self.patience_ui.feedback.emit(
+                        table_feedback::EffectKind::Invalid,
+                        &[table_feedback::Anchor::Pile(patience::Pile::Stock)],
+                    );
                 }
             }
             Action::PatienceUndo => {
                 if self.patience_game_mut().undo() {
+                    self.patience_ui.feedback.clear();
                     self.patience_changed("Move restored.");
+                    self.patience_ui
+                        .feedback
+                        .emit(table_feedback::EffectKind::Undo, &[]);
                 }
             }
             Action::PatienceHint => {
                 if let Some((p, i, to)) = self.patience_game_mut().hint() {
                     self.patience_ui.selected = Some((p, i));
+                    self.patience_ui.feedback.emit(
+                        table_feedback::EffectKind::Hint,
+                        &[
+                            table_feedback::Anchor::Pile(p),
+                            table_feedback::Anchor::Pile(to),
+                        ],
+                    );
                     self.patience_ui.message = format!(
                         "Hint: move to {}. Assisted run.",
                         patience_app::pile_name(to)
@@ -408,12 +457,19 @@ impl Arcade {
                     self.persist();
                 } else {
                     self.patience_ui.message = "No move found. Try the stock or undo.".into();
+                    self.patience_ui
+                        .feedback
+                        .emit(table_feedback::EffectKind::Stuck, &[]);
                 }
             }
             Action::MahjongTile(i) => self.mahjong_tile(i),
             Action::MahjongHint => self.mahjong_hint(),
             Action::MahjongUndo => {
                 if self.save.mahjong.undo() {
+                    self.mahjong_ui.feedback.clear();
+                    self.mahjong_ui
+                        .feedback
+                        .emit(table_feedback::EffectKind::Undo, &[]);
                     self.mahjong_ui.completion_age = None;
                     self.mahjong_ui.message = "Pair restored.".into();
                     self.mahjong_ui.selected = None;
@@ -426,6 +482,10 @@ impl Arcade {
                     self.mahjong_ui.selected = None;
                     self.mahjong_ui.hint = None;
                     self.mahjong_ui.message = "Faces shuffled. Finish not guaranteed.".into();
+                    self.mahjong_ui.feedback.clear();
+                    self.mahjong_ui
+                        .feedback
+                        .emit(table_feedback::EffectKind::Shuffle, &[]);
                     self.persist();
                 }
             }
@@ -568,6 +628,7 @@ impl Arcade {
     }
 
     fn open_modal(&mut self, pending: Pending) {
+        self.patience_ui.drag = None;
         self.modal_return_focus = self.focus;
         self.modal = Some(pending);
         // Dialog hit order starts with Cancel, keeping destructive confirmation opt-in.
@@ -726,6 +787,9 @@ fn lifecycle(
     }
     if !foreground || transitioned {
         state.lab.cancel_drag();
+        state.patience_ui.drag = None;
+        state.patience_ui.feedback.clear();
+        state.mahjong_ui.feedback.clear();
     }
     state.save_age += delta.min(0.5) as f32;
     state.motion_time += delta.min(0.1) as f32;
@@ -754,6 +818,10 @@ fn lifecycle(
         if was_busy && !state.baccarat_motion.busy() {
             state.focus = 3;
         }
+    }
+    if foreground {
+        state.mahjong_ui.feedback.tick(delta as f32);
+        state.patience_ui.feedback.tick(delta as f32);
     }
     if foreground
         && state.modal.is_none()
@@ -853,6 +921,7 @@ fn handle_pointer_input(
     // Browser canvas metrics can change before winit emits a resize event.
     if !layout_valid {
         state.lab.cancel_drag();
+        state.patience_ui.drag = None;
         touch.reset(&mut state, &mut pointer);
     }
     if !window.focused || !platform::visible() {
@@ -893,15 +962,18 @@ fn handle_pointer_input(
             WindowEvent::CursorLeft(_) if !touch.active() => {
                 *pointer = None;
                 state.lab.cancel_drag();
+                state.patience_ui.drag = None;
             }
             WindowEvent::WindowResized(_) | WindowEvent::WindowScaleFactorChanged(_) => {
                 state.lab.cancel_drag();
+                state.patience_ui.drag = None;
                 touch.reset(&mut state, &mut pointer);
                 layout_valid = false;
             }
             WindowEvent::WindowFocused(event) if !event.focused => {
                 *pointer = None;
                 state.lab.cancel_drag();
+                state.patience_ui.drag = None;
                 touch.reset(&mut state, &mut pointer);
             }
             _ => {}
@@ -919,7 +991,9 @@ fn handle_pointer_input(
         });
         if state.cursor.is_none() {
             state.lab.cancel_drag();
+            state.patience_ui.drag = None;
         }
+        state.patience_drag_update();
         if !window.focused || !platform::visible() {
             continue;
         }
@@ -931,33 +1005,22 @@ fn handle_pointer_input(
             }
             match event.state {
                 ButtonState::Pressed => {
-                    pointer_pressed(&mut state, &layout, event.button);
-                    if patience_app::is_family(state.screen)
+                    let card_press = event.button == MouseButton::Left
+                        && patience_app::is_family(state.screen)
                         && state.modal.is_none()
-                        && event.button == MouseButton::Left
-                    {
-                        state.patience_ui.drag_start = state.cursor;
+                        && state.patience_press(&layout);
+                    if card_press {
+                        state.audio_started = true;
+                        state.keyboard = false;
+                    } else {
+                        pointer_pressed(&mut state, &layout, event.button);
                     }
                 }
                 ButtonState::Released
-                    if event.button == MouseButton::Left
-                        && patience_app::is_family(state.screen) =>
+                    if event.button == MouseButton::Left && state.patience_ui.drag.is_some() =>
                 {
-                    if let (Some(start), Some(end)) =
-                        (state.patience_ui.drag_start.take(), state.cursor)
-                        && start.distance(end) > 8.0
-                        && let Some(pile) = layout
-                            .hits
-                            .iter()
-                            .rev()
-                            .find(|h| h.rect.contains(end))
-                            .and_then(|h| match h.action {
-                                Action::PatiencePick(p, _) | Action::PatienceTarget(p) => Some(p),
-                                _ => None,
-                            })
-                    {
-                        state.patience_target(pile);
-                    }
+                    state.patience_drag_update();
+                    state.patience_release(&layout);
                 }
                 ButtonState::Released
                     if event.button == MouseButton::Left && state.lab.drag.is_some() =>
@@ -1090,8 +1153,11 @@ fn handle_input(
     if keys.just_pressed(KeyCode::Escape) {
         if state.modal.is_some() {
             state.act(Action::Cancel);
+        } else if state.patience_ui.drag.is_some() {
+            state.patience_ui.drag = None;
         } else if state.lab.drag.is_some() {
             state.lab.cancel_drag();
+            state.patience_ui.drag = None;
         } else if state.screen != Screen::Lobby {
             state.act(Action::Back);
         }
@@ -1267,8 +1333,30 @@ fn handle_input(
             state.settings_scroll -= 180.0;
         }
     }
+    if state.screen == Screen::Lobby && state.modal.is_none() {
+        let step = if keys.just_pressed(KeyCode::PageDown) {
+            240.0
+        } else if keys.just_pressed(KeyCode::PageUp) {
+            -240.0
+        } else {
+            0.0
+        };
+        if step != 0.0 {
+            state.keyboard = false;
+            state.lobby_scroll = (state.lobby_scroll + step).clamp(0.0, layout.lobby_max_scroll);
+        }
+    }
     for event in wheel.read() {
         state.keyboard = false;
+        if state.screen == Screen::Lobby && state.modal.is_none() {
+            let scale = if event.unit == MouseScrollUnit::Line {
+                36.0
+            } else {
+                1.0
+            };
+            state.lobby_scroll =
+                (state.lobby_scroll - event.y * scale).clamp(0.0, layout.lobby_max_scroll);
+        }
         if patience_app::is_family(state.screen)
             && state.modal.is_none()
             && layout
@@ -1374,9 +1462,9 @@ struct SoundVoice {
 fn cue_priority(cue: Option<casino_audio::SoundCue>) -> u8 {
     use casino_audio::SoundCue::*;
     match cue {
-        Some(Win | Natural | Push | Loss | GameOver) => 3,
-        Some(Bust | Reveal | Double | Split | Surrender | Insurance) => 2,
-        Some(Card) => 0,
+        Some(Win | Natural | Push | Loss | GameOver | TableWin) => 3,
+        Some(Bust | Reveal | Double | Split | Surrender | Insurance | TableRun) => 2,
+        Some(Card | TablePick | TilePick) => 0,
         _ => 1,
     }
 }
@@ -1388,20 +1476,17 @@ fn play_sound(
     mut bank: ResMut<SoundBank>,
     mut voices: Query<(Entity, &SoundVoice, Option<&mut AudioSink>)>,
 ) {
+    let cue_screen = matches!(
+        state.screen,
+        Screen::Blackjack | Screen::Baccarat | Screen::Mahjong
+    ) || patience_app::is_family(state.screen);
     let enabled =
         state.audio_started && !state.save.settings.muted && state.save.settings.volume > 0.0;
     #[cfg(target_arch = "wasm32")]
-    browser_audio::update(
-        state.save.settings.volume,
-        !enabled,
-        matches!(state.screen, Screen::Blackjack | Screen::Baccarat),
-    );
+    browser_audio::update(state.save.settings.volume, !enabled, cue_screen);
     let mut active = Vec::new();
     for (entity, voice, sink) in &mut voices {
-        if !enabled
-            || (voice.cue.is_some()
-                && !matches!(state.screen, Screen::Blackjack | Screen::Baccarat))
-        {
+        if !enabled || (voice.cue.is_some() && !cue_screen) {
             commands.entity(entity).despawn();
         } else {
             if let Some(mut sink) = sink {
@@ -1416,6 +1501,14 @@ fn play_sound(
         .into_iter()
         .map(|cue| (Some(cue), 0.0))
         .collect();
+    let table_sounds = if state.screen == Screen::Mahjong {
+        state.mahjong_ui.feedback.take_sounds()
+    } else if patience_app::is_family(state.screen) {
+        state.patience_ui.feedback.take_sounds()
+    } else {
+        Vec::new()
+    };
+    requests.extend(table_sounds.into_iter().map(|cue| (Some(cue), 0.0)));
     if let Some(frequency) = state.sound.take() {
         requests.push((None, frequency));
     }
@@ -1534,7 +1627,7 @@ fn tone(frequency: f32) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    fn test_arcade() -> Arcade {
+    pub(super) fn test_arcade() -> Arcade {
         Arcade {
             save: Save::new(1),
             screen: Screen::Lobby,
@@ -1549,6 +1642,7 @@ mod tests {
             flag_mode: false,
             pan: Vec2::ZERO,
             settings_scroll: 0.0,
+            lobby_scroll: 0.0,
             cursor: None,
             card_positions: [Vec2::ZERO; 5],
             drag_offset: Vec2::ZERO,
@@ -2069,6 +2163,63 @@ mod tests {
                 .count(),
             0
         );
+    }
+
+    #[test]
+    fn table_audio_obeys_gesture_mute_volume_and_does_not_replay_dropped_cues() {
+        for screen in [Screen::FreeCell, Screen::Mahjong] {
+            let mut app = App::new();
+            let mut state = test_arcade();
+            state.screen = screen;
+            app.insert_resource(state)
+                .insert_resource(Assets::<AudioSource>::default())
+                .init_resource::<SoundBank>()
+                .add_systems(Update, play_sound);
+            let emit = |app: &mut App, kind| {
+                let mut s = app.world_mut().resource_mut::<Arcade>();
+                if screen == Screen::Mahjong {
+                    s.mahjong_ui
+                        .feedback
+                        .emit(kind, &[table_feedback::Anchor::Tile(0)]);
+                } else {
+                    s.patience_ui.feedback.emit(
+                        kind,
+                        &[table_feedback::Anchor::Pile(patience::Pile::Cell(0))],
+                    );
+                }
+            };
+            emit(&mut app, table_feedback::EffectKind::Move);
+            app.update();
+            assert_eq!(app.world().resource::<SoundBank>().played, 0);
+            app.world_mut().resource_mut::<Arcade>().audio_started = true;
+            app.update();
+            assert_eq!(app.world().resource::<SoundBank>().played, 0);
+            emit(&mut app, table_feedback::EffectKind::Move);
+            app.update();
+            assert_eq!(app.world().resource::<SoundBank>().played, 1);
+            app.world_mut().resource_mut::<Arcade>().save.settings.muted = true;
+            emit(&mut app, table_feedback::EffectKind::Win);
+            app.update();
+            assert_eq!(app.world().resource::<SoundBank>().played, 1);
+            assert_eq!(
+                app.world_mut()
+                    .query::<&SoundVoice>()
+                    .iter(app.world())
+                    .count(),
+                0
+            );
+            app.world_mut().resource_mut::<Arcade>().save.settings.muted = false;
+            app.update();
+            assert_eq!(app.world().resource::<SoundBank>().played, 1);
+            app.world_mut()
+                .resource_mut::<Arcade>()
+                .save
+                .settings
+                .volume = 0.0;
+            emit(&mut app, table_feedback::EffectKind::Hint);
+            app.update();
+            assert_eq!(app.world().resource::<SoundBank>().played, 1);
+        }
     }
 
     #[test]
@@ -2985,6 +3136,140 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+    #[test]
+    fn patience_win_is_transient_and_undo_does_not_replay_it() {
+        use cards::{Card, Suit};
+        use patience::Pile;
+        use table_feedback::EffectKind;
+        let mut s = test_arcade();
+        s.screen = Screen::Solitaire;
+        let game = &mut s.save.solitaire;
+        game.stock.clear();
+        game.waste.clear();
+        game.tableau = vec![vec![]; 7];
+        game.foundations = [Suit::Spades, Suit::Hearts, Suit::Clubs, Suit::Diamonds]
+            .into_iter()
+            .map(|suit| {
+                std::iter::once(14)
+                    .chain(2..=13)
+                    .map(|rank| Card::new(rank, suit, true))
+                    .collect()
+            })
+            .collect();
+        game.tableau[0].push(game.foundations[3].pop().unwrap());
+        assert!(s.save.validate().is_ok());
+        s.patience_pick(Pile::Tableau(0), 0);
+        s.patience_target(Pile::Foundation(3));
+        assert!(s.patience_game().won());
+        assert!(s.save.validate().is_ok());
+        assert_eq!(s.patience_ui.feedback.events.len(), 1);
+        assert_eq!(s.patience_ui.feedback.events[0].kind, EffectKind::Win);
+        assert_eq!(
+            s.patience_ui.feedback.take_sounds(),
+            vec![casino_audio::SoundCue::TableWin]
+        );
+        s.act(Action::PatienceUndo);
+        assert!(!s.patience_game().won());
+        assert!(
+            s.patience_ui
+                .feedback
+                .events
+                .iter()
+                .all(|e| e.kind != EffectKind::Win)
+        );
+        s.open(Screen::Lobby);
+        s.open(Screen::Solitaire);
+        assert!(s.patience_ui.feedback.events.is_empty());
+        assert!(s.patience_ui.feedback.take_sounds().is_empty());
+    }
+    #[test]
+    fn mahjong_final_pair_emits_win_and_navigation_clears_feedback() {
+        use table_feedback::EffectKind;
+        let mut s = test_arcade();
+        s.screen = Screen::Mahjong;
+        let [a, b] = s.save.mahjong.available_pairs()[0];
+        for (i, tile) in s.save.mahjong.tiles.iter_mut().enumerate() {
+            tile.removed = i != a && i != b;
+        }
+        s.mahjong_tile(a);
+        s.mahjong_tile(b);
+        assert!(s.save.mahjong.won());
+        assert!(
+            s.mahjong_ui
+                .feedback
+                .events
+                .iter()
+                .any(|e| e.kind == EffectKind::Win)
+        );
+        assert!(
+            s.mahjong_ui
+                .feedback
+                .take_sounds()
+                .contains(&casino_audio::SoundCue::TableWin)
+        );
+        let saved = s.save.mahjong.clone();
+        s.open(Screen::Lobby);
+        s.open(Screen::Mahjong);
+        assert_eq!(s.save.mahjong, saved);
+        assert!(s.mahjong_ui.feedback.events.is_empty());
+        assert!(s.mahjong_ui.feedback.take_sounds().is_empty());
+    }
+
+    #[test]
+    fn lobby_scroll_preserves_all_games_and_reveals_keyboard_focus() {
+        for (width, height) in [(1280, 720), (390, 740), (360, 560)] {
+            let mut app = App::new();
+            app.insert_resource(test_arcade())
+                .insert_resource(Time::<()>::default())
+                .init_resource::<ViewLayout>()
+                .init_resource::<rendering::Frame>()
+                .init_resource::<rendering::RenderOptions>()
+                .add_systems(Update, presentation::paint);
+            app.world_mut().spawn((
+                Window {
+                    resolution: WindowResolution::new(width, height),
+                    ..default()
+                },
+                PrimaryWindow,
+            ));
+            app.update();
+            let layout = app.world().resource::<ViewLayout>();
+            let games: Vec<_> = layout
+                .hits
+                .iter()
+                .enumerate()
+                .filter(
+                    |(_, h)| matches!(h.action, Action::Open(screen) if !matches!(screen, Screen::Settings | Screen::Lobby)),
+                )
+                .collect();
+            assert_eq!(games.len(), 9);
+            let first = games[0].0;
+            let last = games.last().unwrap().0;
+            assert!(matches!(
+                games.last().unwrap().1.action,
+                Action::Open(Screen::Spider)
+            ));
+            assert_eq!(games.last().unwrap().1.rect.height(), 0.0);
+            {
+                let mut state = app.world_mut().resource_mut::<Arcade>();
+                state.keyboard = true;
+                state.focus = last;
+            }
+            app.update();
+            let layout = app.world().resource::<ViewLayout>();
+            let clip = layout.lobby_clip.unwrap();
+            assert_eq!(layout.hits[last].rect.height(), 76.0);
+            for hit in &layout.hits[first..] {
+                if hit.rect.height() > 0.0 {
+                    assert!(hit.rect.min.y >= clip.min.y && hit.rect.max.y <= clip.max.y);
+                }
+            }
+            assert!(app.world().resource::<Arcade>().lobby_scroll > 0.0);
+            app.world_mut().resource_mut::<Arcade>().focus = first;
+            app.update();
+            assert_eq!(app.world().resource::<Arcade>().lobby_scroll, 0.0);
         }
     }
 }

@@ -3,6 +3,7 @@ use crate::*;
 
 #[derive(Default)]
 pub(crate) struct MahjongUi {
+    pub feedback: crate::table_feedback::TableFeedback,
     pub selected: Option<usize>,
     pub hint: Option<[usize; 2]>,
     pub reveal_hint: bool,
@@ -31,6 +32,9 @@ impl Arcade {
         self.save.mahjong = mahjong::Game::new(layout, seed);
         self.save.mahjong.zen = zen;
         self.mahjong_ui = Default::default();
+        self.mahjong_ui
+            .feedback
+            .emit(crate::table_feedback::EffectKind::Shuffle, &[]);
         self.modal = None;
         self.focus = 3;
         self.fractional_ms = 0.0;
@@ -39,6 +43,10 @@ impl Arcade {
     }
     pub(crate) fn mahjong_tile(&mut self, index: usize) {
         if !self.save.mahjong.selectable(index) {
+            self.mahjong_ui.feedback.emit(
+                crate::table_feedback::EffectKind::Invalid,
+                &[crate::table_feedback::Anchor::Tile(index)],
+            );
             self.mahjong_ui.message = "Blocked: clear above and at least one side.".into();
             return;
         }
@@ -48,9 +56,23 @@ impl Arcade {
         } else if let Some(first) = self.mahjong_ui.selected {
             let before_shuffles = self.save.mahjong.shuffles;
             if self.save.mahjong.match_pair(first, index) {
+                self.mahjong_ui.feedback.emit(
+                    crate::table_feedback::EffectKind::Move,
+                    &[
+                        crate::table_feedback::Anchor::Tile(first),
+                        crate::table_feedback::Anchor::Tile(index),
+                    ],
+                );
                 self.mahjong_ui.selected = None;
                 if self.save.mahjong.won() {
                     self.mahjong_ui.completion_age = Some(0.0);
+                    self.mahjong_ui.feedback.emit(
+                        crate::table_feedback::EffectKind::Win,
+                        &[
+                            crate::table_feedback::Anchor::Tile(first),
+                            crate::table_feedback::Anchor::Tile(index),
+                        ],
+                    );
                 }
                 if self.save.mahjong.won() && !self.save.mahjong.assisted && !self.save.mahjong.zen
                 {
@@ -63,11 +85,20 @@ impl Arcade {
                         self.save.mahjong_records[index] = Some(elapsed);
                     }
                 }
-                self.sound = Some(if self.save.mahjong.won() {
-                    1040.0
-                } else {
-                    800.0
-                });
+                if self.save.mahjong.shuffles > before_shuffles {
+                    self.mahjong_ui.feedback.emit(
+                        crate::table_feedback::EffectKind::Shuffle,
+                        &[
+                            crate::table_feedback::Anchor::Tile(first),
+                            crate::table_feedback::Anchor::Tile(index),
+                        ],
+                    );
+                }
+                if self.save.mahjong.stuck() && !self.save.mahjong.won() {
+                    self.mahjong_ui
+                        .feedback
+                        .emit(crate::table_feedback::EffectKind::Stuck, &[]);
+                }
                 self.mahjong_ui.message = if self.save.mahjong.won() {
                     "Board cleared!"
                 } else if self.save.mahjong.shuffles > before_shuffles {
@@ -81,11 +112,24 @@ impl Arcade {
                 self.persist();
             } else {
                 self.mahjong_ui.selected = Some(index);
+                self.mahjong_ui.feedback.emit(
+                    crate::table_feedback::EffectKind::Invalid,
+                    &[
+                        crate::table_feedback::Anchor::Tile(first),
+                        crate::table_feedback::Anchor::Tile(index),
+                    ],
+                );
                 self.mahjong_ui.message = "Different faces. New tile selected.".into();
             }
         } else {
             self.mahjong_ui.selected = Some(index);
             self.mahjong_ui.message.clear();
+        }
+        if self.mahjong_ui.selected == Some(index) {
+            self.mahjong_ui.feedback.emit(
+                crate::table_feedback::EffectKind::Pick,
+                &[crate::table_feedback::Anchor::Tile(index)],
+            );
         }
     }
     pub(crate) fn mahjong_hint(&mut self) {
@@ -98,9 +142,21 @@ impl Arcade {
         }
         self.mahjong_ui.selected = None;
         if self.mahjong_ui.hint.is_some() {
+            if let Some([a, b]) = self.mahjong_ui.hint {
+                self.mahjong_ui.feedback.emit(
+                    crate::table_feedback::EffectKind::Hint,
+                    &[
+                        crate::table_feedback::Anchor::Tile(a),
+                        crate::table_feedback::Anchor::Tile(b),
+                    ],
+                );
+            }
             self.mahjong_ui.reveal_hint = true;
             self.mahjong_ui.message = "Hint pair. Press again to find the other tile.".into();
         } else {
+            self.mahjong_ui
+                .feedback
+                .emit(crate::table_feedback::EffectKind::Stuck, &[]);
             self.mahjong_ui.message = "No pairs. Undo, shuffle, or start again.".into();
         }
         self.persist();

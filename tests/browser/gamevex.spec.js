@@ -25,11 +25,56 @@ async function openReady(page) {
   })).toBe(true);
 }
 
+async function clickLobbyAction(page, key, touch = false) {
+  await resetLobbyScroll(page);
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
+    if (Array.isArray(bounds[key]) && bounds[key].length === 4) {
+      const p = center(bounds[key]);
+      return touch ? touchSurface(page, p.x, p.y) : clickSurface(page, p.x, p.y);
+    }
+    if (!(await scrollLobby(page, bounds))) break;
+  }
+  throw new Error(`Lobby action ${key} did not become visible after scrolling`);
+}
+
+async function scrollLobby(page, data = null) {
+  const current = data || await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
+  if ((current.lobbyScroll || 0) >= (current.lobbyMaxScroll || 0)) return false;
+  const old = current.lobbyScroll || 0;
+  await page.mouse.move(190, 360);
+  await page.mouse.wheel(0, 420);
+  await expect.poll(async () => page.locator(canvas).evaluate((el) =>
+    JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).not.toBe(old);
+  return true;
+}
+
+async function resetLobbyScroll(page) {
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const data = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
+    const old = data.lobbyScroll || 0;
+    if (old <= 0) return;
+    await page.mouse.move(190, 360);
+    await page.mouse.wheel(0, -420);
+    await expect.poll(async () => page.locator(canvas).evaluate((el) =>
+      JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).toBeLessThan(old);
+  }
+  throw new Error('Could not return lobby scroll to the top');
+}
+
+async function revealLobbyAction(page, key) {
+  await resetLobbyScroll(page);
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
+    if (Array.isArray(bounds[key]) && bounds[key].length === 4) return bounds[key];
+    if (!(await scrollLobby(page, bounds))) break;
+  }
+  throw new Error(`Lobby action ${key} did not become visible after scrolling`);
+}
+
 async function enterCards(page) {
   await openReady(page);
-  const actions = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const p = center(actions.cards);
-  await clickSurface(page, p.x, p.y);
+  await clickLobbyAction(page, 'cards');
   await expect(page.locator(canvas)).toHaveAttribute('data-interaction', /"screen":"Cards"/);
 }
 
@@ -228,9 +273,7 @@ test('resizing during a card drag cancels the drag without placing it', async ({
 test('Expert mines board supports horizontal pan on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 760 });
   await openReady(page);
-  const actions = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const p = center(actions.mines);
-  await clickSurface(page, p.x, p.y);
+  await clickLobbyAction(page, 'mines');
   await expect(page.locator(canvas)).toHaveAttribute('data-interaction', /"screen":"Mines"/);
   // Expert is the third difficulty control in the mines header.
   const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.difficultyBounds));
@@ -245,9 +288,7 @@ test('Expert mines board supports horizontal pan on a narrow viewport', async ({
 
 test('Blackjack deals one hand, resolves it, and restores the round after reload', async ({ page }) => {
   await openReady(page);
-  const actions = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const p = center(actions.blackjack);
-  await clickSurface(page, p.x, p.y);
+  await clickLobbyAction(page, 'blackjack');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Blackjack');
   await expect.poll(async () => (await interaction(page)).phase).toBe('Betting');
 
@@ -260,9 +301,7 @@ test('Blackjack deals one hand, resolves it, and restores the round after reload
   await page.reload();
   await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
   expect(await blackjackSave(page)).toEqual(dealt);
-  const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const reenter = center(lobby.blackjack);
-  await clickSurface(page, reenter.x, reenter.y);
+  await clickLobbyAction(page, 'blackjack');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Blackjack');
 
   // Diagnostics use PascalCase phases; the persisted save uses snake_case.
@@ -284,9 +323,7 @@ test('Blackjack deals one hand, resolves it, and restores the round after reload
   await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
   expect(await blackjackSave(page)).toEqual(beforeReload);
 
-  const restoredActions = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const blackjack = center(restoredActions.blackjack);
-  await clickSurface(page, blackjack.x, blackjack.y);
+  await clickLobbyAction(page, 'blackjack');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Blackjack');
   await expect.poll(async () => blackjackSave(page)).toEqual(beforeReload);
 });
@@ -296,9 +333,7 @@ test('Baccarat settles, persists, and starts the next round with the same balanc
   // staged deal still has to finish and match the saved round before reload.
   if (process.env.CI) test.setTimeout(60_000);
   await openReady(page);
-  const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const baccarat = center(lobby.baccarat);
-  await clickSurface(page, baccarat.x, baccarat.y);
+  await clickLobbyAction(page, 'baccarat');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Baccarat');
   await expect.poll(async () => (await interaction(page)).phase).toBe('Betting');
 
@@ -346,9 +381,7 @@ test('Baccarat settles, persists, and starts the next round with the same balanc
   })).toBe(true);
   expect(await baccaratSave()).toEqual(settled);
   await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
-  const restoredLobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const restoredEntry = center(restoredLobby.baccarat);
-  await clickSurface(page, restoredEntry.x, restoredEntry.y);
+  await clickLobbyAction(page, 'baccarat');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Baccarat');
   await expect.poll(async () => (await baccaratSave()).phase).toBe('settled');
   expect(await baccaratSave()).toEqual(settled);
@@ -369,9 +402,7 @@ test('casino audio starts on a gesture, caches cues, and releases finished voice
   await expect.poll(async () => (await audio())?.played).toBe(0);
   expect((await audio()).backend).toBe('WebAudio');
   expect((await audio()).running).toBe(false);
-  const lobby = await c.evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const entry = center(lobby.baccarat);
-  await clickSurface(page, entry.x, entry.y);
+  await clickLobbyAction(page, 'baccarat');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Baccarat');
   for (const side of ['player', 'banker', 'tie', 'player']) {
     const bounds = await c.evaluate((el, side) => JSON.parse(el.dataset.actionBounds)[side], side);
@@ -391,17 +422,13 @@ test('casino audio starts on a gesture, caches cues, and releases finished voice
 
 async function enterSudoku(page) {
   await openReady(page);
-  const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const entry = center(lobby.sudoku);
-  await clickSurface(page, entry.x, entry.y);
+  await clickLobbyAction(page, 'sudoku');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Sudoku');
 }
 
 async function enterSudokuTouch(page) {
   await openReady(page);
-  const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const entry = center(lobby.sudoku);
-  await touchSurface(page, entry.x, entry.y);
+  await clickLobbyAction(page, 'sudoku', true);
   await expect.poll(async () => (await interaction(page)).screen).toBe('Sudoku');
 }
 
@@ -531,9 +558,7 @@ test('Sudoku pencil notes, erase, undo, and reload keep the editable cell state'
   await page.reload();
   await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
   expect(sudokuGameplay((await sudokuSave(page)).game)).toEqual(sudokuGameplay(noteGame));
-  const restored = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-  const entry = center(restored.sudoku);
-  await clickSurface(page, entry.x, entry.y);
+  await clickLobbyAction(page, 'sudoku');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Sudoku');
   expect((await sudokuSave(page)).game.notes[target.index]).toBe(1);
 });
@@ -553,9 +578,7 @@ test('a Sudoku hint remains assisted after reload and other games keep their sav
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
   for (const mode of ['mines', 'blackjack', 'baccarat']) {
-    const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-    const entry = center(bounds[mode]);
-    await clickSurface(page, entry.x, entry.y);
+    await clickLobbyAction(page, mode);
     const expectedScreen = mode[0].toUpperCase() + mode.slice(1);
     await expect.poll(async () => (await interaction(page)).screen).toBe(expectedScreen);
     await page.keyboard.press('Escape');
@@ -754,9 +777,7 @@ test.describe('touch input regressions', () => {
 
   test('a touch opens Sudoku from the lobby', async ({ page }) => {
     await openReady(page);
-    const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-    const entry = center(lobby.sudoku);
-    await touchSurface(page, entry.x, entry.y);
+    await clickLobbyAction(page, 'sudoku', true);
     await expect.poll(async () => (await interaction(page)).screen).toBe('Sudoku');
   });
 
@@ -790,8 +811,7 @@ test.describe('touch input regressions', () => {
 
   test('a canceled touch on Sudoku entry does not open the game', async ({ page }) => {
     await openReady(page);
-    const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-    const entry = center(lobby.sudoku);
+    const entry = center(await revealLobbyAction(page, 'sudoku'));
     await cancelTouch(page, entry);
     await expect.poll(async () => page.locator(canvas).evaluate(async (el) => {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -826,9 +846,7 @@ test.describe('touch input regressions', () => {
 
   test('a touch drag places a Card Lab card into an empty slot', async ({ page }) => {
     await openReady(page);
-    const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
-    const entry = center(lobby.cards);
-    await touchSurface(page, entry.x, entry.y);
+    await clickLobbyAction(page, 'cards', true);
     await expect.poll(async () => (await interaction(page)).screen).toBe('Cards');
 
     const cards = await settledBounds(page);

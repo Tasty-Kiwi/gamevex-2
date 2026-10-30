@@ -117,12 +117,15 @@ pub struct ViewLayout {
     pub card_order: Vec<usize>,
     pub settings_max_scroll: f32,
     pub settings_clip: Option<Rect>,
+    pub lobby_clip: Option<Rect>,
+    pub lobby_max_scroll: f32,
     pub sudoku: Option<BoardLayout>,
     pub sudoku_max_pan: Vec2,
     pub mahjong_clip: Option<Rect>,
     pub mahjong_max_pan: Vec2,
     pub patience_clip: Option<Rect>,
     pub patience_max_pan: Vec2,
+    pub patience_origins: Vec<(gamevex_core::patience::Pile, usize, Vec2)>,
 }
 
 pub fn paint(
@@ -153,11 +156,14 @@ pub fn paint(
     layout.sudoku_max_pan = Vec2::ZERO;
     layout.mahjong_clip = None;
     layout.patience_clip = None;
+    layout.patience_origins.clear();
     layout.patience_max_pan = Vec2::ZERO;
     layout.mahjong_max_pan = Vec2::ZERO;
     layout.card_order.clear();
     layout.settings_max_scroll = 0.0;
     layout.settings_clip = None;
+    layout.lobby_clip = None;
+    layout.lobby_max_scroll = 0.0;
     options.scale_factor = metrics.map(|[_, _, d]| d).unwrap_or(window.scale_factor());
     options.pixel = state.save.settings.display_preset == DisplayPreset::PixelCrt;
     frame.min_stroke = if options.pixel { 2.0 } else { 0.0 };
@@ -202,7 +208,7 @@ pub fn paint(
     }
     header(&mut frame, &state, &mut layout, margin);
     match state.screen {
-        Screen::Lobby => lobby(&mut frame, &state, &mut layout, margin, w),
+        Screen::Lobby => lobby(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Mines => mines(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Cards => draw_cards(
             &mut frame,
@@ -263,6 +269,7 @@ mod mahjong;
 mod patience;
 mod screens;
 mod sudoku;
+mod table_fx;
 
 use blackjack::blackjack;
 use screens::{button, cards as draw_cards, dialog, lobby, mines, rects_overlap, settings};
@@ -313,6 +320,17 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
     if let Ok(json) = serde_json::to_string(&interaction) {
         platform::diagnostics_attribute("data-interaction", &json);
     }
+    if state.screen == Screen::Mahjong || crate::patience_app::is_family(state.screen) {
+        let feedback = if state.screen == Screen::Mahjong {
+            &state.mahjong_ui.feedback
+        } else {
+            &state.patience_ui.feedback
+        };
+        platform::diagnostics_attribute("data-table-feedback", &serde_json::json!({
+            "events":feedback.events.iter().map(|e|serde_json::json!({"kind":format!("{:?}",e.kind),"age":e.age})).collect::<Vec<_>>(),
+            "reduced":state.save.settings.reduced_motion
+        }).to_string());
+    }
     if state.screen == Screen::Cards {
         let bounds = layout
             .slots
@@ -324,12 +342,18 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
     if state.screen == Screen::Lobby {
         let action_bounds = |screen| {
             layout.hits.iter().find_map(|hit| match hit.action {
-                Action::Open(candidate) if candidate == screen => Some([
-                    hit.rect.min.x,
-                    hit.rect.min.y,
-                    hit.rect.width(),
-                    hit.rect.height(),
-                ]),
+                Action::Open(candidate)
+                    if candidate == screen
+                        && hit.rect.width() > 0.0
+                        && hit.rect.height() >= 30.0 =>
+                {
+                    Some([
+                        hit.rect.min.x,
+                        hit.rect.min.y,
+                        hit.rect.width(),
+                        hit.rect.height(),
+                    ])
+                }
                 _ => None,
             })
         };
@@ -341,6 +365,11 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "sudoku": action_bounds(Screen::Sudoku),
             "mahjong": action_bounds(Screen::Mahjong),
             "solitaire":action_bounds(Screen::Solitaire),
+            "freecell":action_bounds(Screen::FreeCell),
+            "spider":action_bounds(Screen::Spider),
+            "lobbyClip":layout.lobby_clip.map(|r| [r.min.x,r.min.y,r.width(),r.height()]),
+            "lobbyScroll":state.lobby_scroll,
+            "lobbyMaxScroll":layout.lobby_max_scroll,
         });
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
@@ -419,7 +448,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 Action::PatienceNew(_, true) => "restart".into(),
                 Action::PatienceNew(v, false) if v == state.patience_game().variant => "new".into(),
                 Action::PatienceNew(v, false) => format!("mode{v:?}"),
-                Action::Open(screen) => format!("family{screen:?}"),
+                Action::Open(Screen::Lobby) => "lobby".into(),
                 Action::Cancel => "cancel".into(),
                 Action::Confirm => "confirm".into(),
                 _ => continue,
@@ -450,7 +479,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             &serde_json::Value::Object(bounds).to_string(),
         );
         let g = state.patience_game();
-        platform::diagnostics_attribute("data-patience-view",&serde_json::json!({"variant":g.variant,"selected":state.patience_ui.selected.map(|(p,i)|(format!("{p:?}"),i)),"pan":[state.patience_ui.pan.x,state.patience_ui.pan.y],"won":g.won(),"clip":layout.patience_clip.map(|r|[r.min.x,r.min.y,r.width(),r.height()]),"maxPan":[layout.patience_max_pan.x,layout.patience_max_pan.y]}).to_string());
+        platform::diagnostics_attribute("data-patience-view",&serde_json::json!({"variant":g.variant,"selected":state.patience_ui.selected.map(|(p,i)|(format!("{p:?}"),i)),"dragActive":state.patience_ui.drag.is_some_and(|d|d.active),"dragSource":state.patience_ui.drag.map(|d|(format!("{:?}",d.source.0),d.source.1)),"pan":[state.patience_ui.pan.x,state.patience_ui.pan.y],"won":g.won(),"clip":layout.patience_clip.map(|r|[r.min.x,r.min.y,r.width(),r.height()]),"maxPan":[layout.patience_max_pan.x,layout.patience_max_pan.y]}).to_string());
     }
     if state.screen == Screen::Mahjong {
         let mut bounds = serde_json::Map::new();

@@ -1,4 +1,4 @@
-//! Small, deterministic synthesized cues for the casino games.
+//! Small, deterministic synthesized cues for casino, patience, and tile games.
 //!
 //! The sounds are rendered to a compact PCM WAV so callers can cache them as
 //! ordinary Bevy audio assets. No audio or random-number dependencies needed.
@@ -23,12 +23,23 @@ pub enum SoundCue {
     Push,
     Loss,
     GameOver,
+    TablePick,
+    TableMove,
+    TableDeal,
+    TableUndo,
+    TableHint,
+    TableShuffle,
+    TableInvalid,
+    TableRun,
+    TableWin,
+    TilePick,
+    TileMatch,
 }
 
-pub const ALL: [SoundCue; 16] = SoundCue::ALL;
+pub const ALL: [SoundCue; 27] = SoundCue::ALL;
 
 impl SoundCue {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 27] = [
         Self::Bet,
         Self::Deal,
         Self::Card,
@@ -45,6 +56,17 @@ impl SoundCue {
         Self::Push,
         Self::Loss,
         Self::GameOver,
+        Self::TablePick,
+        Self::TableMove,
+        Self::TableDeal,
+        Self::TableUndo,
+        Self::TableHint,
+        Self::TableShuffle,
+        Self::TableInvalid,
+        Self::TableRun,
+        Self::TableWin,
+        Self::TilePick,
+        Self::TileMatch,
     ];
 }
 
@@ -229,6 +251,102 @@ pub fn synthesize(cue: SoundCue) -> Vec<u8> {
                 note(0.220, 0.320, 330.0, 0.105, Bell),
                 note(0.460, 0.390, 262.0, 0.10, Bell),
                 note(0.460, 0.280, 131.0, 0.075, Sine),
+            ],
+        ),
+        // Board game interactions use quiet, woody clicks and small warm chimes.
+        C::TablePick => (
+            0.16,
+            &[
+                note(0.000, 0.055, 0.0, 0.14, Noise),
+                note(0.000, 0.105, 440.0, 0.10, Thud),
+                note(0.018, 0.095, 880.0, 0.045, Bell),
+            ],
+        ),
+        C::TableMove => (
+            0.20,
+            &[
+                note(0.000, 0.045, 0.0, 0.10, Noise),
+                note(0.006, 0.095, 330.0, 0.09, Thud),
+                note(0.045, 0.100, 550.0, 0.055, Bell),
+            ],
+        ),
+        // Card tables have a soft paper swish followed by a muted placement tap.
+        C::TableDeal => (
+            0.31,
+            &[
+                sweep(0.000, 0.190, 2300.0, 820.0, 0.13, Noise),
+                sweep(0.025, 0.130, 420.0, 250.0, 0.07, Thud),
+                note(0.190, 0.080, 280.0, 0.10, Thud),
+            ],
+        ),
+        C::TableUndo => (
+            0.25,
+            &[
+                sweep(0.000, 0.105, 620.0, 390.0, 0.08, Bell),
+                note(0.100, 0.100, 390.0, 0.075, Thud),
+                note(0.095, 0.100, 520.0, 0.04, Bell),
+            ],
+        ),
+        C::TableHint => (
+            0.30,
+            &[
+                note(0.000, 0.115, 660.0, 0.075, Bell),
+                note(0.135, 0.135, 990.0, 0.08, Bell),
+            ],
+        ),
+        C::TableShuffle => (
+            0.42,
+            &[
+                sweep(0.000, 0.240, 2500.0, 900.0, 0.11, Noise),
+                sweep(0.100, 0.210, 1900.0, 700.0, 0.085, Noise),
+                note(0.310, 0.080, 350.0, 0.08, Thud),
+            ],
+        ),
+        C::TableInvalid => (
+            0.30,
+            &[
+                sweep(0.000, 0.210, 520.0, 300.0, 0.075, Bell),
+                sweep(0.020, 0.180, 260.0, 190.0, 0.035, Sine),
+            ],
+        ),
+        C::TableRun => (
+            0.62,
+            &[
+                note(0.000, 0.150, 440.0, 0.085, Bell),
+                note(0.125, 0.160, 554.0, 0.085, Bell),
+                note(0.250, 0.180, 659.0, 0.09, Bell),
+                note(0.375, 0.230, 880.0, 0.10, Bell),
+            ],
+        ),
+        C::TableWin => (
+            0.92,
+            &[
+                note(0.000, 0.240, 523.0, 0.09, Bell),
+                note(0.115, 0.260, 659.0, 0.085, Bell),
+                note(0.230, 0.300, 784.0, 0.09, Bell),
+                note(0.345, 0.490, 1047.0, 0.10, Bell),
+                note(0.345, 0.380, 1319.0, 0.05, Bell),
+                note(0.345, 0.300, 1568.0, 0.035, Bell),
+            ],
+        ),
+        // Mahjong-like tile feedback: two dry wood taps, then a paired chime.
+        C::TilePick => (
+            0.18,
+            &[
+                note(0.000, 0.045, 0.0, 0.13, Noise),
+                note(0.000, 0.105, 260.0, 0.13, Thud),
+                note(0.000, 0.080, 1040.0, 0.045, Bell),
+            ],
+        ),
+        C::TileMatch => (
+            0.40,
+            &[
+                note(0.000, 0.055, 0.0, 0.12, Noise),
+                note(0.000, 0.110, 280.0, 0.12, Thud),
+                note(0.080, 0.055, 0.0, 0.10, Noise),
+                note(0.080, 0.115, 340.0, 0.10, Thud),
+                note(0.145, 0.145, 880.0, 0.075, Bell),
+                note(0.245, 0.145, 1320.0, 0.07, Bell),
             ],
         ),
     };

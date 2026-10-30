@@ -5,12 +5,12 @@ Verified locally on 29–30 October 2026. Implementation and artifacts live in `
 ## Automated checks and builds
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace --locked`: 170 tests passed (106 core, 64 application/platform).
+- `cargo test --workspace --locked`: 180 tests passed (106 core, 74 application/platform).
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
 - Shell scripts passed `bash -n`; the custom browser loader passed `node --check`.
-- The current 38-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader results for the current PR are described in the CI repair section below; local browser results do not establish physical-phone or other-browser compatibility.
+- The current 43-spec browser suite passed locally with the macOS/Metal override described below. Hosted Linux/SwiftShader results for the current PR are described in the CI repair section below; local browser results do not establish physical-phone or other-browser compatibility.
 
 Tests cover first-reveal protection over every difficulty and 32 seeds, mine/adjacency counts, flood behavior and pre-existing flags, correct/wrong-flag chording, win/loss and completed-command rejection, zero-seed determinism, save round trips and invalid-state checks, bounded elapsed time, record improvement, repeatable cards, valid/invalid/occupied drops, drag cancellation, native atomic file replacement, board picking with a clipped/panned viewport, modal focus restoration, timer transition/fractional-millisecond accounting, curved-monitor input mapping, old-save defaults for the added settings, and complete saved-data reset.
 
@@ -232,6 +232,28 @@ All 170 Rust tests, formatting, and strict workspace Clippy pass. Application te
 The push run 41069194414 and PR run 41070624930 each passed 36 browser cases and failed only FreeCell hint selection, including its retry. The test clicked Hint but polled a variant that was already FreeCell before the click. It then read a null selection before the slow software-rendered application frame consumed the pointer input.
 
 The repaired test waits for the actual selection and the saved assistance flag before using the hinted card bounds. A second case deliberately delays application animation callbacks by 300 ms while leaving pointer input and DOM inspection responsive. The old assertion failed all three delayed-frame reproductions locally; the repaired normal and delayed cases passed all six repeated runs. The complete 38-case suite also passes locally with Chromium/Metal and retries disabled. No production behavior, timeout, or retry policy changed. Hosted verification of the pushed repair remains pending.
+
+## Separate patience games and drag controls — 30 October 2026
+
+Solitaire, FreeCell, and Spider now have separate lobby entries and retain their existing independent saves. Their shared navigation tabs are removed. The nine-game lobby uses a clipped roster with a proportional scroll indicator, mouse-wheel and touch scrolling, Page Up/Page Down, and automatic reveal when Tab focuses an offscreen game. Header and session footer stay fixed. Tests verify stable navigation order, visible hit clipping, and focus reveal at desktop and phone sizes.
+
+Mouse and touch share a pending card press: crossing eight logical pixels starts a drag; releasing a tap uses selection, while a legal drop commits one move. Dragged cards lift from the table, legal destinations highlight, and the original grab point stays anchored even for clipped cards. Invalid drops, canceled touches, focus loss, resizing, and navigation cancel the drag without moving cards. Empty table swipes still pan. Core rules determine which stacks can be picked up.
+
+All 175 Rust tests and strict Clippy pass; native release packaging and WASM packaging succeed. All 42 browser regressions pass locally on Chromium/Metal with one worker and retries disabled (58.0 seconds), including phone touch dragging, active touch cancellation, invalid drops, lobby swiping, separate game navigation, and delayed-frame hint consumption. Actual native checks scrolled the lobby, opened FreeCell directly, and dragged a card into a free cell. Actual Chrome checks at 390×740 swiped the lobby to reveal all three entries, opened FreeCell by touch, and moved a card with touch input (moves increased from 1 to 2). Native and browser QA used isolated save namespaces. Physical-device and hosted-CI verification remain separate.
+
+![Phone lobby with separate game entries](screenshots/lobby-phone.png)
+
+## Table visual and audio feedback — 30 October 2026
+
+Solitaire, FreeCell, Spider, and Mahjong now share bounded transient presentation events: selection accents, green move trails and landing sparks, pair-removal outlines, red invalid-action pulses, undo/shuffle badges, gold hint/run accents, and win fountains. The most recent committed move removes stale action badges. Reduced motion renders stationary accents and labels; all effects stay within table bounds, expire, and clear on navigation or focus loss. Winning, undoing a win, and reopening saved games have application regression coverage. The events are not serialized and do not block input or change rules.
+
+Eleven new deterministic PCM cues distinguish card picks/moves/deals, woody tile picks and pair matches, undo, hints, shuffle, invalid actions, completed runs, and wins. Table actions use these cues without the old extra button bleep. Audio uses the existing gesture-unlocked browser context/native Bevy playback, shared mute/volume, bounded cache, four-voice cap, and prioritized win cues. New tests verify gesture gating, immediate mute, zero volume, drained cues not replaying after unmute, and bounded event queues/expiry. All 180 Rust tests, formatting, strict Clippy, native release packaging, and WASM release packaging pass. All 43 browser regressions pass locally with Chromium/Metal, one worker, and retries disabled (1.1 minutes). Actual browser checks confirmed match sparks and TileMatch playback, plus muted hints with an unchanged playback count and zero voices. Reduced-motion hints rendered stationary accents. These local checks do not establish hosted CI or physical-device results. All 27 synthesized cues pass WAV-format, headroom, deterministic waveform, quiet-tail, and distinctness checks. The preview contains Move, Tile match, Undo, Hint, Run, and Win.
+
+![Card move effects](screenshots/patience-effects.png)
+
+![Mahjong match effects](screenshots/mahjong-effects.png)
+
+[Table sound preview](audio/table-preview.wav)
 
 ## Screenshots
 

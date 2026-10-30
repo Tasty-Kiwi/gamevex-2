@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
     let wide = w > 800.0;
     let title_size = if f.size.y < 640.0 {
         (w / 13.0).clamp(28.0, 50.0)
@@ -32,133 +32,144 @@ pub(crate) fn lobby(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f3
             MUTED,
         );
     }
+
+    // Keep the page chrome fixed. The nine 76px entries form one scrollable roster.
     let compact_layout = f.size.y < 640.0;
-    let row_gap = if compact_layout { 8.0 } else { 10.0 };
-    let roster_y = y + if compact_layout { 50.0 } else { 76.0 };
-    let reserved = 48.0;
-    let row_h = ((f.size.y - roster_y - reserved - row_gap * 6.0) / 7.0).clamp(34.0, 96.0);
-    let a = rect(m, roster_y, w, row_h);
-    cabinet(
-        f,
-        s,
-        l,
-        a,
-        "MINESWEEPER",
-        "Read the field. Trust the numbers.",
-        "PLAY",
-        CYAN,
-        Action::Open(Screen::Mines),
-    );
-    let b = rect(m, roster_y + row_h + row_gap, w, row_h);
-    cabinet(
-        f,
-        s,
-        l,
-        b,
-        "CARD LAB",
-        "Deal, flip, drag. An interaction sandbox.",
-        "OPEN",
-        MAGENTA,
-        Action::Open(Screen::Cards),
-    );
-    let c = rect(m, roster_y + (row_h + row_gap) * 2.0, w, row_h);
-    cabinet(
-        f,
-        s,
-        l,
-        c,
-        "BLACKJACK",
-        "Five hands. One shoe. Your call.",
-        "DEAL",
-        GOLD,
-        Action::Open(Screen::Blackjack),
-    );
-    let d = rect(m, roster_y + (row_h + row_gap) * 3.0, w, row_h);
-    cabinet(
-        f,
-        s,
-        l,
-        d,
-        "BACCARAT",
-        "Player. Banker. Closest to nine.",
-        "DEAL",
-        GREEN,
-        Action::Open(Screen::Baccarat),
-    );
-    let e = rect(m, roster_y + (row_h + row_gap) * 4.0, w, row_h);
-    cabinet(
-        f,
-        s,
-        l,
-        e,
-        "SUDOKU",
-        "Every row. Every column. Every box.",
-        "PLAY",
-        CYAN,
-        Action::Open(Screen::Sudoku),
-    );
-    cabinet(
-        f,
-        s,
-        l,
-        rect(m, roster_y + (row_h + row_gap) * 5.0, w, row_h),
-        "MAHJONG",
-        "Match free tiles. Clear the stack.",
-        "PLAY",
-        GREEN,
-        Action::Open(Screen::Mahjong),
-    );
-    cabinet(
-        f,
-        s,
-        l,
-        rect(m, roster_y + (row_h + row_gap) * 6.0, w, row_h),
-        "SOLITAIRE FAMILY",
-        "Klondike, FreeCell, Spider.",
-        "PLAY",
-        GOLD,
-        Action::Open(Screen::Solitaire),
-    );
-    let records_y = roster_y + row_h * 7.0 + row_gap * 6.0 + 23.0;
-    if records_y + 75.0 < f.size.y - 40.0 {
-        f.text(
-            Vec2::new(m, records_y),
-            "Personal bests / Minesweeper",
-            15.0,
-            INK,
-        );
-        for (i, d) in Difficulty::ALL.into_iter().enumerate() {
-            let x = m + i as f32 * w / 3.0;
-            let name = difficulty_name(d);
-            let best = s
-                .save
-                .minesweeper
-                .records
-                .best(d)
-                .map(format_time)
-                .unwrap_or("--".into());
-            f.text(
-                Vec2::new(x, records_y + 30.0),
-                format!("{name}  {best}"),
-                if wide { 17.0 } else { 12.0 },
-                GOLD,
-            );
-        }
-        if records_y + 115.0 < f.size.y - 40.0 {
-            f.text(
-                Vec2::new(m, records_y + 82.0),
-                compact(&s.backend, ((w - 150.0) / 7.5).max(8.0) as usize),
-                12.0,
-                MUTED,
-            );
-            f.text(
-                Vec2::new(m + w - 135.0, records_y + 82.0),
-                format!("{:.0} fps / local", s.fps),
-                12.0,
-                MUTED,
-            );
+    let roster_top = y + if compact_layout { 50.0 } else { 76.0 };
+    let roster_bottom = (f.size.y - 40.0).max(roster_top + 1.0);
+    let clip = rect(m, roster_top, w, roster_bottom - roster_top);
+    const ROW_H: f32 = 76.0;
+    const GAP: f32 = 10.0;
+    const COUNT: usize = 9;
+    let content_h = COUNT as f32 * ROW_H + (COUNT - 1) as f32 * GAP;
+    l.lobby_clip = Some(clip);
+    l.lobby_max_scroll = (content_h - clip.height()).max(0.0);
+    let roster_hit_base = l.hits.len();
+    if s.keyboard
+        && l.lobby_max_scroll > 0.0
+        && let Some(row) = s.focus.checked_sub(roster_hit_base).filter(|i| *i < COUNT)
+    {
+        let row_top = row as f32 * (ROW_H + GAP);
+        if row_top < s.lobby_scroll {
+            s.lobby_scroll = row_top;
+        } else if row_top + ROW_H > s.lobby_scroll + clip.height() {
+            s.lobby_scroll = row_top + ROW_H - clip.height();
         }
     }
+    s.lobby_scroll = s.lobby_scroll.clamp(0.0, l.lobby_max_scroll);
+    let scroll = s.lobby_scroll;
+    f.rect(clip.min, clip.size(), BG);
+
+    let entries = [
+        (
+            "MINESWEEPER",
+            "Read the field. Trust the numbers.",
+            "PLAY",
+            CYAN,
+            Screen::Mines,
+        ),
+        (
+            "CARD LAB",
+            "Deal, flip, drag. An interaction sandbox.",
+            "OPEN",
+            MAGENTA,
+            Screen::Cards,
+        ),
+        (
+            "BLACKJACK",
+            "Five hands. One shoe. Your call.",
+            "DEAL",
+            GOLD,
+            Screen::Blackjack,
+        ),
+        (
+            "BACCARAT",
+            "Player. Banker. Closest to nine.",
+            "DEAL",
+            GREEN,
+            Screen::Baccarat,
+        ),
+        (
+            "SUDOKU",
+            "Every row. Every column. Every box.",
+            "PLAY",
+            CYAN,
+            Screen::Sudoku,
+        ),
+        (
+            "MAHJONG",
+            "Match free tiles. Clear the stack.",
+            "PLAY",
+            GREEN,
+            Screen::Mahjong,
+        ),
+        (
+            "SOLITAIRE",
+            "Build down in alternating colors.",
+            "PLAY",
+            GOLD,
+            Screen::Solitaire,
+        ),
+        (
+            "FREECELL",
+            "Four free cells. Plan every move.",
+            "PLAY",
+            CYAN,
+            Screen::FreeCell,
+        ),
+        (
+            "SPIDER",
+            "Build suited sequences. Clear the tableau.",
+            "PLAY",
+            MAGENTA,
+            Screen::Spider,
+        ),
+    ];
+    for (i, (title, desc, verb, color, screen)) in entries.into_iter().enumerate() {
+        let row = rect(m, clip.min.y + i as f32 * (ROW_H + GAP) - scroll, w, ROW_H);
+        cabinet(
+            f,
+            s,
+            l,
+            row,
+            clip,
+            title,
+            desc,
+            verb,
+            color,
+            Action::Open(screen),
+        );
+    }
+    if l.lobby_max_scroll > 0.0 {
+        let track = rect(
+            clip.max.x - 4.0,
+            clip.min.y + 2.0,
+            3.0,
+            (clip.height() - 4.0).max(1.0),
+        );
+        f.rect(track.min, track.size(), EDGE);
+        let thumb_h = (track.height() * clip.height() / content_h)
+            .max(22.0)
+            .min(track.height());
+        let thumb_y = track.min.y + (track.height() - thumb_h) * (scroll / l.lobby_max_scroll);
+        f.rect(
+            Vec2::new(track.min.x, thumb_y),
+            Vec2::new(track.width(), thumb_h),
+            CYAN,
+        );
+    }
+}
+
+fn intersect(a: Rect, b: Rect) -> Rect {
+    Rect {
+        min: a.min.max(b.min),
+        max: a.max.min(b.max),
+    }
+}
+
+fn offscreen_hit() -> Rect {
+    let p = Vec2::splat(-10_000.0);
+    Rect { min: p, max: p }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -167,74 +178,111 @@ fn cabinet(
     s: &Arcade,
     l: &mut ViewLayout,
     r: Rect,
+    clip: Rect,
     title: &str,
     desc: &str,
     verb: &str,
     color: Color,
     action: Action,
 ) {
+    let visible = intersect(r, clip);
     let index = l.hits.len();
-    let hot = s.cursor.is_some_and(|p| r.contains(p)) || (s.keyboard && s.focus == index);
+    let hot = s.cursor.is_some_and(|p| r.contains(p) && clip.contains(p))
+        || (s.keyboard && s.focus == index);
     f.rect(
-        r.min,
-        r.size(),
+        visible.min,
+        visible.size(),
         if hot {
             Color::srgb(0.04, 0.1, 0.14)
         } else {
             PANEL
         },
     );
-    f.outline(
-        r.min,
-        r.size(),
-        if hot { 2.0 } else { 1.0 },
-        if hot { color } else { EDGE },
+    // Draw only clipped border segments so scrolling rows cannot paint into the page chrome.
+    let edge = if hot { color } else { EDGE };
+    clipped_line(
+        f,
+        Vec2::new(r.min.x, r.min.y),
+        Vec2::new(r.max.x, r.min.y),
+        clip,
+        edge,
     );
-    f.rect(r.min, Vec2::new(5.0, r.height()), color);
+    clipped_line(
+        f,
+        Vec2::new(r.min.x, r.max.y),
+        Vec2::new(r.max.x, r.max.y),
+        clip,
+        edge,
+    );
+    clipped_line(
+        f,
+        Vec2::new(r.min.x, r.min.y),
+        Vec2::new(r.min.x, r.max.y),
+        clip,
+        edge,
+    );
+    clipped_line(
+        f,
+        Vec2::new(r.max.x, r.min.y),
+        Vec2::new(r.max.x, r.max.y),
+        clip,
+        edge,
+    );
+    let accent = intersect(rect(r.min.x, r.min.y, 5.0, r.height()), clip);
+    f.rect(accent.min, accent.size(), color);
     let small = r.width() < 600.0;
-    let short_row = r.height() < 90.0;
-    f.text(
-        r.min + Vec2::new(23.0, if r.height() < 60.0 { 8.0 } else { 13.0 }),
-        title,
-        if short_row {
-            20.0
-        } else if small {
-            22.0
-        } else {
-            30.0
-        },
-        INK,
-    );
-    if !small && !short_row {
-        f.text(r.min + Vec2::new(24.0, 61.0), desc, 15.0, MUTED);
+    let title_size = if small { 22.0 } else { 27.0 };
+    let desc_size = if small { 12.0 } else { 14.0 };
+    let verb_size = if small { 15.0 } else { 20.0 };
+    let verb_x = r.max.x - if small { 64.0 } else { 112.0 };
+    let title_pos = r.min + Vec2::new(23.0, 11.0);
+    let desc_pos = r.min + Vec2::new(24.0, 48.0);
+    let verb_pos = Vec2::new(verb_x, r.min.y + 26.0);
+    if title_pos.y >= clip.min.y && title_pos.y + title_size <= clip.max.y {
+        f.text(title_pos, title, title_size, INK);
+    }
+    if desc_pos.y >= clip.min.y && desc_pos.y + desc_size <= clip.max.y {
+        let available = (verb_x - desc_pos.x - 8.0).max(0.0);
+        let desc = compact(desc, (available / (desc_size * 0.58)).floor() as usize);
+        f.text(desc_pos, desc, desc_size, MUTED);
+    }
+    if verb_pos.y >= clip.min.y && verb_pos.y + verb_size <= clip.max.y {
+        f.text(verb_pos, verb, verb_size, color);
+    }
+    let hit = intersect(r, clip);
+    let hit = if hit.width() > 0.0 && hit.height() > 0.0 {
+        hit
     } else {
-        let short_desc = match title {
-            "MINESWEEPER" => "A safe first move. A new field.",
-            "BLACKJACK" => "Five hands. One shoe. Play local.",
-            "BACCARAT" => "Player, Banker or Tie. Closest to 9.",
-            "SUDOKU" => "Every row, column and box.",
-            "MAHJONG" => "Match free ends. Clear the stack.",
-            _ => "Card interaction sandbox.",
-        };
-        let desc_y = if short_row {
-            (r.height() - 19.0).max(30.0)
+        offscreen_hit()
+    };
+    l.hits.push(Hit { rect: hit, action });
+}
+
+fn clipped_line(f: &mut Frame, a: Vec2, b: Vec2, clip: Rect, color: Color) {
+    let d = b - a;
+    let mut lo: f32 = 0.0;
+    let mut hi: f32 = 1.0;
+    for (p, q) in [
+        (-d.x, a.x - clip.min.x),
+        (d.x, clip.max.x - a.x),
+        (-d.y, a.y - clip.min.y),
+        (d.y, clip.max.y - a.y),
+    ] {
+        if p.abs() <= f32::EPSILON {
+            if q < 0.0 {
+                return;
+            }
         } else {
-            53.0
-        };
-        if r.height() >= 50.0 {
-            f.text(
-                r.min + Vec2::new(24.0, desc_y),
-                short_desc,
-                if short_row { 10.0 } else { 12.0 },
-                MUTED,
-            );
+            let t = q / p;
+            if p < 0.0 {
+                lo = lo.max(t);
+            } else {
+                hi = hi.min(t);
+            }
+            if lo > hi {
+                return;
+            }
         }
     }
-    f.text(
-        Vec2::new(r.max.x - if small { 64.0 } else { 112.0 }, r.min.y + 26.0),
-        verb,
-        if small { 15.0 } else { 20.0 },
-        color,
-    );
-    l.hits.push(Hit { rect: r, action });
+    f.line(a + d * lo, a + d * hi, 1.0, color);
 }

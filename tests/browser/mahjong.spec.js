@@ -74,6 +74,14 @@ async function actions(page) {
   return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
 }
 
+async function tableFeedback(page) {
+  return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.tableFeedback || '{"events":[]}'));
+}
+
+async function audioStatus(page) {
+  return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.audio || '{}'));
+}
+
 async function clickAction(page, key) {
   await expect.poll(async () => {
     const bounds = (await actions(page))[key];
@@ -102,10 +110,32 @@ async function openMahjong(page) {
     return Boolean(current.version === 6 && current.mahjong && current.mahjong.tiles?.length === 144
       && current.solitaire && current.freecell && current.spider);
   })).toBe(true);
-  const lobby = await actions(page);
-  const entry = center(lobby.mahjong);
-  await clickSurface(page, entry.x, entry.y);
+  await clickLobbyAction(page, 'mahjong');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Mahjong');
+}
+
+async function clickLobbyAction(page, key) {
+  for (let reset = 0; reset < 16; reset++) {
+    const scroll = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0);
+    if (scroll <= 0) break;
+    await page.mouse.move(190, 360);
+    await page.mouse.wheel(0, -420);
+    await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).toBeLessThan(scroll);
+  }
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const data = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
+    const bounds = data[key];
+    if (Array.isArray(bounds) && bounds.length === 4) {
+      const p = center(bounds);
+      return clickSurface(page, p.x, p.y);
+    }
+    if ((data.lobbyScroll || 0) >= (data.lobbyMaxScroll || 0)) break;
+    await page.mouse.move(190, 360);
+    await page.mouse.wheel(0, 420);
+    const old = data.lobbyScroll || 0;
+    await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).not.toBe(old);
+  }
+  throw new Error(`Lobby action ${key} did not become visible after scrolling`);
 }
 
 function gameplay(game) {
@@ -177,15 +207,40 @@ async function clickPair(page, pair = null) {
   return target;
 }
 
-test('Mahjong removes a legal matching pair through the CRT-aware tile hit targets', async ({ page }) => {
+test('Mahjong pair match and undo feedback plays once, expires, and does not replay after reload', async ({ page }) => {
   await openMahjong(page);
   const before = await save(page);
+  const initialAudio = (await audioStatus(page)).played;
   const pair = await legalPairPoints(page);
   expect(pair).not.toBeNull();
   await clickPair(page, pair);
-  const after = await save(page);
+  let after = await save(page);
   for (const index of pair.pair) expect(after.mahjong.tiles[index].removed).toBe(true);
   expect(after.mahjong.history.at(-1)).toEqual(pair.pair);
+  expect(after.minesweeper).toEqual(before.minesweeper);
+  await expect.poll(async () => (await tableFeedback(page)).events.some((e) => e.kind === 'Move')).toBe(true);
+  await expect.poll(async () => (await audioStatus(page)).played).toBeGreaterThan(initialAudio);
+
+  await expect.poll(async () => (await audioStatus(page)).last).toBe('TileMatch');
+  await clickAction(page, 'undo');
+  await expect.poll(async () => (await mahjongView(page)).remaining).toBe(144);
+  after = await save(page);
+  expect(after.mahjong.history).toHaveLength(0);
+  expect(after.mahjong.tiles.every((tile) => !tile.removed)).toBe(true);
+  await expect.poll(async () => (await tableFeedback(page)).events.some((e) => e.kind === 'Undo')).toBe(true);
+  await expect.poll(async () => (await audioStatus(page)).played).toBeGreaterThan(initialAudio + 1);
+  await expect.poll(async () => (await tableFeedback(page)).events, { timeout: 5_000 }).toHaveLength(0);
+  await expect.poll(async () => (await audioStatus(page)).voices, { timeout: 5_000 }).toBe(0);
+
+  await page.reload();
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+  const afterReload = (await audioStatus(page)).played;
+  await clickLobbyAction(page, 'mahjong');
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Mahjong');
+  await expect.poll(async () => (await audioStatus(page)).played).toBe(afterReload + 1); // Lobby click only.
+  expect((await tableFeedback(page)).events).toHaveLength(0);
+  await page.waitForTimeout(500);
+  expect((await audioStatus(page)).played).toBe(afterReload + 1);
 });
 
 test('Mahjong hint marks assistance, a legal pair can be undone, and the board is restored', async ({ page }) => {
@@ -290,9 +345,7 @@ test('Mahjong progress reloads exactly apart from its running elapsed clock', as
   expect(after.baccarat).toEqual(before.baccarat);
   expect(after.sudoku).toEqual(before.sudoku);
 
-  const lobby = await actions(page);
-  const entry = center(lobby.mahjong);
-  await clickSurface(page, entry.x, entry.y);
+  await clickLobbyAction(page, 'mahjong');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Mahjong');
   expect(gameplay((await save(page)).mahjong)).toEqual(gameplay(before.mahjong));
 });

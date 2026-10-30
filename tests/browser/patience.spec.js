@@ -58,6 +58,33 @@ async function dragTouch(page, from, to) {
   }
 }
 
+async function cancelTouch(page, at) {
+  const point = await screenPoint(page, at.x, at.y);
+  const cdp = await page.context().newCDPSession(page);
+  const touch = { x: point.x, y: point.y, id: 1, radiusX: 2, radiusY: 2, force: 1 };
+  try {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touch] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+  } finally {
+    await cdp.detach();
+  }
+}
+
+async function cancelActiveTouchDrag(page, at) {
+  const start = await screenPoint(page, at.x, at.y);
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (x, y) => ({ x, y, id: 1, radiusX: 2, radiusY: 2, force: 1 });
+  try {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touch(start.x, start.y)] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touch(start.x + 16, start.y)] });
+    await expect.poll(async () => (await view(page)).dragActive).toBe(true);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await expect.poll(async () => (await view(page)).dragSource).toBeNull();
+  } finally {
+    await cdp.detach();
+  }
+}
+
 async function openPatience(page, family = 'Solitaire') {
   await page.goto('/?qa=fresh&diagnostics');
   const c = page.locator(canvas);
@@ -68,13 +95,42 @@ async function openPatience(page, family = 'Solitaire') {
     const save = JSON.parse(el.dataset.session || '{}');
     return Boolean(save.version === 6 && save.solitaire && save.freecell && save.spider);
   })).toBe(true);
-  const lobby = await c.evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
-  await clickBounds(page, lobby.solitaire);
-  await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Solitaire');
-  if (family !== 'Solitaire') await clickAction(page, `family${family}`);
+  await clickLobbyAction(page, family.toLowerCase());
   await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe(family);
   const variant = family === 'Solitaire' ? 'Klondike1' : family === 'Spider' ? 'Spider1' : 'FreeCell';
   await expect.poll(async () => view(page).then((v) => v.variant)).toBe(variant);
+}
+
+async function clickLobbyAction(page, key) {
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+  await resetLobbyScroll(page);
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const bounds = (await actions(page))[key];
+    if (Array.isArray(bounds) && bounds.length === 4) return clickBounds(page, bounds);
+    const state = await page.locator(canvas).evaluate((el) => {
+      const data = JSON.parse(el.dataset.actionBounds || '{}');
+      return { scroll: data.lobbyScroll || 0, max: data.lobbyMaxScroll || 0 };
+    });
+    if (state.scroll >= state.max) throw new Error(`Lobby action ${key} is not present in the lobby`);
+    await page.mouse.move(190, 360);
+    await page.mouse.wheel(0, 420);
+    await expect.poll(async () => page.locator(canvas).evaluate((el) =>
+      (JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0))).not.toBe(state.scroll);
+  }
+  throw new Error(`Lobby action ${key} did not become visible after scrolling`);
+}
+
+async function resetLobbyScroll(page) {
+  for (let i = 0; i < 16; i++) {
+    const scroll = await page.locator(canvas).evaluate((el) =>
+      JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0);
+    if (scroll <= 0) return;
+    await page.mouse.move(190, 360);
+    await page.mouse.wheel(0, -420);
+    await expect.poll(async () => page.locator(canvas).evaluate((el) =>
+      JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).toBeLessThan(scroll);
+  }
+  throw new Error('Could not return lobby scroll to the top');
 }
 
 async function interaction(page) {
@@ -91,6 +147,14 @@ async function view(page) {
 
 async function actions(page) {
   return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
+}
+
+async function tableFeedback(page) {
+  return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.tableFeedback || '{"events":[]}'));
+}
+
+async function audioStatus(page) {
+  return page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.audio || '{}'));
 }
 
 async function clickBounds(page, bounds) {
@@ -190,20 +254,24 @@ for (const delayedFrames of [false, true]) {
   });
 }
 
-test('switching patience families keeps each game and canceling a new mode protects all cabinets', async ({ page }) => {
+test('lobby opens each patience game and canceling a new mode protects all cabinets', async ({ page }) => {
   await openPatience(page, 'Solitaire');
   await clickAction(page, 'deal');
   await expect.poll(async () => (await save(page)).solitaire.moves).toBe(1);
   const afterDeal = await save(page);
-  await clickAction(page, 'familyFreeCell');
+  await clickAction(page, 'lobby');
+  await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Lobby');
+  await clickLobbyAction(page, 'freecell');
   await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('FreeCell');
   const freecell = (await save(page)).freecell;
-  await clickAction(page, 'familySpider');
+  await clickAction(page, 'lobby');
+  await clickLobbyAction(page, 'spider');
   await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Spider');
   await clickAction(page, 'deal');
   await expect.poll(async () => (await save(page)).spider.moves).toBe(1);
   const spider = (await save(page)).spider;
-  await clickAction(page, 'familySolitaire');
+  await clickAction(page, 'lobby');
+  await clickLobbyAction(page, 'solitaire');
   await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe('Solitaire');
   await expect.poll(async () => (await save(page)).solitaire.moves).toBe(afterDeal.solitaire.moves);
   expect(gameplay((await save(page)).solitaire)).toEqual(gameplay(afterDeal.solitaire));
@@ -225,19 +293,21 @@ test('switching patience families keeps each game and canceling a new mode prote
   expect(freecell.variant).toBe('FreeCell');
 });
 
-test('all family controls fit on a phone and Spider supports horizontal swipe pan', async ({ page }) => {
+test('patience controls fit on a phone and Spider supports horizontal swipe pan', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 740 });
   await openPatience(page);
   for (const family of ['Solitaire', 'FreeCell', 'Spider']) {
-    const familyKey = `family${family}`;
+    if (family !== 'Solitaire') {
+      await clickAction(page, 'lobby');
+      await clickLobbyAction(page, family.toLowerCase());
+    }
     const modeKeys = family === 'Solitaire' ? ['modeKlondike3']
       : family === 'FreeCell' ? [] : ['modeSpider2', 'modeSpider4'];
-    await clickAction(page, familyKey);
     await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe(family);
     const variant = family === 'Solitaire' ? 'Klondike1' : family === 'Spider' ? 'Spider1' : 'FreeCell';
     await expect.poll(async () => view(page).then((v) => v.variant)).toBe(variant);
     const current = await actions(page);
-    const controls = [familyKey, ...modeKeys, 'hint', 'new', 'restart'];
+    const controls = [...modeKeys, 'hint', 'new', 'restart'];
     if (family !== 'FreeCell') controls.push('deal');
     if (Array.isArray(current.undo)) controls.push('undo');
     await expectBoundsInsideViewport(page, controls);
@@ -256,16 +326,75 @@ test('all family controls fit on a phone and Spider supports horizontal swipe pa
   await expect.poll(async () => view(page).then((v) => v.pan)).not.toEqual(before);
 });
 
-test('FreeCell mouse drag moves an exposed card into a free cell',async({page})=>{
+test('FreeCell mouse press stays pending, then dragging moves an exposed card',async({page})=>{
  await openPatience(page,'FreeCell');const g=(await save(page)).freecell;const i=g.tableau[0].length-1;
  const b=await actions(page);const a=center(b[`pickTableau(0)_${i}`]),z=center(b['targetCell(0)']);
  const from=await screenPoint(page,a.x,a.y),to=await screenPoint(page,z.x,z.y);
  await page.mouse.move(from.x,from.y);await page.mouse.down();
- await expect.poll(async()=> (await view(page)).selected).toEqual(['Tableau(0)',i]);
+ await expect.poll(async()=> (await view(page)).dragSource).toEqual(['Tableau(0)',i]);
+ await expect.poll(async()=> (await view(page)).selected).toBeNull();
+ expect((await view(page)).dragActive).toBe(false);
+ await page.mouse.up();
+ expect(gameplay((await save(page)).freecell)).toEqual(gameplay(g));
+ await page.mouse.move(from.x,from.y);await page.mouse.down();
+ await page.mouse.move(from.x+12,from.y,{steps:2});
+ await expect.poll(async()=> (await view(page)).dragActive).toBe(true);
+ await expect.poll(async()=> (await view(page)).dragSource).toEqual(['Tableau(0)',i]);
  await page.mouse.move(to.x,to.y,{steps:8});await page.mouse.up();
  await expect.poll(async()=> (await save(page)).freecell.moves).toBe(1);
  expect((await save(page)).freecell.cells[0]).toEqual(g.tableau[0][i]);
 });
+
+test('FreeCell touch drag moves a card and an invalid drop leaves the save unchanged',async({page})=>{
+ await openPatience(page,'FreeCell');const g=(await save(page)).freecell;const i=g.tableau[0].length-1;
+ const b=await actions(page);const a=center(b[`pickTableau(0)_${i}`]),z=center(b['targetCell(0)']);
+ await dragTouch(page,a,z);
+ await expect.poll(async()=> (await save(page)).freecell.moves).toBe(1);
+ expect((await save(page)).freecell.cells[0]).toEqual(g.tableau[0][i]);
+ await clickAction(page,'restart');
+ await expect.poll(async()=> (await interaction(page)).modal).toBe('patience-replace');
+ await clickAction(page,'confirm');
+ await expect.poll(async()=> (await save(page)).freecell.moves).toBe(0);
+ const restarted=(await save(page)).freecell;
+ const bounds=await actions(page);const source=center(bounds[`pickTableau(0)_${restarted.tableau[0].length-1}`]);
+ await dragTouch(page,source,{x:12,y:12});
+ await expect.poll(async()=> (await view(page)).dragActive).toBe(false);
+ expect(gameplay((await save(page)).freecell)).toEqual(gameplay(restarted));
+});
+
+test('FreeCell move and undo feedback plays once, expires, and does not replay after reload',async({page})=>{
+ await openPatience(page,'FreeCell');
+ const initialAudio=(await audioStatus(page)).played;
+ const game=(await save(page)).freecell;
+ const index=game.tableau[0].length-1;
+ const bounds=await actions(page);
+ const from=center(bounds[`pickTableau(0)_${index}`]);
+ const to=center(bounds['targetCell(0)']);
+ const start=await screenPoint(page,from.x,from.y),end=await screenPoint(page,to.x,to.y);
+ await page.mouse.move(start.x,start.y);await page.mouse.down();
+ await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
+ await expect.poll(async()=> (await save(page)).freecell.moves).toBe(1);
+ await expect.poll(async()=> (await tableFeedback(page)).events.some(e=>e.kind==='Move')).toBe(true);
+ await expect.poll(async()=> (await audioStatus(page)).played).toBeGreaterThan(initialAudio);
+ await expect.poll(async()=> (await audioStatus(page)).last).toBe('TableMove');
+ await clickAction(page,'undo');
+ await expect.poll(async()=> (await save(page)).freecell.moves).toBe(0);
+ await expect.poll(async()=> (await tableFeedback(page)).events.some(e=>e.kind==='Undo')).toBe(true);
+ await expect.poll(async()=> (await audioStatus(page)).played).toBeGreaterThan(initialAudio+1);
+ await expect.poll(async()=> (await tableFeedback(page)).events,{timeout:5_000}).toHaveLength(0);
+ await expect.poll(async()=> (await audioStatus(page)).voices,{timeout:5_000}).toBe(0);
+
+ await page.reload();
+ await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('Lobby');
+ const afterReload=(await audioStatus(page)).played;
+ await clickLobbyAction(page,'freecell');
+ await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('FreeCell');
+ await expect.poll(async()=> (await audioStatus(page)).played).toBe(afterReload+1); // Lobby click only.
+ expect((await tableFeedback(page)).events).toHaveLength(0);
+ await page.waitForTimeout(500);
+ expect((await audioStatus(page)).played).toBe(afterReload+1);
+});
+
 test.describe('Phone card selection',()=>{
  test.use({viewport:{width:390,height:740},hasTouch:true});
  test('FreeCell taps select and move a card',async({page})=>{
@@ -274,5 +403,33 @@ test.describe('Phone card selection',()=>{
   await expect.poll(async()=> (await view(page)).selected).toEqual(['Tableau(0)',i]);
   const z=center((await actions(page))['targetCell(0)']);await touchSurface(page,z.x,z.y);
   await expect.poll(async()=> (await save(page)).freecell.moves).toBe(1);
+ });
+ test('a phone touch drag moves a FreeCell card',async({page})=>{
+  await openPatience(page,'FreeCell');const g=(await save(page)).freecell;const i=g.tableau[0].length-1;
+  const b=await actions(page);const source=center(b[`pickTableau(0)_${i}`]),target=center(b['targetCell(0)']);
+  await dragTouch(page,source,target);
+  await expect.poll(async()=> (await save(page)).freecell.moves).toBe(1);
+ });
+ test('canceling an active touch drag clears its source without changing the save',async({page})=>{
+  await openPatience(page,'FreeCell');
+  const before=(await save(page)).freecell;
+  const last=before.tableau[0].length-1;
+  const source=center((await actions(page))[`pickTableau(0)_${last}`]);
+  await cancelActiveTouchDrag(page,source);
+  await expect.poll(async()=> (await view(page)).dragActive).toBe(false);
+  expect(gameplay((await save(page)).freecell)).toEqual(gameplay(before));
+ });
+ test('canceling a touch on the lobby entry and swiping reveals Spider',async({page})=>{
+  await page.goto('/?qa=fresh&diagnostics');
+  await expect.poll(async()=>page.locator(canvas).evaluate(el=>el.dataset.ready==='true'),{timeout:30_000}).toBe(true);
+  const firstGame=center((await actions(page)).mines);
+  await cancelTouch(page,firstGame);
+  await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('Lobby');
+  const before=(await actions(page)).lobbyScroll;
+  const clip=(await actions(page)).lobbyClip;
+  await dragTouch(page,{x:clip[0]+clip[2]/2,y:clip[1]+clip[3]*0.85},{x:clip[0]+clip[2]/2,y:clip[1]+clip[3]*0.2});
+  await expect.poll(async()=>(await actions(page)).lobbyScroll).toBeGreaterThan(before);
+  await clickLobbyAction(page,'spider');
+  await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('Spider');
  });
 });

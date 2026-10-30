@@ -8,6 +8,7 @@ const DRAG_THRESHOLD: f32 = 8.0;
 
 #[derive(Clone, Copy)]
 enum Pan {
+    Lobby,
     Mines,
     Sudoku,
     Mahjong,
@@ -47,6 +48,7 @@ struct Gesture {
     moved: bool,
     pan: Option<Pan>,
     tap: Option<Rect>,
+    patience_drag: bool,
     context: Context,
 }
 
@@ -74,6 +76,7 @@ impl TouchPointer {
     pub fn cancel(&mut self, s: &mut Arcade, pointer: &mut Option<Vec2>) {
         if self.gesture.take().is_some() {
             s.lab.cancel_drag();
+            s.patience_ui.drag = None;
             s.cursor = None;
             *pointer = None;
         }
@@ -123,8 +126,12 @@ impl TouchPointer {
                 s.cursor = Some(surface);
                 s.keyboard = false;
                 s.audio_started = true;
-                let pan = if s.modal.is_some() {
+                let patience_drag =
+                    s.modal.is_none() && patience_app::is_family(s.screen) && s.patience_press(l);
+                let pan = if s.modal.is_some() || patience_drag {
                     None
+                } else if l.lobby_clip.is_some_and(|r| r.contains(surface)) {
+                    Some(Pan::Lobby)
                 } else if l.board.as_ref().is_some_and(|b| b.clip.contains(surface)) {
                     Some(Pan::Mines)
                 } else if l.sudoku.as_ref().is_some_and(|b| b.clip.contains(surface)) {
@@ -151,6 +158,7 @@ impl TouchPointer {
                     moved: false,
                     pan,
                     tap,
+                    patience_drag,
                     context: Context::current(s, l),
                 });
                 // Cards need an immediate pick for dragging; buttons and boards
@@ -167,6 +175,10 @@ impl TouchPointer {
                     if g.moved {
                         let delta = surface - if was_moved { g.last } else { g.start };
                         match g.pan {
+                            Some(Pan::Lobby) => {
+                                s.lobby_scroll =
+                                    (s.lobby_scroll - delta.y).clamp(0.0, l.lobby_max_scroll);
+                            }
                             Some(Pan::Mines) => s.pan -= delta,
                             Some(Pan::Sudoku) => {
                                 s.sudoku_ui.follow = false;
@@ -187,10 +199,15 @@ impl TouchPointer {
                             }
                             None => {}
                         }
+                        if g.patience_drag {
+                            s.patience_drag_update();
+                        }
                     }
                     g.last = surface;
                     if event.phase == TouchPhase::Ended {
-                        if s.lab.drag.is_some() {
+                        if g.patience_drag {
+                            s.patience_release(l);
+                        } else if s.lab.drag.is_some() {
                             let slot = l.slots.iter().position(|r| r.contains(surface));
                             s.lab.drop_in(slot);
                         } else if !g.moved && g.tap.is_some_and(|r| r.contains(surface)) {

@@ -245,6 +245,11 @@ impl Game {
             _ => None,
         }
     }
+    /// Whether this card and its trailing stack can be picked up.
+    pub fn can_pick(&self, from: Pile, index: usize) -> bool {
+        !self.won() && self.moving(from, index).is_some()
+    }
+
     pub fn legal_move(&self, from: Pile, index: usize, to: Pile) -> bool {
         let Some(cs) = self.moving(from, index) else {
             return false;
