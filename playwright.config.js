@@ -14,7 +14,16 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:18435',
     browserName: 'chromium',
     launchOptions: {
-      args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader'],
+      args: [
+        '--enable-unsafe-webgpu',
+        ...(process.platform === 'linux' ? [
+          '--enable-features=Vulkan',
+          '--use-angle=vulkan',
+          '--use-vulkan=swiftshader',
+          '--use-webgpu-adapter=swiftshader',
+          '--disable-vulkan-surface',
+        ] : []),
+      ],
     },
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',

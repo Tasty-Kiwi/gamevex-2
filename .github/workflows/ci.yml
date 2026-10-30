@@ -85,6 +85,8 @@ jobs:
           name: gamevex-web
           path: web/
       - run: npm ci
+      - name: Install software Vulkan runtime
+        run: sudo apt-get update && sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
       - name: Install headless Chromium
         run: npx playwright install --with-deps chromium
       - name: Run browser regressions
