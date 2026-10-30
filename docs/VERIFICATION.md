@@ -10,7 +10,7 @@ Verified locally on 29–30 October 2026. Implementation and artifacts live in `
 - Native development and release builds succeeded; `scripts/package-macos.sh` produced `target/GameVex Rust.app`.
 - WASM release compilation and wasm-bindgen packaging succeeded; the generated JavaScript passed `node --check`.
 - Shell scripts passed `bash -n`; the custom browser loader passed `node --check`.
-- The earlier 13-spec browser suite passed locally with the Chromium/Metal override described in the Sudoku section. The current 23-spec suite has passed JavaScript syntax checking but was not rerun as a suite after the controls/touch updates; actual browser checks are listed below. Hosted CI and its default software-WebGPU setup remain unverified.
+- The earlier 13-spec browser suite passed locally with the Chromium/Metal override described in the Sudoku section. The current 23-spec suite passed locally after the CI repairs described below, using the macOS/Metal override. Hosted Linux/SwiftShader validation of those repairs remains pending. Hosted CI and its default software-WebGPU setup remain unverified.
 
 Tests cover first-reveal protection over every difficulty and 32 seeds, mine/adjacency counts, flood behavior and pre-existing flags, correct/wrong-flag chording, win/loss and completed-command rejection, zero-seed determinism, save round trips and invalid-state checks, bounded elapsed time, record improvement, repeatable cards, valid/invalid/occupied drops, drag cancellation, native atomic file replacement, board picking with a clipped/panned viewport, modal focus restoration, timer transition/fractional-millisecond accounting, curved-monitor input mapping, old-save defaults for the added settings, and complete saved-data reset.
 
@@ -68,7 +68,7 @@ Final payload sizes are recorded in `build-sizes.json` after the last package bu
 
 | File | Raw bytes | Gzip level 9 bytes |
 | --- | ---: | ---: |
-| WASM | 38,088,153 | 6,215,783 |
+| WASM | 38,088,327 | 6,215,839 |
 | Generated JavaScript | 108,170 | 17,530 |
 
  Gzip uses level 9 with deterministic headers. The development server does not negotiate those compressed files automatically.
@@ -180,6 +180,16 @@ Taps activate buttons/cells on release; moving more than eight surface pixels ca
 All 124 Rust tests (70 core, 54 application/platform), formatting, and workspace Clippy passed. Six new application tests cover release-only activation, canceled/moved taps, queued touch drags, multi-finger ownership and lost-end recovery, both board swipe paths, settings scrolling without mutation, and focus/resize/lifecycle interruption. The browser spec file adds six 390x844 touch cases using actual touchscreen/CDP input, bringing it to 23 specs; `node --check` passes. The Playwright suite was not executed this turn.
 
 Actual Chrome/WebGPU verification used native CDP touch events at 390x844 and 390x560 with device scale factor 3 and CRT enabled. It exercised canceled lobby taps; touch-only Sudoku navigation, cell selection, Notes/keypad entry, staged setup and Cancel; confirmed replacement to 16x16; two-axis swipe panning with unchanged values and selection; short-screen settings scrolling with unchanged settings; canceled and successful Card Lab drops; and Minesweeper Flag-mode taps, safe reveal, and swipe panning without additional reveals. The final bundle also passed touch navigation/cancellation after an uncached reload, and mouse setup/Cancel still worked after touch emulation was disabled. The browser reported no error logs. Native release packaging and the final WASM release build succeeded. Temporary touch/device/viewport overrides were reset after checking. This is phone emulation on macOS, not a physical Android/iPhone or mobile Safari result. The in-app browser's CDP implementation could not emit touch input, so Chrome was used for these checks.
+
+## Browser CI repairs — 30 October 2026
+
+Reviewed [run 41019736687, job 123944690509](https://github.com/Tasty-Kiwi/gamevex-2/actions/runs/41019736687/job/123944690509) at commit `ae05368`. Install/startup succeeded; 11 of 23 browser tests failed. Decoded job logs and the uploaded trace artifacts identified three separate causes:
+
+- `chooseSudokuMode` referenced `size` and `difficulty` inside browser evaluations without serializing those Node-side arguments. Three mode-selection tests failed with `ReferenceError: size is not defined`. Both evaluations now receive the requested mode explicitly.
+- Highlight assertions and rapid modal Tab presses assumed Bevy had consumed each action already. The test helpers now wait for the staged/saved values, and opt-in diagnostics expose `focusIndex`/`focusCount` so each Tab is observed before the next key. The full cycle still visits all ten controls and returns to Cancel; no fixed sleeps were added.
+- CI ran two CPU-rendered WebGPU instances with both video and trace screencasts recording continuously. Artifact snapshots show multi-second gaps between application updates; Card Lab was still settling after twelve seconds, Baccarat was still revealing cards, and queued bet sounds appeared during the audio-drain assertion. CI now uses one worker and omits continuous screen recording while retaining API/DOM/source traces and failure screenshots. The audio test waits for each chosen bet to reach the model before checking voice cleanup. Software-Vulkan flags and all gameplay assertions remain enabled; timeouts and retries were not increased.
+
+The final 23-test suite passed on its first attempts in 34.4 seconds using Playwright 1.64.1, the installed Chrome for Testing 151 headless shell, macOS Metal, one worker, final trace settings, and retries disabled. All 124 Rust tests, formatting, Clippy, and JavaScript syntax checks passed, and the WASM package rebuilt successfully. Local Linux Docker reproductions on ARM64 and emulated x64 used the pinned Playwright image and checked-in Vulkan flags; both failed before gameplay with a WebGPU `mappedAtCreation` buffer allocation error. Neither setup is counted as a passed browser run. The hosted x64 Actions job has not been rerun with these local changes.
 
 ## Screenshots
 

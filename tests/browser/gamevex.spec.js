@@ -373,6 +373,8 @@ test('casino audio starts on a gesture, caches cues, and releases finished voice
     const bounds = await c.evaluate((el, side) => JSON.parse(el.dataset.actionBounds)[side], side);
     const p = center(bounds);
     await clickSurface(page, p.x, p.y);
+    await expect.poll(async () => c.evaluate((el) => JSON.parse(el.dataset.session).baccarat.selected))
+      .toBe(side);
   }
   await expect.poll(async () => (await audio()).running).toBe(true);
   await expect.poll(async () => (await audio()).played).toBeGreaterThan(0);
@@ -434,15 +436,14 @@ async function expectSudokuActionAbsent(page, action) {
 async function chooseSudokuMode(page, size, difficulty, { confirmReplacement = false } = {}) {
   await clickSudokuAction(page, 'setup');
   await expect.poll(async () => (await interaction(page)).modal).toBe('sudoku-setup');
-  await expect.poll(async () => page.locator(canvas).evaluate((el) => {
+  await expect.poll(async () => page.locator(canvas).evaluate((el, mode) => {
     const view = JSON.parse(el.dataset.sudokuView);
     const bounds = JSON.parse(el.dataset.actionBounds);
-    return Boolean(view.setup && bounds[`size${size}`] && bounds[difficulty] && bounds.start && bounds.cancel);
-  })).toBe(true);
+    return Boolean(view.setup && bounds[`size${mode.size}`] && bounds[mode.difficulty] && bounds.start && bounds.cancel);
+  }, { size, difficulty })).toBe(true);
   await clickSudokuAction(page, `size${size}`);
   await clickSudokuAction(page, difficulty);
-  const staged = await sudokuView(page);
-  expect(staged.setup).toEqual({ size, difficulty });
+  await expect.poll(async () => (await sudokuView(page)).setup).toEqual({ size, difficulty });
   const before = (await sudokuSave(page)).game;
   await clickSudokuAction(page, 'start');
 
@@ -456,11 +457,11 @@ async function chooseSudokuMode(page, size, difficulty, { confirmReplacement = f
   } else {
     await expect.poll(async () => (await interaction(page)).modal).not.toBe('sudoku-replace');
   }
-  await expect.poll(async () => page.locator(canvas).evaluate((el) => {
+  await expect.poll(async () => page.locator(canvas).evaluate((el, mode) => {
     const view = JSON.parse(el.dataset.sudokuView);
     const game = JSON.parse(el.dataset.session).sudoku.game;
-    return !view.setup && game.size === size && game.difficulty.toLowerCase() === difficulty;
-  })).toBe(true);
+    return !view.setup && game.size === mode.size && game.difficulty.toLowerCase() === mode.difficulty;
+  }, { size, difficulty })).toBe(true);
   if (confirmReplacement) {
     const after = (await sudokuSave(page)).game;
     expect(sudokuGameplay(after)).not.toEqual(sudokuGameplay(before));
@@ -514,6 +515,7 @@ test('Sudoku pencil notes, erase, undo, and reload keep the editable cell state'
     .toBe(target.index);
 
   await clickSudokuAction(page, 'pencil');
+  await expect.poll(async () => (await sudokuView(page)).pencil).toBe(true);
   await clickSudokuAction(page, 'value1');
   await expect.poll(async () => (await sudokuSave(page)).game.notes[target.index]).toBe(1);
   await clickSudokuAction(page, 'erase');
@@ -578,6 +580,8 @@ test('canceling a Sudoku replacement protects entered values and notes', async (
   await expect.poll(async () => (await interaction(page)).modal).toBe('sudoku-setup');
   await clickSudokuAction(page, 'size4');
   await clickSudokuAction(page, 'hard');
+  await expect.poll(async () => (await sudokuView(page)).setup)
+    .toEqual({ size: 4, difficulty: 'hard' });
   await clickSudokuAction(page, 'start');
   await expect.poll(async () => (await interaction(page)).modal).toBe('sudoku-replace');
   await clickSudokuAction(page, 'cancel');
@@ -654,6 +658,7 @@ test('Sudoku setup stages size and difficulty, then cancel preserves the entire 
   expect(target).not.toBeNull();
   await clickSurface(page, target.x, target.y);
   await clickSudokuAction(page, 'pencil');
+  await expect.poll(async () => (await sudokuView(page)).pencil).toBe(true);
   await clickSudokuAction(page, 'value1');
   await expect.poll(async () => (await sudokuSave(page)).game.notes[target.index]).toBe(1);
   const before = (await sudokuSave(page)).game;
@@ -704,7 +709,9 @@ test('Sudoku omits unavailable actions and toggles saved highlight preferences',
   await clickSudokuAction(page, 'highlights');
   await expect.poll(async () => (await sudokuView(page)).highlights).toBe(true);
   await clickSudokuAction(page, 'errors');
+  await expect.poll(async () => (await sudokuSave(page)).highlight_errors).toBe(!before.highlight_errors);
   await clickSudokuAction(page, 'same');
+  await expect.poll(async () => (await sudokuSave(page)).highlight_same).toBe(!before.highlight_same);
   const after = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.session).sudoku);
   expect(after.highlight_errors).toBe(!before.highlight_errors);
   expect(after.highlight_same).toBe(!before.highlight_same);
@@ -713,7 +720,7 @@ test('Sudoku omits unavailable actions and toggles saved highlight preferences',
   await expectSudokuActionAbsent(page, 'hint');
 });
 
-test('Sudoku setup modal Tab navigation reaches Cancel and Enter cancels', async ({ page }) => {
+test('Sudoku setup modal starts on Cancel and a full Tab cycle returns before Enter cancels', async ({ page }) => {
   await enterSudoku(page);
   const before = sudokuGameplay((await sudokuSave(page)).game);
   await clickSudokuAction(page, 'setup');
@@ -722,12 +729,14 @@ test('Sudoku setup modal Tab navigation reaches Cancel and Enter cancels', async
     const bounds = JSON.parse(el.dataset.actionBounds);
     return Boolean(bounds.cancel && bounds.start);
   })).toBe(true);
-  const actionCount = await page.locator(canvas).evaluate((el) =>
-    Object.keys(JSON.parse(el.dataset.actionBounds)).length);
-  // Cancel starts focused. One complete cycle visits eight choices and Start,
-  // then returns to Cancel without changing the puzzle.
-  expect(actionCount).toBe(10);
-  for (let i = 0; i < actionCount; i++) await page.keyboard.press('Tab');
+  await expect.poll(async () => (await interaction(page)).focusIndex).toBe(0);
+  await expect.poll(async () => (await interaction(page)).focusCount).toBe(10);
+  const focusCount = (await interaction(page)).focusCount;
+  for (let i = 0; i < focusCount; i++) {
+    await page.keyboard.press('Tab');
+    await expect.poll(async () => (await interaction(page)).focusIndex).toBe((i + 1) % focusCount);
+  }
+  await expect.poll(async () => (await interaction(page)).focusIndex).toBe(0);
   await page.keyboard.press('Enter');
   await expect.poll(async () => (await interaction(page)).modal).not.toBe('sudoku-setup');
   expect(sudokuGameplay((await sudokuSave(page)).game)).toEqual(before);
@@ -755,9 +764,11 @@ test.describe('touch input regressions', () => {
     await expect.poll(async () => (await sudokuView(page)).selected).toBe(target.index);
 
     await touchSudokuAction(page, 'pencil');
+    await expect.poll(async () => (await sudokuView(page)).pencil).toBe(true);
     await touchSudokuAction(page, 'value1');
     await expect.poll(async () => (await sudokuSave(page)).game.notes[target.index]).toBe(1);
     await touchSudokuAction(page, 'pencil');
+    await expect.poll(async () => (await sudokuView(page)).pencil).toBe(false);
     await touchSudokuAction(page, 'value2');
     await expect.poll(async () => (await sudokuSave(page)).game.board[target.index]).toBe(2);
   });
@@ -769,6 +780,7 @@ test.describe('touch input regressions', () => {
     await expect.poll(async () => (await interaction(page)).modal).toBe('sudoku-setup');
     await touchSudokuAction(page, 'cancel');
     await expect.poll(async () => (await interaction(page)).modal).not.toBe('sudoku-setup');
+    await expect.poll(async () => (await sudokuView(page)).setup).toBeNull();
     expect(sudokuGameplay((await sudokuSave(page)).game)).toEqual(before);
   });
 
@@ -777,8 +789,10 @@ test.describe('touch input regressions', () => {
     const lobby = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds));
     const entry = center(lobby.sudoku);
     await cancelTouch(page, entry);
-    expect((await interaction(page)).screen).toBe('Lobby');
-    expect((await interaction(page)).modal).toBeNull();
+    await expect.poll(async () => page.locator(canvas).evaluate(async (el) => {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return JSON.parse(el.dataset.interaction);
+    })).toMatchObject({ screen: 'Lobby', modal: null });
   });
 
   test('a touch swipe pans the 16x16 Sudoku board without entering a value', async ({ page }) => {
@@ -786,10 +800,13 @@ test.describe('touch input regressions', () => {
     await touchSudokuAction(page, 'setup');
     await expect.poll(async () => (await interaction(page)).modal).toBe('sudoku-setup');
     await touchSudokuAction(page, 'size16');
+    await expect.poll(async () => (await sudokuView(page)).setup.size).toBe(16);
     await touchSudokuAction(page, 'medium');
+    await expect.poll(async () => (await sudokuView(page)).setup)
+      .toEqual({ size: 16, difficulty: 'medium' });
     await touchSudokuAction(page, 'start');
     await expect.poll(async () => (await sudokuSave(page)).game.size).toBe(16);
-    await expect.poll(async () => (await interaction(page)).modal).not.toBe('sudoku-setup');
+    await expect.poll(async () => (await sudokuView(page)).setup).toBeNull();
 
     const before = sudokuGameplay((await sudokuSave(page)).game);
     const view = await sudokuView(page);
