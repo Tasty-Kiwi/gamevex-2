@@ -1,0 +1,978 @@
+{
+  "oracle": [
+    "apps/local/src/utils/solitaire.ts",
+    "apps/local/src/utils/freecell.ts",
+    "apps/local/src/utils/spider.ts"
+  ],
+  "oracleGitRevision": "235ec37406b882ffa4183e4a6643314b102bf1f4",
+  "oracleSourceSHA256": [
+    {
+      "path": "apps/local/src/utils/solitaire.ts",
+      "sha256": "ed12bdafda87892325dac2b5ca9691242cbec77b353cda9269de9193a9abcaac"
+    },
+    {
+      "path": "apps/local/src/utils/freecell.ts",
+      "sha256": "10ede62c320ed792f2dbfe16d1dd701ab0ba2eaca794dc51a409843cba4e8a03"
+    },
+    {
+      "path": "apps/local/src/utils/spider.ts",
+      "sha256": "10b53f8e26aea1827c932fe50c9798ee8f37ec8ad2d8ee271a10be49865e5628"
+    }
+  ],
+  "states": {
+    "klondike_draw3": {
+      "stock": [
+        {
+          "rank": "5",
+          "suit": "clubs",
+          "id": "draw-1",
+          "faceUp": false
+        },
+        {
+          "rank": "A",
+          "suit": "spades",
+          "id": "draw-2",
+          "faceUp": false
+        },
+        {
+          "rank": "7",
+          "suit": "hearts",
+          "id": "draw-3",
+          "faceUp": false
+        }
+      ],
+      "waste": [],
+      "foundations": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "tableau": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "klondike_recycle": {
+      "stock": [],
+      "waste": [
+        {
+          "rank": "2",
+          "suit": "clubs",
+          "id": "w1",
+          "faceUp": true
+        },
+        {
+          "rank": "3",
+          "suit": "hearts",
+          "id": "w2",
+          "faceUp": true
+        },
+        {
+          "rank": "4",
+          "suit": "spades",
+          "id": "w3",
+          "faceUp": true
+        }
+      ],
+      "foundations": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "tableau": [
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "klondike_stack": {
+      "stock": [],
+      "waste": [],
+      "foundations": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "tableau": [
+        [
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "k9",
+            "faceUp": true
+          },
+          {
+            "rank": "8",
+            "suit": "hearts",
+            "id": "k8",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "9",
+            "suit": "clubs",
+            "id": "k9-target",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "10",
+            "suit": "hearts",
+            "id": "k10-red",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "klondike_foundation_back": {
+      "stock": [],
+      "waste": [],
+      "foundations": [
+        [
+          {
+            "rank": "A",
+            "suit": "spades",
+            "id": "fa",
+            "faceUp": true
+          },
+          {
+            "rank": "2",
+            "suit": "spades",
+            "id": "f2",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        []
+      ],
+      "tableau": [
+        [
+          {
+            "rank": "3",
+            "suit": "hearts",
+            "id": "t3",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "freecell_valid_stack": {
+      "freeCells": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "foundations": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "cascades": [
+        [
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "f9",
+            "faceUp": true
+          },
+          {
+            "rank": "8",
+            "suit": "hearts",
+            "id": "f8",
+            "faceUp": true
+          },
+          {
+            "rank": "7",
+            "suit": "clubs",
+            "id": "f7",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "10",
+            "suit": "diamonds",
+            "id": "f10",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "freecell_empty_target_capacity": {
+      "freeCells": [
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "cell1",
+          "faceUp": true
+        },
+        {
+          "rank": "3",
+          "suit": "spades",
+          "id": "cell2",
+          "faceUp": true
+        },
+        {
+          "rank": "4",
+          "suit": "spades",
+          "id": "cell3",
+          "faceUp": true
+        },
+        {
+          "rank": "5",
+          "suit": "spades",
+          "id": "cell4",
+          "faceUp": true
+        }
+      ],
+      "foundations": [
+        [],
+        [],
+        [],
+        []
+      ],
+      "cascades": [
+        [
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "c9",
+            "faceUp": true
+          },
+          {
+            "rank": "8",
+            "suit": "hearts",
+            "id": "c8",
+            "faceUp": true
+          },
+          {
+            "rank": "7",
+            "suit": "clubs",
+            "id": "c7",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [
+          {
+            "rank": "2",
+            "suit": "clubs",
+            "id": "occupied-3",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "2",
+            "suit": "clubs",
+            "id": "occupied-4",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "2",
+            "suit": "clubs",
+            "id": "occupied-5",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "2",
+            "suit": "clubs",
+            "id": "occupied-6",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "2",
+            "suit": "clubs",
+            "id": "occupied-7",
+            "faceUp": true
+          }
+        ]
+      ]
+    },
+    "freecell_foundation_back": {
+      "freeCells": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "foundations": [
+        [
+          {
+            "rank": "A",
+            "suit": "spades",
+            "id": "ffa",
+            "faceUp": true
+          },
+          {
+            "rank": "2",
+            "suit": "spades",
+            "id": "ff2",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        []
+      ],
+      "cascades": [
+        [
+          {
+            "rank": "3",
+            "suit": "hearts",
+            "id": "ft3",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "spider_mixed_stack": {
+      "stock": [],
+      "completedRuns": [],
+      "tableau": [
+        [
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "s9",
+            "faceUp": true
+          },
+          {
+            "rank": "8",
+            "suit": "hearts",
+            "id": "s8",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "10",
+            "suit": "clubs",
+            "id": "s10",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "spider_mixed_suit_placement": {
+      "stock": [],
+      "completedRuns": [],
+      "tableau": [
+        [
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "single-9",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "10",
+            "suit": "clubs",
+            "id": "single-10",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "spider_stock_empty_column": {
+      "stock": [
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-0",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-1",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-2",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-3",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-4",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-5",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-6",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-7",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-8",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "spades",
+          "id": "stock-9",
+          "faceUp": false
+        }
+      ],
+      "completedRuns": [],
+      "tableau": [
+        [],
+        [],
+        [],
+        [],
+        [
+          {
+            "rank": "K",
+            "suit": "clubs",
+            "id": "only-empty-blocker",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "spider_autocomplete_on_deal": {
+      "stock": [
+        {
+          "rank": "A",
+          "suit": "spades",
+          "id": "auto-ace",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-0",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-1",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-2",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-3",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-4",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-5",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-6",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-7",
+          "faceUp": false
+        },
+        {
+          "rank": "2",
+          "suit": "hearts",
+          "id": "auto-other-8",
+          "faceUp": false
+        }
+      ],
+      "completedRuns": [],
+      "tableau": [
+        [
+          {
+            "rank": "K",
+            "suit": "spades",
+            "id": "run-k",
+            "faceUp": true
+          },
+          {
+            "rank": "Q",
+            "suit": "spades",
+            "id": "run-q",
+            "faceUp": true
+          },
+          {
+            "rank": "J",
+            "suit": "spades",
+            "id": "run-j",
+            "faceUp": true
+          },
+          {
+            "rank": "10",
+            "suit": "spades",
+            "id": "run-10",
+            "faceUp": true
+          },
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "run-9",
+            "faceUp": true
+          },
+          {
+            "rank": "8",
+            "suit": "spades",
+            "id": "run-8",
+            "faceUp": true
+          },
+          {
+            "rank": "7",
+            "suit": "spades",
+            "id": "run-7",
+            "faceUp": true
+          },
+          {
+            "rank": "6",
+            "suit": "spades",
+            "id": "run-6",
+            "faceUp": true
+          },
+          {
+            "rank": "5",
+            "suit": "spades",
+            "id": "run-5",
+            "faceUp": true
+          },
+          {
+            "rank": "4",
+            "suit": "spades",
+            "id": "run-4",
+            "faceUp": true
+          },
+          {
+            "rank": "3",
+            "suit": "spades",
+            "id": "run-3",
+            "faceUp": true
+          },
+          {
+            "rank": "2",
+            "suit": "spades",
+            "id": "run-2",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-1",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-2",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-3",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-4",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-5",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-6",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-7",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-8",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "3",
+            "suit": "clubs",
+            "id": "other-9",
+            "faceUp": true
+          }
+        ]
+      ]
+    },
+    "spider_chained_runs_after_move": {
+      "stock": [],
+      "completedRuns": [],
+      "tableau": [
+        [
+          {
+            "rank": "K",
+            "suit": "spades",
+            "id": "chain-0",
+            "faceUp": true
+          },
+          {
+            "rank": "Q",
+            "suit": "spades",
+            "id": "chain-1",
+            "faceUp": true
+          },
+          {
+            "rank": "J",
+            "suit": "spades",
+            "id": "chain-2",
+            "faceUp": true
+          },
+          {
+            "rank": "10",
+            "suit": "spades",
+            "id": "chain-3",
+            "faceUp": true
+          },
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "chain-4",
+            "faceUp": true
+          },
+          {
+            "rank": "8",
+            "suit": "spades",
+            "id": "chain-5",
+            "faceUp": true
+          },
+          {
+            "rank": "7",
+            "suit": "spades",
+            "id": "chain-6",
+            "faceUp": true
+          },
+          {
+            "rank": "6",
+            "suit": "spades",
+            "id": "chain-7",
+            "faceUp": true
+          },
+          {
+            "rank": "5",
+            "suit": "spades",
+            "id": "chain-8",
+            "faceUp": true
+          },
+          {
+            "rank": "4",
+            "suit": "spades",
+            "id": "chain-9",
+            "faceUp": true
+          },
+          {
+            "rank": "3",
+            "suit": "spades",
+            "id": "chain-10",
+            "faceUp": true
+          },
+          {
+            "rank": "2",
+            "suit": "spades",
+            "id": "chain-11",
+            "faceUp": true
+          },
+          {
+            "rank": "A",
+            "suit": "spades",
+            "id": "chain-12",
+            "faceUp": true
+          },
+          {
+            "rank": "K",
+            "suit": "spades",
+            "id": "chain-13",
+            "faceUp": true
+          },
+          {
+            "rank": "Q",
+            "suit": "spades",
+            "id": "chain-14",
+            "faceUp": true
+          },
+          {
+            "rank": "J",
+            "suit": "spades",
+            "id": "chain-15",
+            "faceUp": true
+          },
+          {
+            "rank": "10",
+            "suit": "spades",
+            "id": "chain-16",
+            "faceUp": true
+          },
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "chain-17",
+            "faceUp": true
+          },
+          {
+            "rank": "8",
+            "suit": "spades",
+            "id": "chain-18",
+            "faceUp": true
+          },
+          {
+            "rank": "7",
+            "suit": "spades",
+            "id": "chain-19",
+            "faceUp": true
+          },
+          {
+            "rank": "6",
+            "suit": "spades",
+            "id": "chain-20",
+            "faceUp": true
+          },
+          {
+            "rank": "5",
+            "suit": "spades",
+            "id": "chain-21",
+            "faceUp": true
+          },
+          {
+            "rank": "4",
+            "suit": "spades",
+            "id": "chain-22",
+            "faceUp": true
+          },
+          {
+            "rank": "3",
+            "suit": "spades",
+            "id": "chain-23",
+            "faceUp": true
+          },
+          {
+            "rank": "2",
+            "suit": "spades",
+            "id": "chain-24",
+            "faceUp": true
+          },
+          {
+            "rank": "A",
+            "suit": "spades",
+            "id": "chain-25",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "9",
+            "suit": "spades",
+            "id": "chain-move",
+            "faceUp": true
+          }
+        ],
+        [
+          {
+            "rank": "10",
+            "suit": "clubs",
+            "id": "chain-target",
+            "faceUp": true
+          }
+        ],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    }
+  },
+  "expected": {
+    "klondike_draw3": {
+      "stock": [],
+      "waste": [
+        "draw-3",
+        "draw-2",
+        "draw-1"
+      ],
+      "waste_top": "draw-1"
+    },
+    "klondike_recycle": {
+      "stock": [
+        "w3",
+        "w2",
+        "w1"
+      ],
+      "next_draw": "w1",
+      "waste": 0
+    },
+    "klondike_stack": {
+      "valid_substack": true,
+      "valid_whole_stack": true,
+      "invalid_same_color": false
+    },
+    "klondike_foundation_back": true,
+    "freecell_valid_stack": true,
+    "freecell_empty_target_capacity": {
+      "strict_accepts": false,
+      "relaxed_accepts": true,
+      "strict_capacity": 2
+    },
+    "freecell_foundation_back": true,
+    "spider_mixed_stack": {
+      "mixed_suit_run_movable": false,
+      "mixed_suit_rank_placement": true
+    },
+    "spider_mixed_suit_placement": true,
+    "spider_stock_empty_column": {
+      "can_deal": false,
+      "deal_succeeds": false
+    },
+    "spider_autocomplete_on_deal": {
+      "completed_runs": 1,
+      "first_column_length": 0,
+      "stock_length": 0
+    },
+    "spider_chained_runs_after_move": {
+      "completed_runs": 2,
+      "first_column_length": 0
+    }
+  }
+}

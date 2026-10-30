@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 5;
+pub const SAVE_VERSION: u32 = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -145,6 +145,11 @@ pub struct Save {
     pub sudoku: crate::sudoku::Session,
     pub mahjong: crate::mahjong::Game,
     pub mahjong_records: [Option<u64>; 3],
+    #[serde(default)]
+    pub patience_records: [Option<u64>; 6],
+    pub solitaire: crate::patience::Game,
+    pub freecell: crate::patience::Game,
+    pub spider: crate::patience::Game,
 }
 
 #[derive(Deserialize)]
@@ -178,6 +183,17 @@ struct LegacyV4 {
     sudoku: crate::sudoku::Session,
 }
 
+#[derive(Deserialize)]
+struct LegacyV5 {
+    settings: Settings,
+    minesweeper: MinesweeperSave,
+    blackjack: crate::blackjack::Blackjack,
+    baccarat: crate::baccarat::Baccarat,
+    sudoku: crate::sudoku::Session,
+    mahjong: crate::mahjong::Game,
+    mahjong_records: [Option<u64>; 3],
+}
+
 impl Default for Save {
     fn default() -> Self {
         Self::new(0x4756_585f_5255_5354)
@@ -201,6 +217,19 @@ impl Save {
                 crate::mahjong::Layout::Turtle,
                 seed ^ 0x004d_4148_4a4f_4e47,
             ),
+            patience_records: [None; 6],
+            solitaire: crate::patience::Game::new(
+                crate::patience::Variant::Klondike1,
+                seed ^ 0x534f_4c49_5441_4952,
+            ),
+            freecell: crate::patience::Game::new(
+                crate::patience::Variant::FreeCell,
+                seed ^ 0x4652_4545_4345_4c4c,
+            ),
+            spider: crate::patience::Game::new(
+                crate::patience::Variant::Spider1,
+                seed ^ 0x5350_4944_4552_0001,
+            ),
         }
     }
 
@@ -215,6 +244,30 @@ impl Save {
         self.baccarat.validate()?;
         self.sudoku.validate()?;
         self.mahjong.validate()?;
+        self.solitaire.validate()?;
+        if self
+            .patience_records
+            .iter()
+            .flatten()
+            .any(|t| *t == 0 || *t > MAX_ELAPSED_MS)
+        {
+            return Err("invalid patience record".into());
+        }
+        self.freecell.validate()?;
+        self.spider.validate()?;
+        if !matches!(
+            self.solitaire.variant,
+            crate::patience::Variant::Klondike1 | crate::patience::Variant::Klondike3
+        ) || self.freecell.variant != crate::patience::Variant::FreeCell
+            || !matches!(
+                self.spider.variant,
+                crate::patience::Variant::Spider1
+                    | crate::patience::Variant::Spider2
+                    | crate::patience::Variant::Spider4
+            )
+        {
+            return Err("patience save has an unexpected variant".into());
+        }
         if self
             .mahjong_records
             .iter()
@@ -278,7 +331,20 @@ impl Save {
                 migrated.sudoku = old.sudoku;
                 migrated
             }
-            5 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            5 => {
+                let old: LegacyV5 = serde_json::from_value(value)
+                    .map_err(|e| format!("invalid version-5 save: {e}"))?;
+                let mut migrated = Self::new(old.minesweeper.game.seed);
+                migrated.settings = old.settings;
+                migrated.minesweeper = old.minesweeper;
+                migrated.blackjack = old.blackjack;
+                migrated.baccarat = old.baccarat;
+                migrated.sudoku = old.sudoku;
+                migrated.mahjong = old.mahjong;
+                migrated.mahjong_records = old.mahjong_records;
+                migrated
+            }
+            6 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -298,6 +364,21 @@ impl Save {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn all_patience_modes_persist_in_their_cabinet() {
+        for variant in crate::patience::Variant::ALL {
+            let mut save = Save::new(42);
+            let game = crate::patience::Game::new(variant, 99);
+            match variant {
+                crate::patience::Variant::Klondike1 | crate::patience::Variant::Klondike3 => {
+                    save.solitaire = game
+                }
+                crate::patience::Variant::FreeCell => save.freecell = game,
+                _ => save.spider = game,
+            }
+            assert_eq!(Save::from_json(&save.to_json().unwrap()).unwrap(), save);
+        }
+    }
     use super::*;
 
     #[test]
@@ -490,6 +571,69 @@ mod tests {
         let mut value = serde_json::to_value(&save).unwrap();
         value.as_object_mut().unwrap().remove("mahjong");
         assert!(Save::from_json(&value.to_string()).is_err());
+    }
+
+    #[test]
+    fn version_five_migration_preserves_every_legacy_cabinet_and_zen_history() {
+        let mut old = Save::new(0x1234_5678);
+        old.minesweeper.game.command(crate::Command::Reveal(40));
+        old.minesweeper.records.beginner = Some(4321);
+        old.blackjack.command(crate::blackjack::Command::Deal);
+        old.baccarat.command(crate::baccarat::Command::Select(
+            crate::baccarat::BetSide::Player,
+        ));
+        old.baccarat.command(crate::baccarat::Command::Deal);
+        let mut history = crate::sudoku::History::default();
+        old.sudoku
+            .command(crate::sudoku::Command::Hint, &mut history);
+        old.sudoku.game.advance_time(987);
+        old.mahjong.zen = true;
+        let pair = old.mahjong.available_pairs()[0];
+        assert!(old.mahjong.match_pair(pair[0], pair[1]));
+        old.mahjong_records = [Some(1200), Some(1300), Some(1400)];
+        old.settings.volume = 0.23;
+
+        let value = serde_json::json!({"version":5,"settings":old.settings,
+            "minesweeper":old.minesweeper,"blackjack":old.blackjack,
+            "baccarat":old.baccarat,"sudoku":old.sudoku,"mahjong":old.mahjong,
+            "mahjong_records":old.mahjong_records});
+        let migrated = Save::from_json(&value.to_string()).unwrap();
+        assert_eq!(migrated.version, SAVE_VERSION);
+        assert_eq!(migrated.settings, old.settings);
+        assert_eq!(migrated.minesweeper, old.minesweeper);
+        assert_eq!(migrated.blackjack, old.blackjack);
+        assert_eq!(migrated.baccarat, old.baccarat);
+        assert_eq!(migrated.sudoku, old.sudoku);
+        assert_eq!(migrated.mahjong, old.mahjong);
+        assert!(migrated.mahjong.zen);
+        assert_eq!(migrated.mahjong_records, old.mahjong_records);
+        assert_eq!(
+            migrated.solitaire,
+            Save::new(old.minesweeper.game.seed).solitaire
+        );
+        assert_eq!(
+            migrated.freecell,
+            Save::new(old.minesweeper.game.seed).freecell
+        );
+        assert_eq!(migrated.spider, Save::new(old.minesweeper.game.seed).spider);
+        assert_eq!(
+            Save::from_json(&migrated.to_json().unwrap()).unwrap(),
+            migrated
+        );
+    }
+
+    #[test]
+    fn version_six_requires_all_patience_saves_and_round_trips() {
+        let save = Save::default();
+        assert_eq!(save.solitaire.variant, crate::patience::Variant::Klondike1);
+        assert_eq!(save.freecell.variant, crate::patience::Variant::FreeCell);
+        assert_eq!(save.spider.variant, crate::patience::Variant::Spider1);
+        assert_eq!(Save::from_json(&save.to_json().unwrap()).unwrap(), save);
+        for field in ["solitaire", "freecell", "spider"] {
+            let mut value = serde_json::to_value(&save).unwrap();
+            value.as_object_mut().unwrap().remove(field);
+            assert!(Save::from_json(&value.to_string()).is_err(), "{field}");
+        }
     }
 
     #[test]

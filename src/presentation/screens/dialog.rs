@@ -43,6 +43,8 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             "Saved settings, records, and progress\nwill be replaced with a fresh session."
         } else if matches!(s.modal, Some(Pending::NewMahjong(..))) {
             "Your Mahjong progress will be replaced.\nCancel to keep the current board."
+        } else if matches!(s.modal, Some(Pending::NewPatience(..))) {
+            "Your card-game progress will be replaced.\nCancel to keep this deal."
         } else if sudoku {
             "Your Sudoku entries and notes will be replaced.\nCancel to keep playing this puzzle."
         } else {

@@ -3,6 +3,7 @@ pub mod blackjack;
 pub mod cards;
 pub mod mahjong;
 pub mod minesweeper;
+pub mod patience;
 pub mod save;
 pub mod sudoku;
 
