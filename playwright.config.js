@@ -5,7 +5,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // WebGPU is CPU-rendered in Linux CI. Concurrent renderers and continuous
+  // screen recording starve animation/input updates on the hosted runner.
+  workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? 'github' : 'list',
   timeout: 45_000,
   expect: { timeout: 8_000 },
@@ -26,8 +28,8 @@ export default defineConfig({
       ],
     },
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure',
-    video: 'retain-on-failure',
+    trace: { mode: 'retain-on-failure', screenshots: false, snapshots: true, sources: true },
+    video: 'off',
   },
   webServer: {
     command: 'python3 -m http.server 18435 --bind 127.0.0.1 --directory web',

@@ -250,6 +250,8 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
     }).to_string());
     let mut interaction = serde_json::json!({
         "screen": format!("{:?}", state.screen),
+        "focusIndex": state.focus,
+        "focusCount": layout.hits.len(),
         "modal": match state.modal {
             Some(Pending::SudokuSetup) => Some("sudoku-setup"),
             Some(Pending::NewSudoku(..)) => Some("sudoku-replace"),
