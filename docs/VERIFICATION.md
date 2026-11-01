@@ -263,6 +263,16 @@ Native playback previously linearly interpolated PCM16 through rodio, while brow
 
 All 182 Rust tests, strict Clippy, formatting, and the WASM release build pass locally. The complete 52-case browser suite passes with Chromium/Metal, one worker, and retries disabled (1.2 minutes). The two slow-frame expiry tests also pass all six repetitions. Restart confirmation remains covered in its own short test. Hosted verification of these local changes still requires a new push/run.
 
+## Solitaire parity — 1 November 2026
+
+FreeCell now offers Standard and Relaxed modes. Relaxed removes stack-capacity limits while preserving alternating descending sequences and single-card cells. Save v7 preserves the six existing records and adds a seventh for Relaxed; v6 migration preserves all cabinet sessions and settings. The agreed game roster is tracked in [PORTING.md](../PORTING.md).
+
+Finish plans a complete legal foundation sequence on a copy, commits only a full solution, and saves before animating. One Undo restores the whole pre-finish position. It requires an empty stock and fully exposed cards; Spider retains automatic completed-run extraction. Winning stops the clock. Initial/stock deals, moves, and flips animate through transient presentation state, including reverse flips on Undo. Card input, navigation, resize, and focus loss settle animations; reduced motion bypasses them. The phone toolbar uses two rows of three controls. FreeCell hints now fall back to empty cells when no tableau or foundation move exists.
+
+All 194 Rust tests and strict workspace Clippy pass, including save migration, relaxed capacity, rejected finishes preserving state, atomic finish/undo, animation ordering and expiry, and legal opening hints across 512 FreeCell deals. Native macOS packaging and the WASM release build pass. An isolated native session verified switching to Relaxed, dragging a card into a free cell, and Undo. All 55 browser regressions pass in local Chromium/Metal with one worker and retries disabled (1.3 minutes), covering mode persistence, protected replacement, Finish/Undo/reload, reduced motion, phone controls, and mouse/touch dragging. This does not establish hosted Linux CI or physical-phone acceptance.
+
+![Phone FreeCell controls](screenshots/freecell-phone-controls.png)
+
 ## Screenshots
 
 Actual native render captures, excluding window chrome.

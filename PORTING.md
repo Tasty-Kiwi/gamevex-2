@@ -1,0 +1,25 @@
+# Porting roster
+
+Priority agreed on 1 November 2026. Work stays in `gamevex-2`, directly on `main`, without pull requests. The original GameVex checkout is a read-only behavioral reference.
+
+1. **Solitaire family parity — complete**
+   - Relaxed FreeCell alongside Standard, with separate records and saved mode.
+   - Safe automatic finishing for provably completed Klondike/FreeCell positions, with one-step undo.
+   - Dealing, card movement, and exposed-card flip animations across Solitaire, FreeCell, and Spider.
+2. **Hearts**
+3. **Cribbage**
+4. **Texas Hold'em**
+5. **Roulette**
+6. **Backgammon**
+
+Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, and Spider are already playable. Card Lab remains an interaction sandbox.
+
+## Removed from the port
+
+Zip, Slots, Shogi, Arcana Hunt, Night Crown, Card Capital, and Craps are excluded from the roster.
+
+Shared tickets/shop progression and distribution/accessibility work remain outside the game-port queue above.
+
+## Completion checks
+
+Each game or parity step needs rules coverage against the original implementation, save validation/migration, responsive mouse/touch/keyboard controls, reduced-motion and sound settings, and native plus browser verification. Save commands commit authoritative state immediately; animations are transient presentation only.

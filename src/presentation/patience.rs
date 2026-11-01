@@ -60,7 +60,10 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             &[Variant::Klondike1, Variant::Klondike3],
             &["Draw 1", "Draw 3"],
         ),
-        Screen::FreeCell => (&[Variant::FreeCell], &["FreeCell"]),
+        Screen::FreeCell => (
+            &[Variant::FreeCell, Variant::FreeCellRelaxed],
+            &["Standard", "Relaxed"],
+        ),
         _ => (
             &[Variant::Spider1, Variant::Spider2, Variant::Spider4],
             &["1 Suit", "2 Suits", "4 Suits"],
@@ -81,37 +84,54 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         );
     }
     let controls_y = mode_y + 33.0;
-    let cw = ((w - gap * 4.0) / 5.0).min(86.0);
-    for (i, (label, action, enabled)) in [
+    let compact_controls = w < 620.0;
+    let columns = if compact_controls { 3 } else { 6 };
+    let control_height = if compact_controls { 33.0 } else { 29.0 };
+    let row_gap = if compact_controls { gap } else { 0.0 };
+    let available_control_width = (w - gap * (columns - 1) as f32) / columns as f32;
+    let cw = if compact_controls {
+        available_control_width
+    } else {
+        available_control_width.min(86.0)
+    };
+    let actions = [
         (
             "Deal",
             Action::PatienceDeal,
-            !game.won() && variant != Variant::FreeCell,
+            !game.won() && !variant.is_freecell(),
         ),
         ("Undo", Action::PatienceUndo, game.can_undo()),
         ("Hint", Action::PatienceHint, !game.won()),
+        ("Finish", Action::PatienceFinish, ui.can_finish),
         ("Restart", Action::PatienceNew(variant, true), true),
         ("New", Action::PatienceNew(variant, false), true),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let r = rect(m + i as f32 * (cw + gap), controls_y, cw, 29.0);
+    ];
+    for (i, (label, action, enabled)) in actions.into_iter().enumerate() {
+        let column = i % columns;
+        let row = i / columns;
+        let r = rect(
+            m + column as f32 * (cw + gap),
+            controls_y + row as f32 * (control_height + row_gap),
+            cw,
+            control_height,
+        );
         if enabled {
             button(f, s, l, r, label, action, false);
         } else {
             f.rect(r.min, r.size(), PANEL);
             f.outline(r.min, r.size(), 1.0, EDGE);
-            f.text(r.min + Vec2::new(12.0, 7.0), label, 13.0, MUTED);
+            f.text(r.min + Vec2::new(5.0, 8.0), label, 11.0, MUTED);
         }
     }
 
-    let clip = rect(
-        m,
-        controls_y + 36.0,
-        w,
-        (f.size.y - controls_y - 111.0).max(105.0),
-    );
+    let clip_top = controls_y
+        + if compact_controls {
+            2.0 * control_height + row_gap + 8.0
+        } else {
+            control_height + 7.0
+        };
+    let clip_bottom = f.size.y - 75.0;
+    let clip = rect(m, clip_top, w, (clip_bottom - clip_top).max(0.0));
     l.patience_clip = Some(clip);
     let count = variant.columns();
     let gapx = 5.0;
@@ -146,14 +166,14 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     // Spider has eight completed-run slots and the stock, and Klondike has
     // stock, waste, and four foundations.
     let slot_y = top_y + 3.0;
-    if variant == Variant::FreeCell {
+    if variant.is_freecell() {
         for i in 0..8 {
             let r = rect(x0 + i as f32 * stride, slot_y, card_w, card_h);
             if i < 4 {
                 let p = Pile::Cell(i);
                 match game.cells[i] {
                     Some(card) => {
-                        if !lifted(p, 0) {
+                        if !lifted(p, 0) && !ui.motion.hides(p, 0) {
                             draw_card(f, clip, r, card, active_source == Some((p, 0)), false, true);
                         }
                         add_card_hit(l, clip, r, p, 0);
@@ -162,18 +182,23 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 }
             } else {
                 let p = Pile::Foundation(i - 4);
-                if let Some((idx, card)) = game.foundations[i - 4].iter().enumerate().next_back() {
-                    if !lifted(p, idx) {
-                        draw_card(
-                            f,
-                            clip,
-                            r,
-                            *card,
-                            ui.selected == Some((p, idx)),
-                            false,
-                            true,
-                        );
-                    }
+                if let Some((idx, card)) = game.foundations[i - 4]
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find(|(idx, _)| !ui.motion.hides(p, *idx) && !lifted(p, *idx))
+                {
+                    draw_card(
+                        f,
+                        clip,
+                        r,
+                        *card,
+                        ui.selected == Some((p, idx)),
+                        false,
+                        true,
+                    );
+                }
+                if let Some((idx, _)) = game.foundations[i - 4].iter().enumerate().next_back() {
                     add_card_hit(l, clip, r, p, idx);
                 } else {
                     pile_slot(f, l, s, clip, r, p, false);
@@ -213,24 +238,31 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             Pile::Stock,
             true,
         );
-        if let Some(card) = game.waste.last().copied() {
-            if !lifted(Pile::Waste, game.waste.len() - 1) {
-                draw_card(
-                    f,
-                    clip,
-                    rect(x0 + stride, slot_y, card_w, card_h),
-                    card,
-                    false,
-                    false,
-                    true,
-                );
-            }
+        if let Some((visible_index, card)) = game
+            .waste
+            .iter()
+            .copied()
+            .enumerate()
+            .rev()
+            .find(|(idx, _)| !ui.motion.hides(Pile::Waste, *idx) && !lifted(Pile::Waste, *idx))
+        {
+            draw_card(
+                f,
+                clip,
+                rect(x0 + stride, slot_y, card_w, card_h),
+                card,
+                ui.selected == Some((Pile::Waste, visible_index)),
+                false,
+                true,
+            );
+        }
+        if let Some(index) = game.waste.len().checked_sub(1) {
             add_card_hit(
                 l,
                 clip,
                 rect(x0 + stride, slot_y, card_w, card_h),
                 Pile::Waste,
-                game.waste.len() - 1,
+                index,
             );
         } else {
             pile_slot(
@@ -247,18 +279,23 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         for i in 0..4 {
             let p = Pile::Foundation(i);
             let r = rect(home_start + i as f32 * stride, slot_y, card_w, card_h);
-            if let Some((idx, card)) = game.foundations[i].iter().enumerate().next_back() {
-                if !lifted(p, idx) {
-                    draw_card(
-                        f,
-                        clip,
-                        r,
-                        *card,
-                        ui.selected == Some((p, idx)),
-                        false,
-                        true,
-                    );
-                }
+            if let Some((idx, card)) = game.foundations[i]
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(idx, _)| !ui.motion.hides(p, *idx) && !lifted(p, *idx))
+            {
+                draw_card(
+                    f,
+                    clip,
+                    r,
+                    *card,
+                    ui.selected == Some((p, idx)),
+                    false,
+                    true,
+                );
+            }
+            if let Some((idx, _)) = game.foundations[i].iter().enumerate().next_back() {
                 add_card_hit(l, clip, r, p, idx);
             } else {
                 pile_slot(f, l, s, clip, r, p, false);
@@ -283,7 +320,7 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             {
                 let selected = active_source.is_some_and(|(src, at)| src == p && index >= at);
                 let legal = active_source.is_some_and(|(src, at)| game.legal_move(src, at, p));
-                if !lifted(p, index) {
+                if !lifted(p, index) && !ui.motion.hides(p, index) {
                     draw_card(
                         f,
                         clip,
@@ -314,6 +351,63 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             },
             p,
         );
+    }
+    for flight in ui.motion.flights() {
+        let t = ((flight.elapsed - flight.delay) / flight.duration).clamp(0.0, 1.0);
+        let ease = t * t * (3.0 - 2.0 * t);
+        let origin = |pile: Pile, stack_y: f32| -> Option<Vec2> {
+            match pile {
+                Pile::Tableau(i) => Some(Vec2::new(x0 + i as f32 * stride, tableau_y + stack_y)),
+                Pile::Stock => Some(Vec2::new(
+                    if variant.is_freecell() {
+                        clip.min.x + (clip.width() - card_w) * 0.5
+                    } else if matches!(
+                        variant,
+                        Variant::Spider1 | Variant::Spider2 | Variant::Spider4
+                    ) {
+                        x0 + stride * 8.0
+                    } else {
+                        x0
+                    },
+                    slot_y,
+                )),
+                Pile::Waste => Some(Vec2::new(x0 + stride, slot_y)),
+                Pile::Cell(i) => Some(Vec2::new(x0 + i as f32 * stride, slot_y)),
+                Pile::Foundation(i) => Some(Vec2::new(
+                    x0 + (if variant.is_freecell() { 4.0 } else { 3.0 } + i as f32) * stride,
+                    slot_y,
+                )),
+            }
+        };
+        if let (Some(from), Some(to)) = (
+            origin(flight.from, flight.from_stack_y),
+            origin(flight.to, flight.to_stack_y),
+        ) {
+            let mut pos = from.lerp(to, ease);
+            pos.y -= 48.0 * t * (1.0 - t);
+            let mut card = flight.card;
+            if flight.flip && t < 0.5 {
+                card.face_up = !card.face_up;
+            }
+            let flip_scale = if flight.flip {
+                (std::f32::consts::PI * t).cos().abs()
+            } else {
+                1.0
+            };
+            if flip_scale > 0.06 {
+                let width = card_w * flip_scale;
+                pos.x += (card_w - width) * 0.5;
+                draw_card(
+                    f,
+                    clip,
+                    rect(pos.x, pos.y, width, card_h),
+                    card,
+                    false,
+                    false,
+                    true,
+                );
+            }
+        }
     }
     if let (Some(drag), Some(cursor)) = (ui.drag, s.cursor)
         && drag.active

@@ -4,6 +4,7 @@ mod casino_audio;
 mod casino_feedback;
 mod mahjong_app;
 mod patience_app;
+mod patience_motion;
 mod platform;
 mod presentation;
 mod rendering;
@@ -165,6 +166,7 @@ impl Arcade {
 
     fn open(&mut self, screen: Screen) {
         self.patience_ui.drag = None;
+        self.patience_ui.motion.clear();
         if self.screen == Screen::Blackjack
             && !matches!(screen, Screen::Blackjack | Screen::Settings)
             && self.save.blackjack.legal(blackjack::Command::Abandon)
@@ -206,6 +208,13 @@ impl Arcade {
         self.mahjong_ui.feedback.clear();
         self.patience_ui.feedback.clear();
         self.screen = screen;
+        if patience_app::is_family(screen) {
+            self.patience_ui.can_finish = self.patience_game().can_auto_finish();
+            if self.patience_game().moves == 0 && !self.save.settings.reduced_motion {
+                let game = self.patience_game().clone();
+                self.patience_ui.motion.deal(&game);
+            }
+        }
         if !matches!(screen, Screen::Blackjack | Screen::Settings) {
             self.blackjack_motion.clear();
         }
@@ -304,6 +313,7 @@ impl Arcade {
                 | Action::PatienceNew(..)
                 | Action::PatienceDeal
                 | Action::PatienceUndo
+                | Action::PatienceFinish
                 | Action::PatienceHint
                 | Action::MahjongTile(..)
                 | Action::MahjongHint
@@ -413,8 +423,10 @@ impl Arcade {
             Action::PatienceTarget(p) => self.patience_target(p),
             Action::PatienceNew(v, repeat) => self.request_patience(v, repeat),
             Action::PatienceDeal => {
+                let before = self.patience_game().clone();
                 if self.patience_game_mut().deal() {
                     self.patience_changed("Dealt cards.");
+                    self.patience_animate(&before);
                     let count = self.patience_game().variant.columns();
                     let anchors: Vec<_> = (0..count)
                         .map(|i| table_feedback::Anchor::Pile(patience::Pile::Tableau(i)))
@@ -432,15 +444,19 @@ impl Arcade {
                 }
             }
             Action::PatienceUndo => {
+                let before = self.patience_game().clone();
                 if self.patience_game_mut().undo() {
                     self.patience_ui.feedback.clear();
                     self.patience_changed("Move restored.");
+                    self.patience_animate(&before);
                     self.patience_ui
                         .feedback
                         .emit(table_feedback::EffectKind::Undo, &[]);
                 }
             }
+            Action::PatienceFinish => self.patience_finish(),
             Action::PatienceHint => {
+                self.patience_ui.motion.clear();
                 if let Some((p, i, to)) = self.patience_game_mut().hint() {
                     self.patience_ui.selected = Some((p, i));
                     self.patience_ui.feedback.emit(
@@ -629,6 +645,7 @@ impl Arcade {
 
     fn open_modal(&mut self, pending: Pending) {
         self.patience_ui.drag = None;
+        self.patience_ui.motion.clear();
         self.modal_return_focus = self.focus;
         self.modal = Some(pending);
         // Dialog hit order starts with Cancel, keeping destructive confirmation opt-in.
@@ -788,6 +805,7 @@ fn lifecycle(
     if !foreground || transitioned {
         state.lab.cancel_drag();
         state.patience_ui.drag = None;
+        state.patience_ui.motion.clear();
         state.patience_ui.feedback.clear();
         state.mahjong_ui.feedback.clear();
     }
@@ -820,6 +838,11 @@ fn lifecycle(
         }
     }
     if foreground {
+        if state.save.settings.reduced_motion {
+            state.patience_ui.motion.clear();
+        } else if state.modal.is_none() {
+            state.patience_ui.motion.tick(delta as f32);
+        }
         state.mahjong_ui.feedback.tick(delta as f32);
         state.patience_ui.feedback.tick(delta as f32);
     }
@@ -922,6 +945,7 @@ fn handle_pointer_input(
     if !layout_valid {
         state.lab.cancel_drag();
         state.patience_ui.drag = None;
+        state.patience_ui.motion.clear();
         touch.reset(&mut state, &mut pointer);
     }
     if !window.focused || !platform::visible() {
@@ -963,10 +987,12 @@ fn handle_pointer_input(
                 *pointer = None;
                 state.lab.cancel_drag();
                 state.patience_ui.drag = None;
+                state.patience_ui.motion.clear();
             }
             WindowEvent::WindowResized(_) | WindowEvent::WindowScaleFactorChanged(_) => {
                 state.lab.cancel_drag();
                 state.patience_ui.drag = None;
+                state.patience_ui.motion.clear();
                 touch.reset(&mut state, &mut pointer);
                 layout_valid = false;
             }
@@ -974,6 +1000,7 @@ fn handle_pointer_input(
                 *pointer = None;
                 state.lab.cancel_drag();
                 state.patience_ui.drag = None;
+                state.patience_ui.motion.clear();
                 touch.reset(&mut state, &mut pointer);
             }
             _ => {}
@@ -1155,9 +1182,11 @@ fn handle_input(
             state.act(Action::Cancel);
         } else if state.patience_ui.drag.is_some() {
             state.patience_ui.drag = None;
+            state.patience_ui.motion.clear();
         } else if state.lab.drag.is_some() {
             state.lab.cancel_drag();
             state.patience_ui.drag = None;
+            state.patience_ui.motion.clear();
         } else if state.screen != Screen::Lobby {
             state.act(Action::Back);
         }
@@ -3096,7 +3125,9 @@ mod tests {
             for variant in patience::Variant::ALL {
                 let mut state = test_arcade();
                 state.screen = match variant {
-                    patience::Variant::FreeCell => Screen::FreeCell,
+                    patience::Variant::FreeCell | patience::Variant::FreeCellRelaxed => {
+                        Screen::FreeCell
+                    }
                     patience::Variant::Spider1
                     | patience::Variant::Spider2
                     | patience::Variant::Spider4 => Screen::Spider,
@@ -3138,6 +3169,60 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn finish_commits_before_animation_undo_restores_one_action_and_relaxed_records_stay_separate()
+    {
+        use cards::{Card, Suit};
+        use patience::{Pile, Variant};
+        let mut s = test_arcade();
+        s.screen = Screen::FreeCell;
+        let mut game = patience::Game::new(Variant::FreeCellRelaxed, 77);
+        game.tableau = vec![vec![]; 8];
+        game.foundations = [Suit::Spades, Suit::Hearts, Suit::Clubs, Suit::Diamonds]
+            .into_iter()
+            .enumerate()
+            .map(|(i, suit)| {
+                std::iter::once(14)
+                    .chain(2..=if i == 3 { 11 } else { 13 })
+                    .map(|rank| Card::new(rank, suit, true))
+                    .collect()
+            })
+            .collect();
+        game.tableau[0] = vec![
+            Card::new(13, Suit::Diamonds, true),
+            Card::new(12, Suit::Diamonds, true),
+        ];
+        game.moves = 1;
+        assert!(game.validate().is_ok());
+        s.save.freecell = game.clone();
+        s.save.patience_records[2] = Some(9_000);
+        s.open(Screen::FreeCell);
+        assert!(s.patience_ui.can_finish);
+        s.act(Action::PatienceFinish);
+        assert!(s.patience_game().won());
+        assert!(s.patience_ui.motion.busy());
+        assert!(!s.patience_ui.can_finish);
+        assert_eq!(s.save.patience_records[2], Some(9_000));
+        assert_eq!(s.save.patience_records[6], Some(1000));
+        assert!(
+            Save::from_json(&s.save.to_json().unwrap())
+                .unwrap()
+                .freecell
+                .won()
+        );
+        s.act(Action::PatienceUndo);
+        assert_eq!(s.patience_game(), &game);
+        assert!(s.patience_ui.can_finish);
+        s.save.settings.reduced_motion = true;
+        s.act(Action::PatienceFinish);
+        assert!(s.patience_game().won());
+        assert!(!s.patience_ui.motion.busy());
+        s.open(Screen::Lobby);
+        s.open(Screen::FreeCell);
+        assert!(!s.patience_ui.motion.busy());
+        assert_eq!(s.patience_game().cards(Pile::Foundation(3)).len(), 13);
+    }
+
     #[test]
     fn patience_win_is_transient_and_undo_does_not_replay_it() {
         use cards::{Card, Suit};

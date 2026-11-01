@@ -9,6 +9,8 @@ pub(crate) struct PatienceUi {
     pub pan: Vec2,
     pub message: String,
     pub feedback: TableFeedback,
+    pub motion: crate::patience_motion::PatienceMotion,
+    pub can_finish: bool,
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PatienceDrag {
@@ -47,6 +49,11 @@ impl Arcade {
     pub(crate) fn new_patience(&mut self, variant: Variant, seed: u64) {
         *self.patience_game_mut() = patience::Game::new(variant, seed);
         self.patience_ui = Default::default();
+        self.patience_ui.can_finish = self.patience_game().can_auto_finish();
+        if !self.save.settings.reduced_motion {
+            let game = self.patience_game().clone();
+            self.patience_ui.motion.deal(&game);
+        }
         self.patience_ui.feedback.emit(EffectKind::Deal, &[]);
         self.modal = None;
         self.last_active = false;
@@ -54,6 +61,7 @@ impl Arcade {
         self.persist();
     }
     pub(crate) fn patience_pick(&mut self, pile: Pile, index: usize) {
+        self.patience_ui.motion.clear();
         if let Some((from, at)) = self.patience_ui.selected {
             if from == pile && at == index {
                 self.patience_ui.selected = None;
@@ -77,6 +85,7 @@ impl Arcade {
         }
     }
     pub(crate) fn patience_press(&mut self, layout: &ViewLayout) -> bool {
+        self.patience_ui.motion.clear();
         let Some(cursor) = self.cursor else {
             return false;
         };
@@ -151,11 +160,13 @@ impl Arcade {
         }
     }
     fn patience_move(&mut self, from: Pile, index: usize, to: Pile) -> bool {
+        let before = self.patience_game().clone();
         let runs = self.patience_game().completed.len();
         if !self.patience_game_mut().move_cards(from, index, to) {
             return false;
         }
         self.patience_changed("Moved cards.");
+        self.patience_animate(&before);
         if !self.patience_game().won() {
             self.patience_ui
                 .feedback
@@ -170,7 +181,27 @@ impl Arcade {
         }
         true
     }
+    pub(crate) fn patience_animate(&mut self, before: &patience::Game) {
+        if self.save.settings.reduced_motion {
+            self.patience_ui.motion.clear();
+        } else {
+            let after = self.patience_game().clone();
+            self.patience_ui.motion.transition(before, &after);
+        }
+    }
+    pub(crate) fn patience_finish(&mut self) {
+        let before = self.patience_game().clone();
+        let trace = self.patience_game_mut().auto_finish();
+        if trace.is_empty() {
+            self.patience_ui.message =
+                "Finish is available when every remaining card can safely reach home.".into();
+            return;
+        }
+        self.patience_changed("Finished the table.");
+        self.patience_animate(&before);
+    }
     pub(crate) fn patience_changed(&mut self, message: &str) {
+        self.patience_ui.can_finish = self.patience_game().can_auto_finish();
         if self.patience_game().won() && !self.patience_game().assisted {
             let game = self.patience_game();
             let index = Variant::ALL
@@ -212,6 +243,7 @@ pub(crate) fn keys(s: &mut Arcade, keys: &ButtonInput<KeyCode>, l: &ViewLayout) 
         (KeyCode::KeyD, Action::PatienceDeal),
         (KeyCode::KeyU, Action::PatienceUndo),
         (KeyCode::KeyH, Action::PatienceHint),
+        (KeyCode::KeyA, Action::PatienceFinish),
     ] {
         if keys.just_pressed(key) {
             s.act(action);

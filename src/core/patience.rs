@@ -9,21 +9,24 @@ pub enum Variant {
     Spider1,
     Spider2,
     Spider4,
+    FreeCellRelaxed,
 }
 impl Variant {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Klondike1,
         Self::Klondike3,
         Self::FreeCell,
         Self::Spider1,
         Self::Spider2,
         Self::Spider4,
+        Self::FreeCellRelaxed,
     ];
     pub const fn label(self) -> &'static str {
         match self {
             Self::Klondike1 => "Klondike Draw 1",
             Self::Klondike3 => "Klondike Draw 3",
             Self::FreeCell => "FreeCell",
+            Self::FreeCellRelaxed => "FreeCell Relaxed",
             Self::Spider1 => "Spider 1 Suit",
             Self::Spider2 => "Spider 2 Suits",
             Self::Spider4 => "Spider 4 Suits",
@@ -32,7 +35,7 @@ impl Variant {
     pub const fn columns(self) -> usize {
         match self {
             Self::Klondike1 | Self::Klondike3 => 7,
-            Self::FreeCell => 8,
+            Self::FreeCell | Self::FreeCellRelaxed => 8,
             _ => 10,
         }
     }
@@ -44,6 +47,9 @@ impl Variant {
     }
     fn is_spider(self) -> bool {
         matches!(self, Self::Spider1 | Self::Spider2 | Self::Spider4)
+    }
+    pub const fn is_freecell(self) -> bool {
+        matches!(self, Self::FreeCell | Self::FreeCellRelaxed)
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,7 +161,7 @@ impl Game {
                     top.face_up = true;
                 }
             }
-        } else if variant == Variant::FreeCell {
+        } else if variant.is_freecell() {
             for (i, mut c) in deck.into_iter().enumerate() {
                 c.face_up = true;
                 tableau[i % 8].push(c);
@@ -170,7 +176,7 @@ impl Game {
             }
             stock = deck[28..].iter().rev().copied().collect();
         }
-        if variant != Variant::FreeCell {
+        if !variant.is_freecell() {
             cells.clear();
         }
         let foundations = vec![Vec::new(); 4];
@@ -220,7 +226,7 @@ impl Game {
                 if tail.is_empty() || tail.iter().any(|c| !c.face_up) {
                     return None;
                 }
-                if self.variant == Variant::FreeCell {
+                if self.variant.is_freecell() {
                     if tail
                         .windows(2)
                         .any(|w| color(w[0]) == color(w[1]) || ace_rank(w[0]) != ace_rank(w[1]) + 1)
@@ -275,18 +281,21 @@ impl Game {
                     .checked_shl(empty_columns.min(usize::BITS as usize - 1) as u32)
                     .unwrap_or(usize::MAX),
             );
-            if cs.len() > capacity {
+            if self.variant == Variant::FreeCell && cs.len() > capacity {
                 return false;
             }
         }
         let c = cs[0];
         match (self.variant, to) {
-            (Variant::FreeCell, Pile::Cell(i)) => {
+            (variant, Pile::Cell(i)) if variant.is_freecell() => {
                 cs.len() == 1
                     && self.cells.get(i).is_some_and(Option::is_none)
                     && !matches!(from,Pile::Cell(j) if i==j)
             }
-            (Variant::FreeCell | Variant::Klondike1 | Variant::Klondike3, Pile::Foundation(i)) => {
+            (variant, Pile::Foundation(i))
+                if variant.is_freecell()
+                    || matches!(variant, Variant::Klondike1 | Variant::Klondike3) =>
+            {
                 cs.len() == 1
                     && self.foundations.get(i).is_some_and(|f| {
                         f.last().map_or(ace_rank(c) == 1, |top| {
@@ -302,9 +311,7 @@ impl Game {
                     return false;
                 }
                 let Some(top) = dst.last() else {
-                    return self.variant.is_spider()
-                        || self.variant == Variant::FreeCell
-                        || c.rank == 13;
+                    return self.variant.is_spider() || self.variant.is_freecell() || c.rank == 13;
                 };
                 if self.variant.is_spider() {
                     ace_rank(*top) == ace_rank(c) + 1
@@ -507,6 +514,22 @@ impl Game {
                 }
             }
         }
+        // An empty free cell is a legal escape even when no tableau or
+        // foundation move is available. Prefer the constructive moves above.
+        if self.variant.is_freecell() {
+            for cell in 0..self.cells.len() {
+                for column in 0..self.tableau.len() {
+                    if let Some(index) = self.tableau[column].len().checked_sub(1) {
+                        let source = Pile::Tableau(column);
+                        let target = Pile::Cell(cell);
+                        if self.legal_move(source, index, target) {
+                            self.assisted = true;
+                            return Some((source, index, target));
+                        }
+                    }
+                }
+            }
+        }
         None
     }
     pub fn won(&self) -> bool {
@@ -516,7 +539,97 @@ impl Game {
             self.foundations.iter().all(|p| p.len() == 13)
         }
     }
+    /// Plan a complete, unassisted finish using only currently exposed cards.
+    /// The plan is returned only when it reaches the won state in full.
+    pub fn can_auto_finish(&self) -> bool {
+        !self.plan_auto_finish().is_empty()
+    }
+
+    /// Commit an all-or-nothing sequence of exposed-top moves to foundations.
+    /// The caller can animate the returned trace after this authoritative commit.
+    pub fn auto_finish(&mut self) -> Vec<(Pile, usize, Pile)> {
+        let plan = self.plan_auto_finish();
+        if plan.is_empty() {
+            return Vec::new();
+        }
+        self.push_history();
+        for &(from, index, to) in &plan {
+            let cards = self.moving(from, index).expect("validated finish plan");
+            match from {
+                Pile::Tableau(i) => {
+                    self.tableau[i].pop();
+                    self.flip(i);
+                }
+                Pile::Waste => {
+                    self.waste.pop();
+                }
+                Pile::Cell(i) => {
+                    self.cells[i] = None;
+                }
+                _ => unreachable!("finish plan only uses exposed tableau, waste, or cell cards"),
+            }
+            let Pile::Foundation(i) = to else {
+                unreachable!()
+            };
+            self.foundations[i].extend(cards);
+            self.moves = self.moves.saturating_add(1);
+        }
+        plan
+    }
+
+    fn plan_auto_finish(&self) -> Vec<(Pile, usize, Pile)> {
+        if self.variant.is_spider()
+            || !self.stock.is_empty()
+            || self.tableau.iter().flatten().any(|c| !c.face_up)
+            || self.won()
+            || self.validate().is_err()
+        {
+            return Vec::new();
+        }
+        let mut planned = self.clone();
+        planned.history.clear();
+        let mut plan = Vec::new();
+        // There are at most 52 foundation cards in supported non-Spider games.
+        for _ in 0..52 {
+            if planned.won() {
+                return plan;
+            }
+            let mut found = None;
+            let mut sources: Vec<Pile> = (0..planned.tableau.len()).map(Pile::Tableau).collect();
+            if !planned.waste.is_empty() {
+                sources.push(Pile::Waste);
+            }
+            for (i, cell) in planned.cells.iter().enumerate() {
+                if cell.is_some() {
+                    sources.push(Pile::Cell(i));
+                }
+            }
+            'source: for source in sources {
+                let Some(index) = planned.cards(source).len().checked_sub(1) else {
+                    continue;
+                };
+                for foundation in 0..4 {
+                    let destination = Pile::Foundation(foundation);
+                    if planned.legal_move(source, index, destination) {
+                        found = Some((source, index, destination));
+                        break 'source;
+                    }
+                }
+            }
+            let Some(mv) = found else {
+                return Vec::new();
+            };
+            if !planned.move_cards(mv.0, mv.1, mv.2) {
+                return Vec::new();
+            }
+            plan.push(mv);
+        }
+        if planned.won() { plan } else { Vec::new() }
+    }
     pub fn advance_time(&mut self, ms: u64) {
+        if self.won() {
+            return;
+        }
         self.elapsed_ms = self
             .elapsed_ms
             .saturating_add(ms)
@@ -529,12 +642,7 @@ impl Game {
         let n = self.variant.decks();
         if self.tableau.len() != self.variant.columns()
             || self.foundations.len() != 4
-            || self.cells.len()
-                != if self.variant == Variant::FreeCell {
-                    4
-                } else {
-                    0
-                }
+            || self.cells.len() != if self.variant.is_freecell() { 4 } else { 0 }
         {
             return Err("invalid pile counts".into());
         }
@@ -542,10 +650,11 @@ impl Game {
             return Err("invalid timer or history".into());
         }
         match self.variant {
-            Variant::FreeCell
-                if !self.stock.is_empty()
-                    || !self.waste.is_empty()
-                    || !self.completed.is_empty() =>
+            variant
+                if variant.is_freecell()
+                    && (!self.stock.is_empty()
+                        || !self.waste.is_empty()
+                        || !self.completed.is_empty()) =>
             {
                 return Err("invalid FreeCell piles".into());
             }
@@ -653,7 +762,7 @@ impl Game {
                     return Err("face-down card beneath face-up card".into());
                 }
             }
-            if self.variant == Variant::FreeCell && face_up.len() != col.len() {
+            if self.variant.is_freecell() && face_up.len() != col.len() {
                 return Err("FreeCell tableau cards must all be face up".into());
             }
             if matches!(self.variant, Variant::Klondike1 | Variant::Klondike3)
@@ -699,6 +808,18 @@ impl Game {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn freecell_hint_always_finds_a_legal_opening_with_empty_cells() {
+        for variant in [Variant::FreeCell, Variant::FreeCellRelaxed] {
+            for seed in 0..256 {
+                let mut game = Game::new(variant, seed);
+                let (from, index, to) = game.hint().expect("empty cells allow a move");
+                assert!(game.legal_move(from, index, to));
+                assert!(game.assisted);
+            }
+        }
+    }
+
+    #[test]
     fn assistance_stays_set_after_undo() {
         let mut game = Game::new(Variant::Klondike1, 42);
         assert!(game.deal());
@@ -707,6 +828,90 @@ mod tests {
         assert!(game.assisted);
     }
     use super::*;
+
+    #[test]
+    fn relaxed_freecell_only_removes_multi_card_capacity_limit() {
+        let mut normal = Game::new(Variant::FreeCell, 7);
+        let mut relaxed = Game::new(Variant::FreeCellRelaxed, 7);
+        for game in [&mut normal, &mut relaxed] {
+            game.cells = (0..4)
+                .map(|i| Some(Card::new((i + 2) as u8, Suit::Diamonds, true)))
+                .collect();
+            game.tableau = vec![vec![Card::new(9, Suit::Clubs, true)]; 8];
+            game.tableau[0] = vec![
+                Card::new(6, Suit::Spades, true),
+                Card::new(5, Suit::Hearts, true),
+            ];
+            game.tableau[1] = vec![Card::new(7, Suit::Hearts, true)];
+        }
+        assert!(!normal.legal_move(Pile::Tableau(0), 0, Pile::Tableau(1)));
+        assert!(relaxed.legal_move(Pile::Tableau(0), 0, Pile::Tableau(1)));
+        assert!(!relaxed.legal_move(Pile::Tableau(0), 0, Pile::Cell(0)));
+        relaxed.tableau[0][1].rank = 4;
+        assert!(!relaxed.legal_move(Pile::Tableau(0), 0, Pile::Tableau(1)));
+    }
+
+    #[test]
+    fn auto_finish_is_all_or_nothing_and_undo_restores_committed_finish() {
+        let mut game = Game::new(Variant::FreeCell, 18);
+        let suits = [Suit::Spades, Suit::Hearts, Suit::Clubs, Suit::Diamonds];
+        game.stock.clear();
+        game.waste.clear();
+        game.cells = vec![None; 4];
+        game.tableau = vec![Vec::new(); 8];
+        game.foundations = vec![Vec::new(); 4];
+        for (i, suit) in suits.into_iter().enumerate() {
+            game.foundations[i] = std::iter::once(14)
+                .chain(2..=12)
+                .map(|rank| Card::new(rank, suit, true))
+                .collect();
+            game.tableau[i].push(Card::new(13, suit, true));
+        }
+        game.moves = 10;
+        game.elapsed_ms = 4200;
+        game.assisted = true;
+        let before = game.clone();
+        assert!(game.can_auto_finish());
+        let trace = game.auto_finish();
+        assert_eq!(trace.len(), 4);
+        assert!(game.won());
+        assert_eq!(game.moves, before.moves + 4);
+        assert_eq!(game.elapsed_ms, before.elapsed_ms);
+        game.advance_time(1000);
+        assert_eq!(game.elapsed_ms, before.elapsed_ms);
+        assert!(game.assisted);
+        assert!(game.undo());
+        assert_eq!(game.stock, before.stock);
+        assert_eq!(game.tableau, before.tableau);
+        assert_eq!(game.foundations, before.foundations);
+        assert_eq!(game.moves, before.moves);
+        assert_eq!(game.elapsed_ms, before.elapsed_ms);
+        assert!(game.assisted);
+    }
+
+    #[test]
+    fn auto_finish_rejects_stock_facedown_and_unfinishable_positions() {
+        let base = Game::new(Variant::Klondike1, 29);
+        assert!(!base.can_auto_finish());
+        let stock = Game::new(Variant::Klondike1, 29);
+        assert!(!stock.can_auto_finish());
+        let mut unfinishable = Game::new(Variant::FreeCell, 32);
+        let unfinishable_before = unfinishable.clone();
+        assert!(!unfinishable.can_auto_finish());
+        assert!(unfinishable.auto_finish().is_empty());
+        assert_eq!(unfinishable, unfinishable_before);
+        let mut facedown = Game::new(Variant::Klondike1, 31);
+        let down_cards = std::mem::take(&mut facedown.stock);
+        let columns = facedown.tableau.len();
+        for (index, card) in down_cards.into_iter().enumerate() {
+            facedown.tableau[index % columns].insert(0, card);
+        }
+        assert!(facedown.validate().is_ok());
+        assert!(!facedown.can_auto_finish());
+        let before = facedown.clone();
+        assert!(facedown.auto_finish().is_empty());
+        assert_eq!(facedown, before);
+    }
 
     fn oracle() -> serde_json::Value {
         serde_json::from_str(include_str!("../../tests/fixtures/patience-oracle.json")).unwrap()

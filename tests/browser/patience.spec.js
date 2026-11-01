@@ -95,7 +95,7 @@ async function openPatience(page, family = 'Solitaire') {
   }).toBe(true);
   await expect.poll(async () => c.evaluate((el) => {
     const save = JSON.parse(el.dataset.session || '{}');
-    return Boolean(save.version === 6 && save.solitaire && save.freecell && save.spider);
+    return Boolean(save.version === 7 && save.solitaire && save.freecell && save.spider);
   })).toBe(true);
   await clickLobbyAction(page, family.toLowerCase());
   await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe(family);
@@ -133,6 +133,18 @@ async function resetLobbyScroll(page) {
       JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).toBeLessThan(scroll);
   }
   throw new Error('Could not return lobby scroll to the top');
+}
+
+
+// Install after the old document's pagehide save, once only, so subsequent
+// reloads exercise persistence rather than restoring the fixture again.
+async function seedNextLoad(page, storageKey, session, marker) {
+  await page.addInitScript(({ storageKey, session, marker }) => {
+    if (!sessionStorage.getItem(marker)) {
+      localStorage.setItem(storageKey, JSON.stringify(session));
+      sessionStorage.setItem(marker, 'seeded');
+    }
+  }, { storageKey, session, marker });
 }
 
 async function interaction(page) {
@@ -296,6 +308,124 @@ test('canceling and confirming a new Solitaire mode protects other cabinets', as
   await expect.poll(async () => (await save(page)).solitaire.variant).toBe('Klondike3');
   expect((await save(page)).freecell).toEqual(before.freecell);
   expect((await save(page)).spider).toEqual(before.spider);
+});
+
+test('FreeCell Relaxed mode protects progress and persists as a separate variant', async ({ page }) => {
+  await openPatience(page, 'FreeCell');
+  expect((await view(page)).modeLabel).toBe('Standard');
+  expect((await view(page)).canFinish).toBe(false);
+  expect((await actions(page)).finish).toBeUndefined();
+  const initial = await save(page);
+  const game = initial.freecell;
+  const index = game.tableau[0].length - 1;
+  await clickAction(page, `pickTableau(0)_${index}`);
+  await expect.poll(async () => (await view(page)).selected).not.toBeNull();
+  await clickAction(page, 'targetCell(1)');
+  await expect.poll(async () => (await save(page)).freecell.moves).toBe(game.moves + 1);
+  const progressed = await save(page);
+
+  await clickAction(page, 'modeFreeCellRelaxed');
+  await expect.poll(async () => interaction(page).then((i) => i.modal)).toBe('patience-replace');
+  await clickAction(page, 'cancel');
+  expect(gameplay((await save(page)).freecell)).toEqual(gameplay(progressed.freecell));
+  await clickAction(page, 'modeFreeCellRelaxed');
+  await expect.poll(async () => interaction(page).then((i) => i.modal)).toBe('patience-replace');
+  await clickAction(page, 'confirm');
+  await expect.poll(async () => view(page).then((v) => v.variant)).toBe('FreeCellRelaxed');
+  expect((await view(page)).modeLabel).toBe('Relaxed');
+  const relaxed = await save(page);
+  expect(relaxed.solitaire).toEqual(progressed.solitaire);
+  expect(relaxed.spider).toEqual(progressed.spider);
+  expect(relaxed.patience_records).toEqual(progressed.patience_records);
+  await page.reload();
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
+  await expect.poll(async () => (await save(page)).freecell.variant).toBe('FreeCellRelaxed');
+  await clickLobbyAction(page, 'freecell');
+  await expect.poll(async () => view(page).then((v) => v.modeLabel)).toBe('Relaxed');
+});
+
+test('FreeCell finish completes a provable two card foundation and undo treats it as one move', async ({ page }) => {
+  await page.goto('/?qa=fresh&diagnostics');
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
+  const base = await save(page);
+  const key = 'gamevex.rust-demo.qa.v1';
+  const nearWin = structuredClone(base);
+  nearWin.version = 7;
+  nearWin.freecell = {
+    ...nearWin.freecell,
+    variant: 'FreeCell',
+    foundations: [
+      [14, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+      [14, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+      [14, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+      [14, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    ].map((ranks, i) => ranks.map((rank) => ({ rank, suit: ['Spades', 'Hearts', 'Clubs', 'Diamonds'][i], face_up: true }))),
+    tableau: [[13, 12].map((rank) => ({ rank, suit: 'Diamonds', face_up: true })), [], [], [], [], [], [], []],
+    cells: [null, null, null, null],
+    stock: [],
+    waste: [],
+    history: [],
+    moves: 1,
+  };
+  await seedNextLoad(page, key, nearWin, 'near-win');
+  await page.reload();
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
+  expect((await save(page)).solitaire).toEqual(base.solitaire);
+  expect((await save(page)).spider).toEqual(base.spider);
+  expect((await save(page)).patience_records).toEqual(base.patience_records);
+  await clickLobbyAction(page, 'freecell');
+  await expect.poll(async () => view(page).then((v) => v.variant)).toBe('FreeCell');
+  await expect.poll(async () => (await view(page)).canFinish).toBe(true);
+  await expect.poll(async () => (await actions(page)).finish).toHaveLength(4);
+  await clickAction(page, 'finish');
+  await expect.poll(async () => (await view(page)).won).toBe(true);
+  expect((await view(page)).canFinish).toBe(false);
+  const won = gameplay((await save(page)).freecell);
+  await clickAction(page, 'undo');
+  await expect.poll(async () => gameplay((await save(page)).freecell)).toEqual(gameplay(nearWin.freecell));
+  expect((await view(page)).won).toBe(false);
+  await clickAction(page, 'finish');
+  await expect.poll(async () => (await view(page)).won).toBe(true);
+  expect(gameplay((await save(page)).freecell)).toEqual(won);
+  await page.reload();
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
+  await clickLobbyAction(page, 'freecell');
+  await expect.poll(async () => (await view(page)).won).toBe(true);
+  expect((await view(page)).animating).toBe(false);
+});
+
+test('patience reports delayed move and deal animations and honors reduced motion', async ({ page }) => {
+  await openPatience(page, 'Solitaire');
+  await expect.poll(async () => typeof (await view(page)).animating).toBe('boolean');
+  const oldMoves = (await save(page)).solitaire.moves;
+  await clickAction(page, 'deal');
+  await expect.poll(async () => (await save(page)).solitaire.moves).toBe(oldMoves + 1);
+  expect(typeof (await view(page)).animating).toBe('boolean');
+  await expect.poll(async () => (await view(page)).animating, { timeout: 3_000 }).toBe(false);
+
+  await clickAction(page, 'lobby');
+  await clickLobbyAction(page, 'freecell');
+  const normalGame = (await save(page)).freecell;
+  const normalIndex = normalGame.tableau[0].length - 1;
+  await clickAction(page, `pickTableau(0)_${normalIndex}`);
+  await clickAction(page, 'targetCell(0)');
+  await expect.poll(async () => (await save(page)).freecell.moves).toBe(normalGame.moves + 1);
+  expect(typeof (await view(page)).animating).toBe('boolean');
+  await expect.poll(async () => (await view(page)).animating, { timeout: 3_000 }).toBe(false);
+
+  const reduced = await save(page);
+  reduced.settings.reduced_motion = true;
+  await seedNextLoad(page, 'gamevex.rust-demo.qa.v1', reduced, 'reduced-motion');
+  await page.goto('/?qa=fresh&diagnostics');
+  await expect.poll(async () => page.locator(canvas).evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
+  await clickLobbyAction(page, 'freecell');
+  const game = (await save(page)).freecell;
+  const index = game.tableau[0].length - 1;
+  await clickAction(page, `pickTableau(0)_${index}`);
+  await expect.poll(async () => (await view(page)).selected).not.toBeNull();
+  await clickAction(page, 'targetCell(1)');
+  await expect.poll(async () => (await save(page)).freecell.moves).toBe(game.moves + 1);
+  expect((await view(page)).animating).toBe(false);
 });
 
 test('patience controls fit on a phone and Spider supports horizontal swipe pan', async ({ page }) => {

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 6;
+pub const SAVE_VERSION: u32 = 7;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -146,7 +146,7 @@ pub struct Save {
     pub mahjong: crate::mahjong::Game,
     pub mahjong_records: [Option<u64>; 3],
     #[serde(default)]
-    pub patience_records: [Option<u64>; 6],
+    pub patience_records: [Option<u64>; 7],
     pub solitaire: crate::patience::Game,
     pub freecell: crate::patience::Game,
     pub spider: crate::patience::Game,
@@ -194,6 +194,21 @@ struct LegacyV5 {
     mahjong_records: [Option<u64>; 3],
 }
 
+#[derive(Deserialize)]
+struct LegacyV6 {
+    settings: Settings,
+    minesweeper: MinesweeperSave,
+    blackjack: crate::blackjack::Blackjack,
+    baccarat: crate::baccarat::Baccarat,
+    sudoku: crate::sudoku::Session,
+    mahjong: crate::mahjong::Game,
+    mahjong_records: [Option<u64>; 3],
+    patience_records: [Option<u64>; 6],
+    solitaire: crate::patience::Game,
+    freecell: crate::patience::Game,
+    spider: crate::patience::Game,
+}
+
 impl Default for Save {
     fn default() -> Self {
         Self::new(0x4756_585f_5255_5354)
@@ -217,7 +232,7 @@ impl Save {
                 crate::mahjong::Layout::Turtle,
                 seed ^ 0x004d_4148_4a4f_4e47,
             ),
-            patience_records: [None; 6],
+            patience_records: [None; 7],
             solitaire: crate::patience::Game::new(
                 crate::patience::Variant::Klondike1,
                 seed ^ 0x534f_4c49_5441_4952,
@@ -258,7 +273,7 @@ impl Save {
         if !matches!(
             self.solitaire.variant,
             crate::patience::Variant::Klondike1 | crate::patience::Variant::Klondike3
-        ) || self.freecell.variant != crate::patience::Variant::FreeCell
+        ) || !self.freecell.variant.is_freecell()
             || !matches!(
                 self.spider.variant,
                 crate::patience::Variant::Spider1
@@ -344,7 +359,24 @@ impl Save {
                 migrated.mahjong_records = old.mahjong_records;
                 migrated
             }
-            6 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            6 => {
+                let old: LegacyV6 = serde_json::from_value(value)
+                    .map_err(|e| format!("invalid version-6 save: {e}"))?;
+                let mut migrated = Self::new(old.minesweeper.game.seed);
+                migrated.settings = old.settings;
+                migrated.minesweeper = old.minesweeper;
+                migrated.blackjack = old.blackjack;
+                migrated.baccarat = old.baccarat;
+                migrated.sudoku = old.sudoku;
+                migrated.mahjong = old.mahjong;
+                migrated.mahjong_records = old.mahjong_records;
+                migrated.patience_records[..6].copy_from_slice(&old.patience_records);
+                migrated.solitaire = old.solitaire;
+                migrated.freecell = old.freecell;
+                migrated.spider = old.spider;
+                migrated
+            }
+            7 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -373,7 +405,7 @@ mod tests {
                 crate::patience::Variant::Klondike1 | crate::patience::Variant::Klondike3 => {
                     save.solitaire = game
                 }
-                crate::patience::Variant::FreeCell => save.freecell = game,
+                variant if variant.is_freecell() => save.freecell = game,
                 _ => save.spider = game,
             }
             assert_eq!(Save::from_json(&save.to_json().unwrap()).unwrap(), save);
@@ -634,6 +666,48 @@ mod tests {
             value.as_object_mut().unwrap().remove(field);
             assert!(Save::from_json(&value.to_string()).is_err(), "{field}");
         }
+    }
+
+    #[test]
+    fn version_six_migration_preserves_cabinets_and_appends_relaxed_record_slot() {
+        let mut old = Save::new(61);
+        old.settings.color_scheme = ColorScheme::Amber;
+        old.solitaire.advance_time(1234);
+        old.solitaire.deal();
+        old.freecell = crate::patience::Game::new(crate::patience::Variant::FreeCell, 62);
+        let top = old.freecell.tableau[0].len() - 1;
+        old.freecell.move_cards(
+            crate::patience::Pile::Tableau(0),
+            top,
+            crate::patience::Pile::Cell(0),
+        );
+        old.spider = crate::patience::Game::new(crate::patience::Variant::Spider4, 63);
+        old.patience_records[..6].copy_from_slice(&[
+            Some(11),
+            Some(22),
+            Some(33),
+            Some(44),
+            Some(55),
+            Some(66),
+        ]);
+        let mut value = serde_json::to_value(&old).unwrap();
+        value["version"] = 6.into();
+        value["patience_records"]
+            .as_array_mut()
+            .unwrap()
+            .truncate(6);
+        let migrated = Save::from_json(&value.to_string()).unwrap();
+        assert_eq!(migrated.version, SAVE_VERSION);
+        assert_eq!(migrated.settings, old.settings);
+        assert_eq!(migrated.solitaire, old.solitaire);
+        assert_eq!(migrated.freecell, old.freecell);
+        assert_eq!(migrated.spider, old.spider);
+        assert_eq!(&migrated.patience_records[..6], &old.patience_records[..6]);
+        assert_eq!(migrated.patience_records[6], None);
+        assert_eq!(
+            Save::from_json(&migrated.to_json().unwrap()).unwrap(),
+            migrated
+        );
     }
 
     #[test]

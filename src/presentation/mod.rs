@@ -78,6 +78,7 @@ pub enum Action {
     PatienceTarget(gamevex_core::patience::Pile),
     PatienceDeal,
     PatienceUndo,
+    PatienceFinish,
     PatienceHint,
     PatienceNew(gamevex_core::patience::Variant, bool),
 }
@@ -444,6 +445,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 Action::PatienceTarget(p) => format!("target{p:?}"),
                 Action::PatienceDeal => "deal".into(),
                 Action::PatienceUndo => "undo".into(),
+                Action::PatienceFinish => "finish".into(),
                 Action::PatienceHint => "hint".into(),
                 Action::PatienceNew(_, true) => "restart".into(),
                 Action::PatienceNew(v, false) if v == state.patience_game().variant => "new".into(),
@@ -479,7 +481,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             &serde_json::Value::Object(bounds).to_string(),
         );
         let g = state.patience_game();
-        platform::diagnostics_attribute("data-patience-view",&serde_json::json!({"variant":g.variant,"selected":state.patience_ui.selected.map(|(p,i)|(format!("{p:?}"),i)),"dragActive":state.patience_ui.drag.is_some_and(|d|d.active),"dragSource":state.patience_ui.drag.map(|d|(format!("{:?}",d.source.0),d.source.1)),"pan":[state.patience_ui.pan.x,state.patience_ui.pan.y],"won":g.won(),"clip":layout.patience_clip.map(|r|[r.min.x,r.min.y,r.width(),r.height()]),"maxPan":[layout.patience_max_pan.x,layout.patience_max_pan.y]}).to_string());
+        platform::diagnostics_attribute("data-patience-view",&serde_json::json!({"variant":g.variant,"modeLabel":match g.variant {gamevex_core::patience::Variant::FreeCell=>"Standard",gamevex_core::patience::Variant::FreeCellRelaxed=>"Relaxed",v=>v.label()},"canFinish":state.patience_ui.can_finish,"animating":state.patience_ui.motion.busy(),"selected":state.patience_ui.selected.map(|(p,i)|(format!("{p:?}"),i)),"dragActive":state.patience_ui.drag.is_some_and(|d|d.active),"dragSource":state.patience_ui.drag.map(|d|(format!("{:?}",d.source.0),d.source.1)),"pan":[state.patience_ui.pan.x,state.patience_ui.pan.y],"won":g.won(),"clip":layout.patience_clip.map(|r|[r.min.x,r.min.y,r.width(),r.height()]),"maxPan":[layout.patience_max_pan.x,layout.patience_max_pan.y]}).to_string());
     }
     if state.screen == Screen::Mahjong {
         let mut bounds = serde_json::Map::new();
