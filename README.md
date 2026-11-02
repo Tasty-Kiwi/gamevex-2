@@ -8,9 +8,9 @@ Play at **https://tasty-kiwi.github.io/gamevex-2/** in a desktop browser with We
 
 Cargo manifests, the lockfile, documentation, scripts, web files, and assets live at the repository root. `src/` contains only Rust source; the embedded CRT shader lives in `assets/crt.wgsl`. The small core crate manifest is in `crates/gamevex-core/`.
 
-- `src/core/` contains the serializable Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, and the solitaire-family models, commands, a deterministic card shoe, settings, records, and save validation. It does not depend on Bevy.
+- `src/core/` contains the serializable Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Hearts, Cribbage, and the solitaire-family models, commands, a deterministic card shoe, settings, records, and save validation. It does not depend on Bevy.
 - The root `gamevex-app` package (`src/main.rs` and its sibling modules) owns Bevy rendering, input, audio, and platform integration. The ordinary Rust game state is authoritative; Bevy entities present that state.
-- `src/presentation/` separates the shared header, card drawing, lobby, settings, dialogs, Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, and solitaire-family views.
+- `src/presentation/` separates the shared header, card drawing, lobby, settings, dialogs, Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Hearts, Cribbage, and solitaire-family views.
 - `web/` contains the browser entry point and generated WebAssembly package. `scripts/build-web.sh` copies `assets/` into `web/assets/` when that source directory exists.
 - Native saves use the GameVex Rust Demo application-support namespace. Browser saves use their own namespaced local-storage key, separate from the existing TypeScript app.
 
@@ -58,6 +58,8 @@ With `diagnostics` present, the latest serialized save is mirrored into `#gameve
 On the Minesweeper board, arrow keys move focus, Space reveals, F toggles a flag, and Enter chords a revealed number. Right-click or secondary click flags a cell. Keep keyboard shortcuts scoped to the active board; Tab and Shift+Tab navigate controls outside it. The browser suppresses its context menu over the active board and Card Lab cards, where secondary click flags or flips. Other canvas areas retain the browser menu.
 
 In Card Lab, use the visible on-screen controls and pointer interactions to select, move, flip, and reset the sample cards. Audio starts after a user gesture, as required by browser autoplay policy.
+
+Cribbage is a two-player match against the CPU, first to 121. Select two cards, confirm the discard, then peg cards without exceeding 31. Dim cards cannot be played; Call go appears when none fit. The running count and both score tracks stay visible. Hand counting reveals the non-dealer's hand, dealer's hand, then the crib, with fifteens, pairs, runs, flushes and nobs broken down before each score is committed. A jack cut awards the dealer two immediately. Matches and win counts save automatically; version-8 saves migrate without replacing existing games. Mouse hover lifts cards, touch selects them, and Tab/Enter navigate controls. Rules pauses the CPU.
 
 ## Bevy references
 
@@ -114,7 +116,7 @@ Phone touch uses the same curved-screen picking as the mouse. Tap buttons and ce
 
 Native saves are atomically replaced at `~/Library/Application Support/GameVex Rust Demo/session-v1.json`. A temporary file is written and synced before rename; the parent directory is synced too. Set `GAMEVEX_SAVE_DIR` to isolate native test sessions. Browser saves use `gamevex.rust-demo.v1` in localStorage. Neither target reads or migrates the original GameVex saves.
 
-Version 8 stores shared settings plus independent Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, Spider, and Hearts sessions. Existing Rust-demo version-1 through version-7 saves migrate automatically, preserving settings, boards, records, casino rounds, and balances while initializing missing cabinets. The storage key and filename retain their original `v1` suffix so existing saves can be found. Loading checks size, version, settings ranges, cell counts, adjacency, first-reveal protection, terminal-state invariants, and timer bounds. Invalid saves are protected from automatic replacement. Settings always offers Reset saved data; its confirmation replaces settings, records, all nine games, and both casino bankrolls with defaults and returns to the lobby. Cancel preserves the saved session. Older saves load added monitor and palette settings with defaults. Storage failures keep the session playable in memory and show a persistent status message; Retry save attempts another write.
+Version 8 stores shared settings plus independent Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, Spider, and Hearts sessions. Existing Rust-demo version-1 through version-7 saves migrate automatically, preserving settings, boards, records, casino rounds, and balances while initializing missing cabinets. The storage key and filename retain their original `v1` suffix so existing saves can be found. Loading checks size, version, settings ranges, cell counts, adjacency, first-reveal protection, terminal-state invariants, and timer bounds. Invalid saves are protected from automatic replacement. Settings always offers Reset saved data; its confirmation replaces settings, records, all ten games, and both casino bankrolls with defaults and returns to the lobby. Cancel preserves the saved session. Older saves load added monitor and palette settings with defaults. Storage failures keep the session playable in memory and show a persistent status message; Retry save attempts another write.
 
 Meaningful actions save immediately, active games save at five-second intervals, and foreground/visibility/close transitions save too. Browser lifecycle listeners synchronously flush a staged domain snapshot on blur, pagehide, and visibilitychange. No wall-clock timestamp is used to add time after reopening: only active foreground play advances the timer. A process crash can still lose progress since the last successful write. Card Lab is deliberately transient.
 
@@ -145,7 +147,7 @@ See [the verification report](docs/VERIFICATION.md) for measured results, actual
 
 ## Porting order
 
-See [the porting roster](PORTING.md) for the agreed queue: solitaire parity and Hearts are complete; Cribbage, Texas Hold'em, Roulette, and Backgammon follow. Zip, Slots, Shogi, Arcana Hunt, Night Crown, Card Capital, and Craps are excluded.
+See [the porting roster](PORTING.md) for the agreed queue: solitaire parity, Hearts, and Cribbage are complete; Texas Hold'em, Roulette, and Backgammon follow. Zip, Slots, Shogi, Arcana Hunt, Night Crown, Card Capital, and Craps are excluded.
 
 ## Limits
 

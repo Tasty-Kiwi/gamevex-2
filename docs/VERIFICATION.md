@@ -1,5 +1,28 @@
 # GameVex Rust demo verification
 
+## Cribbage port — 2 November 2026
+
+Cribbage now has a complete two-player match against the CPU to 121. The shared neon cards, hover lift, legal-card dimming, running count, dealer badges, two score tracks, hand/crib breakdowns, scoring feedback, and replacement confirmation work with mouse, keyboard controls, and phone touch. CPU pacing pauses for rules, navigation, dialogs, and focus loss; saved model transitions commit before presentation.
+
+- `cargo test --workspace --locked`: **232 tests passed** (94 application, 138 core), including 64 complete seeded Cribbage matches validated after every action.
+- TypeScript-oracle parity covers **128 hand scores, 256 CPU discard decisions, and 128 CPU pegging decisions**. The generated fixture records the original source hash and Git revision; regenerate with `node scripts/generate-cribbage-fixtures.ts ../gamevex`. It caught a fractional-weight mismatch in CPU pegging, corrected before the final builds.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`, formatting, and whitespace checks passed.
+- The WASM release build and macOS release package succeeded. The known transitive `block 0.1.6` future-compatibility notice remains unchanged.
+- **67 browser regressions passed**, using local Chromium/Metal, one worker, and retries disabled. Five new cases exercise discards, saved-state isolation/reload, replacement cancellation, touch/rules, and a full pegging/show/next-round flow.
+- Save format v9 migrates v8 with fresh Cribbage state and zero wins, preserving all existing cabinets. Older migration paths remain covered; current saves require validated Cribbage state.
+- Visual checks exercised 1280×800 desktop and 390×740 phone layouts, including the initial count, shared card art, CPU moves, and hand-scoring reveal. Headless layout checks additionally cover 360×560 and 1280×720.
+
+These are local native/build and Chromium/Metal checks, not hosted CI, deployment, physical-device acceptance, or other-browser certification. Changes remain local on `main` without a PR.
+
+![Cribbage table](screenshots/cribbage.png)
+
+![Cribbage scoring](screenshots/cribbage-scoring.png)
+
+![Cribbage phone](screenshots/cribbage-phone.png)
+
+![Cribbage phone scoring](screenshots/cribbage-phone-scoring.png)
+
+
 Verified locally on 29–30 October 2026. Implementation and artifacts live in `gamevex-2` (Rust code in `src/`); the original GameVex repository was used only as a read-only rules/palette reference. Focused implementation and review work used Luna subagents.
 
 ## Automated checks and builds

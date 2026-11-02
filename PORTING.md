@@ -8,12 +8,13 @@ Priority agreed on 1 November 2026. Work stays in `gamevex-2`, directly on `main
    - Dealing, card movement, and exposed-card flip animations across Solitaire, FreeCell, and Spider.
 2. **Hearts — complete**
    - Four-seat matches with three CPU opponents, rotating passes, legal-play guidance, moon scoring, and saved matches/records.
-3. **Cribbage**
+3. **Cribbage — complete**
+   - Two-player matches to 121, CPU discards/pegging, go and last-card rules, ordered hand/crib scoring, saved progress and win counts.
 4. **Texas Hold'em**
 5. **Roulette**
 6. **Backgammon**
 
-Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, Spider, and Hearts are already playable. Card Lab remains an interaction sandbox.
+Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, Spider, Hearts, and Cribbage are already playable. Card Lab remains an interaction sandbox.
 
 ## Removed from the port
 

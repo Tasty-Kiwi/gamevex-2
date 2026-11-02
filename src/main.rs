@@ -2,6 +2,7 @@
 mod browser_audio;
 mod casino_audio;
 mod casino_feedback;
+mod cribbage_app;
 mod hearts_app;
 mod hearts_motion;
 mod mahjong_app;
@@ -59,6 +60,7 @@ pub(crate) struct Arcade {
     pub mahjong_ui: mahjong_app::MahjongUi,
     pub patience_ui: patience_app::PatienceUi,
     pub hearts_ui: hearts_app::HeartsUi,
+    pub cribbage_ui: cribbage_app::CribbageUi,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -77,6 +79,7 @@ pub(crate) enum Pending {
     New(Difficulty, bool),
     Recover,
     NewHearts,
+    NewCribbage,
     LeaveBlackjack(Screen),
     NewSudoku(u8, sudoku::Difficulty),
     SudokuSetup,
@@ -134,6 +137,7 @@ impl Arcade {
             mahjong_ui: Default::default(),
             patience_ui: Default::default(),
             hearts_ui: Default::default(),
+            cribbage_ui: Default::default(),
             message,
             persistence,
             protected_save,
@@ -170,6 +174,9 @@ impl Arcade {
     }
 
     fn open(&mut self, screen: Screen) {
+        self.cribbage_ui.age = 1.0;
+        self.cribbage_ui.hovered = None;
+        self.cribbage_ui.feedback.clear();
         self.hearts_ui.motion.clear();
         self.hearts_ui.age = 0.0;
         self.hearts_ui.hovered = None;
@@ -317,7 +324,12 @@ impl Arcade {
         }
         let table_action = matches!(
             action,
-            Action::HeartsCard(..)
+            Action::CribbageCard(..)
+                | Action::CribbageDiscard
+                | Action::CribbageGo
+                | Action::CribbageContinue
+                | Action::CribbageNew
+                | Action::HeartsCard(..)
                 | Action::HeartsPass
                 | Action::HeartsContinue
                 | Action::HeartsNew
@@ -371,6 +383,7 @@ impl Arcade {
                 Some(Pending::NewMahjong(layout, seed, zen)) => self.new_mahjong(layout, seed, zen),
                 Some(Pending::NewPatience(v, seed)) => self.new_patience(v, seed),
                 Some(Pending::NewHearts) => self.new_hearts(),
+                Some(Pending::NewCribbage) => self.new_cribbage(),
                 Some(Pending::SudokuSetup) => self.restore_modal_focus(),
                 Some(Pending::Recover) => {
                     self.reset_saved_data();
@@ -388,6 +401,12 @@ impl Arcade {
                 }
                 self.restore_modal_focus();
             }
+            Action::CribbageCard(index) => self.cribbage_card(index),
+            Action::CribbageDiscard => self.cribbage_discard(),
+            Action::CribbageGo => self.cribbage_go(),
+            Action::CribbageContinue => self.cribbage_continue(),
+            Action::CribbageNew => self.open_modal(Pending::NewCribbage),
+            Action::CribbageRules => self.cribbage_ui.rules = !self.cribbage_ui.rules,
             Action::HeartsCard(index) => self.hearts_card(index),
             Action::HeartsPass => self.hearts_pass(),
             Action::HeartsContinue => self.hearts_continue(),
@@ -650,6 +669,7 @@ impl Arcade {
         self.mahjong_ui = Default::default();
         self.patience_ui = Default::default();
         self.hearts_ui = Default::default();
+        self.cribbage_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -664,6 +684,9 @@ impl Arcade {
     }
 
     fn open_modal(&mut self, pending: Pending) {
+        self.cribbage_ui.age = 1.0;
+        self.cribbage_ui.hovered = None;
+        self.cribbage_ui.feedback.clear();
         self.hearts_ui.motion.clear();
         self.patience_ui.drag = None;
         self.patience_ui.motion.clear();
@@ -823,6 +846,9 @@ fn lifecycle(
             *age = (*age + delta.min(0.1) as f32).min(3.0);
         }
     }
+    if state.screen == Screen::Cribbage && foreground && !transitioned && state.modal.is_none() {
+        state.cribbage_tick(delta as f32);
+    }
     if state.screen == Screen::Hearts && foreground && !transitioned && state.modal.is_none() {
         state.hearts_tick(delta as f32);
     }
@@ -832,6 +858,8 @@ fn lifecycle(
         state.patience_ui.motion.clear();
         state.patience_ui.feedback.clear();
         state.mahjong_ui.feedback.clear();
+        state.cribbage_ui.age = 1.0;
+        state.cribbage_ui.hovered = None;
         state.hearts_ui.motion.clear();
         state.hearts_ui.hovered = None;
         state.hearts_ui.age = 0.0;
@@ -971,6 +999,8 @@ fn handle_pointer_input(
     touch.sync_lifecycle(&mut state, &mut pointer);
     // Browser canvas metrics can change before winit emits a resize event.
     if !layout_valid {
+        state.cribbage_ui.age = 1.0;
+        state.cribbage_ui.hovered = None;
         state.hearts_ui.motion.clear();
         state.lab.cancel_drag();
         state.patience_ui.drag = None;
@@ -1209,6 +1239,8 @@ fn handle_input(
     if keys.just_pressed(KeyCode::Escape) {
         if state.modal.is_some() {
             state.act(Action::Cancel);
+        } else if state.screen == Screen::Cribbage && state.cribbage_ui.rules {
+            state.cribbage_ui.rules = false;
         } else if state.screen == Screen::Hearts && state.hearts_ui.rules {
             state.hearts_ui.rules = false;
         } else if state.patience_ui.drag.is_some() {
@@ -1538,7 +1570,7 @@ fn play_sound(
 ) {
     let cue_screen = matches!(
         state.screen,
-        Screen::Blackjack | Screen::Baccarat | Screen::Mahjong | Screen::Hearts
+        Screen::Blackjack | Screen::Baccarat | Screen::Mahjong | Screen::Hearts | Screen::Cribbage
     ) || patience_app::is_family(state.screen);
     let enabled =
         state.audio_started && !state.save.settings.muted && state.save.settings.volume > 0.0;
@@ -1561,7 +1593,9 @@ fn play_sound(
         .into_iter()
         .map(|cue| (Some(cue), 0.0))
         .collect();
-    let table_sounds = if state.screen == Screen::Hearts {
+    let table_sounds = if state.screen == Screen::Cribbage {
+        state.cribbage_ui.feedback.take_sounds()
+    } else if state.screen == Screen::Hearts {
         state.hearts_ui.feedback.take_sounds()
     } else if state.screen == Screen::Mahjong {
         state.mahjong_ui.feedback.take_sounds()
@@ -1716,6 +1750,7 @@ mod tests {
             mahjong_ui: Default::default(),
             patience_ui: Default::default(),
             hearts_ui: Default::default(),
+            cribbage_ui: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -3363,12 +3398,12 @@ mod tests {
                     |(_, h)| matches!(h.action, Action::Open(screen) if !matches!(screen, Screen::Settings | Screen::Lobby)),
                 )
                 .collect();
-            assert_eq!(games.len(), 10);
+            assert_eq!(games.len(), 11);
             let first = games[0].0;
             let last = games.last().unwrap().0;
             assert!(matches!(
                 games.last().unwrap().1.action,
-                Action::Open(Screen::Hearts)
+                Action::Open(Screen::Cribbage)
             ));
             assert_eq!(games.last().unwrap().1.rect.height(), 0.0);
             {
@@ -3426,6 +3461,7 @@ fn capture_tools(
                 Screen::FreeCell => "freecell",
                 Screen::Spider => "spider",
                 Screen::Hearts => "hearts",
+                Screen::Cribbage => "cribbage",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

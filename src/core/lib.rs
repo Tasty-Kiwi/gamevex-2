@@ -1,6 +1,7 @@
 pub mod baccarat;
 pub mod blackjack;
 pub mod cards;
+pub mod cribbage;
 pub mod hearts;
 pub mod mahjong;
 pub mod minesweeper;
@@ -14,3 +15,6 @@ pub use blackjack::{
 };
 pub use minesweeper::*;
 pub use save::*;
+
+#[cfg(test)]
+mod cribbage_parity;

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 8;
+pub const SAVE_VERSION: u32 = 9;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -152,6 +152,8 @@ pub struct Save {
     pub spider: crate::patience::Game,
     pub hearts: crate::hearts::Game,
     pub hearts_best: Option<u32>,
+    pub cribbage: crate::cribbage::Game,
+    pub cribbage_wins: u32,
 }
 
 #[derive(Deserialize)]
@@ -236,6 +238,8 @@ impl Save {
             ),
             hearts: crate::hearts::Game::new(seed ^ 0x4845_4152_5453),
             hearts_best: None,
+            cribbage: crate::cribbage::Game::new(seed ^ 0x4352_4942),
+            cribbage_wins: 0,
             patience_records: [None; 7],
             solitaire: crate::patience::Game::new(
                 crate::patience::Variant::Klondike1,
@@ -258,6 +262,7 @@ impl Save {
         }
         self.settings.validate()?;
         self.hearts.validate()?;
+        self.cribbage.validate()?;
         if self.hearts_best.is_some_and(|score| score > 125) {
             return Err("invalid Hearts record".into());
         }
@@ -384,19 +389,27 @@ impl Save {
                 migrated.spider = old.spider;
                 migrated
             }
-            7 => {
+            7 | 8 => {
                 let mut value = value;
                 let fields = value.as_object_mut().ok_or("invalid save object")?;
                 fields.insert("version".into(), serde_json::json!(SAVE_VERSION));
+                if version == 7 {
+                    fields.insert(
+                        "hearts".into(),
+                        serde_json::to_value(crate::hearts::Game::new(0x4845_4152_5453))
+                            .map_err(|e| e.to_string())?,
+                    );
+                    fields.insert("hearts_best".into(), serde_json::Value::Null);
+                }
                 fields.insert(
-                    "hearts".into(),
-                    serde_json::to_value(crate::hearts::Game::new(0x4845_4152_5453))
+                    "cribbage".into(),
+                    serde_json::to_value(crate::cribbage::Game::new(0x4352_4942))
                         .map_err(|e| e.to_string())?,
                 );
-                fields.insert("hearts_best".into(), serde_json::Value::Null);
-                serde_json::from_value(value).map_err(|e| format!("invalid version-7 save: {e}"))?
+                fields.insert("cribbage_wins".into(), serde_json::json!(0));
+                serde_json::from_value(value).map_err(|e| format!("invalid migrated save: {e}"))?
             }
-            8 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            9 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -746,6 +759,8 @@ mod tests {
         for fields in [&mut expected, &mut actual] {
             fields.as_object_mut().unwrap().remove("hearts");
             fields.as_object_mut().unwrap().remove("hearts_best");
+            fields.as_object_mut().unwrap().remove("cribbage");
+            fields.as_object_mut().unwrap().remove("cribbage_wins");
         }
         assert_eq!(actual, expected);
         assert_eq!(migrated.hearts.phase, crate::hearts::Phase::Passing);
@@ -753,6 +768,34 @@ mod tests {
             Save::from_json(&migrated.to_json().unwrap()).unwrap(),
             migrated
         );
+    }
+
+    #[test]
+    fn version_eight_adds_cribbage_without_changing_existing_games() {
+        let original = Save::new(61);
+        let mut old = serde_json::to_value(&original).unwrap();
+        old["version"] = 8.into();
+        old.as_object_mut().unwrap().remove("cribbage");
+        old.as_object_mut().unwrap().remove("cribbage_wins");
+        let migrated = Save::from_json(&old.to_string()).unwrap();
+        let mut expected = original;
+        expected.cribbage = migrated.cribbage.clone();
+        assert_eq!(migrated, expected);
+    }
+
+    #[test]
+    fn cribbage_mid_pegging_roundtrip_and_required_fields() {
+        let mut save = Save::new(42);
+        assert!(save.cribbage.discard(&[0, 1]));
+        if save.cribbage.phase == crate::cribbage::Phase::Discard {
+            save.cribbage.cpu_step();
+        }
+        let index = save.cribbage.legal_indices(save.cribbage.turn)[0];
+        assert!(save.cribbage.play(index));
+        assert_eq!(Save::from_json(&save.to_json().unwrap()).unwrap(), save);
+        let mut missing = serde_json::to_value(&save).unwrap();
+        missing.as_object_mut().unwrap().remove("cribbage");
+        assert!(Save::from_json(&missing.to_string()).is_err());
     }
 
     #[test]

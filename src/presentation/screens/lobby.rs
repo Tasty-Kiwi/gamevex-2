@@ -33,14 +33,14 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         );
     }
 
-    // Keep the page chrome fixed. The ten 76px entries form one scrollable roster.
+    // Keep the page chrome fixed. The cabinet entries form one scrollable roster.
     let compact_layout = f.size.y < 640.0;
     let roster_top = y + if compact_layout { 50.0 } else { 76.0 };
     let roster_bottom = (f.size.y - 40.0).max(roster_top + 1.0);
     let clip = rect(m, roster_top, w, roster_bottom - roster_top);
     const ROW_H: f32 = 76.0;
     const GAP: f32 = 10.0;
-    const COUNT: usize = 10;
+    const COUNT: usize = 11;
     let content_h = COUNT as f32 * ROW_H + (COUNT - 1) as f32 * GAP;
     l.lobby_clip = Some(clip);
     l.lobby_max_scroll = (content_h - clip.height()).max(0.0);
@@ -130,6 +130,13 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             "PLAY",
             RED,
             Screen::Hearts,
+        ),
+        (
+            "CRIBBAGE",
+            "Make fifteen. Race to 121.",
+            "PLAY",
+            CYAN,
+            Screen::Cribbage,
         ),
     ];
     for (i, (title, desc, verb, color, screen)) in entries.into_iter().enumerate() {

@@ -30,6 +30,7 @@ pub enum Screen {
     FreeCell,
     Spider,
     Hearts,
+    Cribbage,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -75,6 +76,12 @@ pub enum Action {
     MahjongRestart,
     MahjongNew(gamevex_core::mahjong::Layout),
     MahjongZen(bool),
+    CribbageCard(usize),
+    CribbageDiscard,
+    CribbageGo,
+    CribbageContinue,
+    CribbageNew,
+    CribbageRules,
     HeartsCard(usize),
     HeartsPass,
     HeartsContinue,
@@ -227,6 +234,14 @@ pub fn paint(
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Cribbage => cribbage::cribbage(
+            &mut frame,
+            &mut state,
+            &mut layout,
+            margin,
+            w,
+            time.delta_secs(),
+        ),
         Screen::Hearts => hearts::hearts(
             &mut frame,
             &mut state,
@@ -280,6 +295,7 @@ pub(crate) mod baccarat_motion;
 mod blackjack;
 pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
+mod cribbage;
 mod hearts;
 mod mahjong;
 mod patience;
@@ -308,6 +324,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         "focusCount": layout.hits.len(),
         "modal": match state.modal {
             Some(Pending::NewHearts) => Some("hearts-replace"),
+            Some(Pending::NewCribbage) => Some("cribbage-replace"),
             Some(Pending::SudokuSetup) => Some("sudoku-setup"),
             Some(Pending::NewSudoku(..)) => Some("sudoku-replace"),
             Some(Pending::NewMahjong(..)) => Some("mahjong-replace"),
@@ -385,6 +402,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "freecell":action_bounds(Screen::FreeCell),
             "spider":action_bounds(Screen::Spider),
             "hearts":action_bounds(Screen::Hearts),
+            "cribbage":action_bounds(Screen::Cribbage),
             "lobbyClip":layout.lobby_clip.map(|r| [r.min.x,r.min.y,r.width(),r.height()]),
             "lobbyScroll":state.lobby_scroll,
             "lobbyMaxScroll":layout.lobby_max_scroll,
@@ -392,6 +410,50 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
         }
+    }
+    if state.screen == Screen::Cribbage {
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::CribbageCard(i)
+                    if (state.save.cribbage.phase == gamevex_core::cribbage::Phase::Discard
+                        && (state.cribbage_ui.selected.len() < 2
+                            || state.cribbage_ui.selected.contains(&i)))
+                        || state.save.cribbage.legal_indices(0).contains(&i) =>
+                {
+                    format!("cribbageCard{i}")
+                }
+                Action::CribbageDiscard => "cribbageDiscard".into(),
+                Action::CribbageGo => "cribbageGo".into(),
+                Action::CribbageContinue => "cribbageContinue".into(),
+                Action::CribbageNew => "cribbageNew".into(),
+                Action::CribbageRules => "cribbageRules".into(),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
+                Action::Open(Screen::Lobby) | Action::Back => "lobby".into(),
+                Action::Open(Screen::Settings) => "settings".into(),
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        let g = &state.save.cribbage;
+        platform::diagnostics_attribute("data-cribbage-view", &serde_json::json!({
+            "phase":g.phase,"turn":g.turn,"selected":state.cribbage_ui.selected,"rulesOpen":state.cribbage_ui.rules,
+            "legal":g.legal_indices(0),"round":g.round,"count":g.count,"dealer":g.dealer,"scores":g.scores,"show_step":g.show_step,
+            "hovered":state.cribbage_ui.hovered,"wins":state.save.cribbage_wins,
+        }).to_string());
     }
     if state.screen == Screen::Hearts {
         let mut bounds = serde_json::Map::new();
