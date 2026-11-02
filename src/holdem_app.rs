@@ -139,6 +139,32 @@ impl Arcade {
             self.holdem_changed(before, board, false);
         }
     }
+    pub(crate) fn holdem_skip(&mut self) {
+        if !self.holdem_ready()
+            || !self.holdem_ui.game.seats[0].folded
+            || self.holdem_ui.game.terminal()
+        {
+            return;
+        }
+        // Resolve the same CPU decisions without replaying every action cue.
+        let mut resolved = self.holdem_ui.game.clone();
+        for _ in 0..1024 {
+            if resolved.terminal() {
+                break;
+            }
+            if !resolved.cpu_step() {
+                return;
+            }
+        }
+        if !resolved.terminal() {
+            return;
+        }
+        let before = self.holdem_ui.game.seats[0].stack;
+        let board = self.holdem_ui.game.board.len();
+        self.holdem_ui.game = resolved;
+        self.holdem_ui.feedback.clear();
+        self.holdem_changed(before, board, false);
+    }
     fn holdem_changed(&mut self, previous_stack: u32, board_from: usize, dealing: bool) {
         let stack = self.holdem_ui.game.seats[0].stack;
         self.save.holdem_balance = self
@@ -326,16 +352,58 @@ mod tests {
         }
     }
     #[test]
+    fn skip_only_resolves_folded_hands_and_matches_normal_cpu_settlement() {
+        for seed in 1..65 {
+            let mut s = crate::tests::test_arcade();
+            s.screen = Screen::Holdem;
+            s.save.settings.reduced_motion = true;
+            s.holdem_ui.game = Game::idle(4);
+            assert!(s.holdem_ui.game.start(100, seed));
+            while s.holdem_ui.game.turn != Some(0) && !s.holdem_ui.game.terminal() {
+                s.holdem_tick(2.0);
+            }
+            let active = s.holdem_ui.game.clone();
+            s.holdem_skip();
+            assert_eq!(s.holdem_ui.game, active);
+            if active.terminal() {
+                continue;
+            }
+            s.holdem_play(Play::Fold);
+            let balance = s.save.holdem_balance;
+            let mut expected = s.holdem_ui.game.clone();
+            for _ in 0..1024 {
+                if expected.terminal() {
+                    break;
+                }
+                assert!(expected.cpu_step());
+            }
+            assert!(expected.terminal());
+            s.holdem_skip();
+            assert_eq!(s.holdem_ui.game, expected);
+            assert_eq!(s.save.holdem_balance, balance);
+            s.holdem_skip();
+            s.holdem_tick(5.0);
+            assert_eq!(s.holdem_ui.game, expected);
+            assert_eq!(s.save.holdem_balance, balance);
+        }
+    }
+    #[test]
     fn table_controls_fit_all_supported_viewports() {
         for (width, height) in [(360, 560), (390, 740), (1280, 720), (1280, 800)] {
-            for mode in 0..3 {
+            for mode in 0..4 {
                 let mut s = crate::tests::test_arcade();
                 s.screen = Screen::Holdem;
                 s.save.settings.reduced_motion = true;
+                if mode == 3 {
+                    s.holdem_opponents(3);
+                }
                 if mode > 0 {
                     s.holdem_start();
                 }
-                if mode == 2 {
+                if mode >= 2 {
+                    while !s.holdem_ui.game.terminal() && s.holdem_ui.game.turn != Some(0) {
+                        s.holdem_tick(2.0);
+                    }
                     s.holdem_play(Play::Fold);
                 }
                 let mut app = App::new();

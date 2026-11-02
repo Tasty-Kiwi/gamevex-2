@@ -433,6 +433,7 @@ impl Arcade {
             Action::HoldemRaisePot => self.holdem_raise_pot(),
             Action::HoldemRules => self.holdem_ui.rules = !self.holdem_ui.rules,
             Action::HoldemRestart => self.holdem_restart(),
+            Action::HoldemSkip => self.holdem_skip(),
             Action::CribbageCard(index) => self.cribbage_card(index),
             Action::CribbageDiscard => self.cribbage_discard(),
             Action::CribbageGo => self.cribbage_go(),
@@ -497,10 +498,19 @@ impl Arcade {
                 if self.patience_game_mut().deal() {
                     self.patience_changed("Dealt cards.");
                     self.patience_animate(&before);
-                    let count = self.patience_game().variant.columns();
-                    let anchors: Vec<_> = (0..count)
-                        .map(|i| table_feedback::Anchor::Pile(patience::Pile::Tableau(i)))
-                        .collect();
+                    let game = self.patience_game();
+                    let anchors: Vec<_> = if matches!(
+                        game.variant,
+                        patience::Variant::Spider1
+                            | patience::Variant::Spider2
+                            | patience::Variant::Spider4
+                    ) {
+                        (0..game.variant.columns())
+                            .map(|i| table_feedback::Anchor::Pile(patience::Pile::Tableau(i)))
+                            .collect()
+                    } else {
+                        vec![table_feedback::Anchor::Pile(patience::Pile::Stock)]
+                    };
                     self.patience_ui
                         .feedback
                         .emit(table_feedback::EffectKind::Deal, &anchors);
@@ -3236,6 +3246,38 @@ mod tests {
         assert_eq!(state.save.freecell.moves, 0);
         assert!(state.patience_ui.selected.is_none());
         assert!(state.save.validate().is_ok());
+    }
+
+    #[test]
+    fn patience_stock_deal_feedback_is_scoped_to_affected_piles() {
+        use table_feedback::{Anchor, EffectKind};
+
+        let mut state = test_arcade();
+        state.open(Screen::Solitaire);
+        state.act(Action::PatienceDeal);
+        let event = state.patience_ui.feedback.events.last().unwrap();
+        assert_eq!(event.kind, EffectKind::Deal);
+        assert_eq!(event.anchors, vec![Anchor::Pile(patience::Pile::Stock)]);
+        assert_eq!(
+            state.patience_ui.feedback.take_sounds(),
+            vec![casino_audio::SoundCue::TableDeal]
+        );
+
+        state.open(Screen::Spider);
+        state.save.spider = patience::Game::new(patience::Variant::Spider4, 44);
+        state.act(Action::PatienceDeal);
+        let event = state.patience_ui.feedback.events.last().unwrap();
+        assert_eq!(event.kind, EffectKind::Deal);
+        assert_eq!(
+            event.anchors,
+            (0..10)
+                .map(|i| Anchor::Pile(patience::Pile::Tableau(i)))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            state.patience_ui.feedback.take_sounds(),
+            vec![casino_audio::SoundCue::TableDeal]
+        );
     }
     #[test]
     fn patience_tables_fit_and_all_foundations_are_reachable() {

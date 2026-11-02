@@ -438,6 +438,17 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 if small { 9.0 } else { 12.0 },
                 INK,
             );
+            if g.seats[0].folded && ready {
+                button(
+                    f,
+                    s,
+                    l,
+                    rect(m + w * 0.5 - 80.0, bottom - 61.0, 160.0, 40.0),
+                    "Skip to result",
+                    Action::HoldemSkip,
+                    true,
+                );
+            }
             if g.turn == Some(0) && ready {
                 betting(f, s, l, m, w, bottom, small);
             }

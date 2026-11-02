@@ -226,22 +226,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         }
     }
 
-    let targets = [
-        rect(center.x - face_w * 0.5, center.y + 5.0, face_w, face_h),
-        rect(
-            center.x - face_w - 8.0,
-            center.y - face_h * 0.5,
-            face_w,
-            face_h,
-        ),
-        rect(
-            center.x - face_w * 0.5,
-            center.y - face_h - 5.0,
-            face_w,
-            face_h,
-        ),
-        rect(center.x + 8.0, center.y - face_h * 0.5, face_w, face_h),
-    ];
+    let targets = trick_targets(center, face_w, face_h);
     for (seat, target) in targets.into_iter().enumerate() {
         if let Some(play) = g.trick.iter().find(|play| play.seat == seat) {
             if s.hearts_ui
@@ -667,4 +652,54 @@ fn pending(motion: &crate::hearts_motion::HeartsMotion, seat: usize) -> usize {
                 && flight.progress() < 1.0
         })
         .count()
+}
+
+/// Keep the top and bottom cards compact while offsetting the side cards far
+/// enough to leave a clear gap between every pair.
+fn trick_targets(center: Vec2, card_w: f32, card_h: f32) -> [Rect; 4] {
+    [
+        rect(center.x - card_w * 0.5, center.y + 5.0, card_w, card_h),
+        rect(
+            center.x - card_w * 1.5 - 6.0,
+            center.y - card_h * 0.5,
+            card_w,
+            card_h,
+        ),
+        rect(
+            center.x - card_w * 0.5,
+            center.y - card_h - 5.0,
+            card_w,
+            card_h,
+        ),
+        rect(
+            center.x + card_w * 0.5 + 6.0,
+            center.y - card_h * 0.5,
+            card_w,
+            card_h,
+        ),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trick_cards_are_separated_at_desktop_and_compact_sizes() {
+        for (w, h) in [(32.0, 44.8), (51.0, 71.4), (78.0, 109.2)] {
+            let targets = trick_targets(Vec2::new(300.0, 400.0), w, h);
+            for left in 0..targets.len() {
+                for right in left + 1..targets.len() {
+                    assert!(
+                        !rects_overlap(targets[left], targets[right]),
+                        "trick targets {left} and {right} overlap at {w}x{h}"
+                    );
+                }
+            }
+            assert_eq!(targets[0].center().x, targets[2].center().x);
+            assert_eq!(targets[1].center().y, targets[3].center().y);
+            assert!((targets[2].min.y - (400.0 - h - 5.0)).abs() < 0.001);
+            assert!((targets[0].max.y - (400.0 + 5.0 + h)).abs() < 0.001);
+        }
+    }
 }

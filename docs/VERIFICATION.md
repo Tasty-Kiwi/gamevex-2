@@ -1,5 +1,14 @@
 # GameVex Rust demo verification
 
+## Card-table fixes — 2 November 2026
+
+Hearts’ center trick keeps its existing vertical footprint while moving side cards outward with 6 px gaps. Geometry regressions cover compact, phone, and desktop card sizes. Solitaire stock draws now anchor feedback only to the stock pile; Spider row deals retain feedback on their receiving columns. Tests verify a single Deal sound and stock-to-waste flights without tableau animations.
+
+Hold’em offers **Skip to result** after folding while CPUs remain in the hand. It resolves the same CPU decisions, commits the final stack delta once, and avoids replaying every intermediate cue. Seeded comparisons verify identical normal/skip settlement and reject skipping an unfolded or completed hand. Browser coverage exercises the button and unchanged folded-player bankroll.
+
+Local verification: 256 Rust tests, strict workspace Clippy, formatting, native macOS packaging, and the WASM release build pass. All 76 browser regressions pass locally in Chromium/Metal with retries disabled. These checks do not establish hosted CI or physical-phone acceptance.
+
+
 ## Texas Hold’em port — 2 November 2026
 
 The no-limit cabinet supports one human and 1–4 CPUs, matching buy-in stacks, $5/$10 blinds, a rotating dealer, preflop/flop/turn/river betting, all-in runouts, side pots, split pots, and clockwise odd-chip assignment. It shares the neon card renderer, hover lift, table sounds, reduced-motion behavior, and monitor settings with the other games. Community cards reveal in sequence; winning combinations and seats highlight in gold, and result feedback waits for the reveal.

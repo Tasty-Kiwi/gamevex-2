@@ -159,6 +159,25 @@ test('Holdem starts with the exact blind, hides CPU cards, and saves only its ba
   expect((await actions(page)).holdemRules).toHaveLength(4);
 });
 
+test('Holdem can skip the remaining CPU play after folding', async ({ page }) => {
+  await openHoldem(page);
+  await clickAction(page, 'holdemOpponentsUp');
+  await expect.poll(async () => (await view(page)).opponents).toBe(2);
+  await clickAction(page, 'holdemOpponentsUp');
+  await expect.poll(async () => (await view(page)).opponents).toBe(3);
+  await beginHand(page);
+  await waitForHumanTurn(page);
+  expect((await actions(page)).holdemSkip).toBeUndefined();
+  await clickAction(page, 'holdemFold');
+  await expect.poll(async () => (await view(page)).seats[0].folded).toBe(true);
+  const balance = (await view(page)).bankroll;
+  await clickAction(page, 'holdemSkip');
+  await expect.poll(async () => ['showdown', 'complete'].includes(phaseName((await view(page)).phase))).toBe(true);
+  expect((await view(page)).bankroll).toBe(balance);
+  await expect.poll(async () => Boolean((await actions(page)).holdemStart)).toBe(true);
+  expect((await actions(page)).holdemSkip).toBeUndefined();
+});
+
 test('Holdem call and check advance the hand while the buy-in stays accounted for', async ({ page }) => {
   test.setTimeout(45_000);
   await openHoldem(page);

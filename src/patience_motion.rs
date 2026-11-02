@@ -288,6 +288,30 @@ mod tests {
         m.clear();
         assert!(!m.busy());
     }
+
+    #[test]
+    fn klondike_stock_deal_only_animates_stock_to_waste() {
+        let before = Game::new(Variant::Klondike3, 31);
+        let mut after = before.clone();
+        assert!(after.deal());
+
+        let mut motion = PatienceMotion::default();
+        motion.transition(&before, &after);
+
+        assert_eq!(motion.flights().len(), 3);
+        assert!(
+            motion
+                .flights()
+                .iter()
+                .all(|flight| { flight.from == Pile::Stock && flight.to == Pile::Waste })
+        );
+        assert!(
+            motion
+                .flights()
+                .iter()
+                .all(|flight| !matches!(flight.to, Pile::Tableau(_)))
+        );
+    }
     #[test]
     fn new_deal_cascade_is_bounded() {
         let mut m = PatienceMotion::default();
