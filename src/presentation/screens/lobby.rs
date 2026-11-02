@@ -40,7 +40,7 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
     let clip = rect(m, roster_top, w, roster_bottom - roster_top);
     const ROW_H: f32 = 76.0;
     const GAP: f32 = 10.0;
-    const COUNT: usize = 12;
+    const COUNT: usize = 13;
     let content_h = COUNT as f32 * ROW_H + (COUNT - 1) as f32 * GAP;
     l.lobby_clip = Some(clip);
     l.lobby_max_scroll = (content_h - clip.height()).max(0.0);
@@ -144,6 +144,13 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             "DEAL",
             GOLD,
             Screen::Holdem,
+        ),
+        (
+            "ROULETTE",
+            "One wheel. Pick your pocket.",
+            "SPIN",
+            CYAN,
+            Screen::Roulette,
         ),
     ];
     for (i, (title, desc, verb, color, screen)) in entries.into_iter().enumerate() {

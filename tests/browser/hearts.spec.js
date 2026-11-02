@@ -129,7 +129,7 @@ async function openHearts(page) {
   await expect.poll(async () => c.evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
   await expect.poll(async () => c.evaluate((el) => {
     const current = JSON.parse(el.dataset.session || '{}');
-    return current.version === 10 && Boolean(current.hearts);
+    return current.version === 11 && Boolean(current.hearts);
   })).toBe(true);
   await clickLobbyAction(page, 'hearts');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Hearts');

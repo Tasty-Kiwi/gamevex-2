@@ -32,6 +32,7 @@ pub enum Screen {
     Hearts,
     Cribbage,
     Holdem,
+    Roulette,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -77,6 +78,13 @@ pub enum Action {
     MahjongRestart,
     MahjongNew(gamevex_core::mahjong::Layout),
     MahjongZen(bool),
+    RouletteBet(gamevex_core::roulette::Bet),
+    RouletteStake(i64),
+    RouletteStakeMin,
+    RouletteStakeMax,
+    RouletteSpin,
+    RouletteRules,
+    RouletteRestart,
     HoldemStart,
     HoldemPlay(gamevex_core::holdem::Action),
     HoldemStake(i32),
@@ -152,6 +160,8 @@ pub struct ViewLayout {
     pub mahjong_max_pan: Vec2,
     pub patience_clip: Option<Rect>,
     pub patience_max_pan: Vec2,
+    pub roulette_clip: Option<Rect>,
+    pub roulette_max_pan: f32,
     pub patience_origins: Vec<(gamevex_core::patience::Pile, usize, Vec2)>,
 }
 
@@ -185,6 +195,8 @@ pub fn paint(
     layout.patience_clip = None;
     layout.patience_origins.clear();
     layout.patience_max_pan = Vec2::ZERO;
+    layout.roulette_clip = None;
+    layout.roulette_max_pan = 0.0;
     layout.mahjong_max_pan = Vec2::ZERO;
     layout.card_order.clear();
     layout.settings_max_scroll = 0.0;
@@ -246,6 +258,7 @@ pub fn paint(
             time.delta_secs(),
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Roulette => roulette::roulette(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Holdem => holdem::holdem(
             &mut frame,
@@ -321,6 +334,7 @@ mod hearts;
 mod holdem;
 mod mahjong;
 mod patience;
+mod roulette;
 mod screens;
 mod sudoku;
 mod table_fx;
@@ -427,6 +441,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "hearts":action_bounds(Screen::Hearts),
             "cribbage":action_bounds(Screen::Cribbage),
             "holdem":action_bounds(Screen::Holdem),
+            "roulette":action_bounds(Screen::Roulette),
             "lobbyClip":layout.lobby_clip.map(|r| [r.min.x,r.min.y,r.width(),r.height()]),
             "lobbyScroll":state.lobby_scroll,
             "lobbyMaxScroll":layout.lobby_max_scroll,
@@ -434,6 +449,55 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
         }
+    }
+    if state.screen == Screen::Roulette {
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            if hit.rect.width() <= 0.0 || hit.rect.height() <= 0.0 {
+                continue;
+            }
+            let key = match hit.action {
+                Action::RouletteBet(gamevex_core::roulette::Bet::Number(n)) => {
+                    format!("rouletteBetNumber{n}")
+                }
+                Action::RouletteBet(b) => format!("rouletteBet{b:?}"),
+                Action::RouletteStake(d) => if d < 0 {
+                    "rouletteStakeDown"
+                } else {
+                    "rouletteStakeUp"
+                }
+                .into(),
+                Action::RouletteStakeMin => "rouletteStakeMin".into(),
+                Action::RouletteStakeMax => "rouletteStakeMax".into(),
+                Action::RouletteSpin => "rouletteSpin".into(),
+                Action::RouletteRules => "rouletteRules".into(),
+                Action::RouletteRestart => "rouletteRestart".into(),
+                Action::Open(Screen::Lobby) | Action::Back => "lobby".into(),
+                Action::Open(Screen::Settings) => "settings".into(),
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        let ui = &state.roulette_ui;
+        platform::diagnostics_attribute("data-roulette-view", &serde_json::json!({
+            "bankroll":state.save.roulette_balance,"displayBalance":ui.display_balance(state.save.roulette_balance),
+            "stake":ui.stake,"bet":ui.bet,"spinning":ui.busy(),"rulesOpen":ui.rules,
+            "result":if ui.busy() { None } else { ui.result },"history":ui.history,
+            "tablePan":ui.table_pan,"maxPan":layout.roulette_max_pan,"tableClip":layout.roulette_clip.map(|r|[r.min.x,r.min.y,r.width(),r.height()]),
+            "stripPosition":ui.strip_position(),"stripTarget":ui.strip_to
+        }).to_string());
     }
     if state.screen == Screen::Holdem || matches!(state.modal, Some(Pending::LeaveHoldem(_))) {
         use gamevex_core::holdem::{Action as P, Phase};

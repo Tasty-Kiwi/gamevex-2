@@ -109,7 +109,7 @@ async function openHoldem(page) {
   await expect.poll(async () => c.evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
   await expect.poll(async () => c.evaluate((el) => {
     const current = JSON.parse(el.dataset.session || '{}');
-    return current.version === 10;
+    return current.version === 11;
   })).toBe(true);
   await clickLobbyAction(page, 'holdem');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Holdem');
@@ -153,7 +153,7 @@ test('Holdem starts with the exact blind, hides CPU cards, and saves only its ba
   expect(current.seats.slice(1).map((seat) => seat.stack)).toEqual([90]);
   expect(current.seats[0].hole).toHaveLength(2);
   expect(current.seats.slice(1).every((seat) => seat.hole === null)).toBe(true);
-  expect((await save(page)).version).toBe(10);
+  expect((await save(page)).version).toBe(11);
   expect(Object.fromEntries(Object.entries(stable(await save(page))).filter(([key]) => key !== 'holdem_balance')))
     .toEqual(Object.fromEntries(Object.entries(before).filter(([key]) => key !== 'holdem_balance')));
   expect((await actions(page)).holdemRules).toHaveLength(4);

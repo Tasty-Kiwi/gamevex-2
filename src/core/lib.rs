@@ -8,6 +8,7 @@ pub mod mahjong;
 pub mod minesweeper;
 pub mod patience;
 pub mod poker;
+pub mod roulette;
 pub mod save;
 pub mod sudoku;
 
@@ -23,3 +24,6 @@ mod cribbage_parity;
 
 #[cfg(test)]
 mod holdem_parity;
+
+#[cfg(test)]
+mod roulette_parity;

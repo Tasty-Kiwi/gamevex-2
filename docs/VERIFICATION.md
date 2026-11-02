@@ -1,5 +1,44 @@
 # GameVex Rust demo verification
 
+## Roulette strip and table revision — 2 November 2026
+
+A full-width strip replaces the small circular wheel. All 37 European-wheel pockets pass beneath a fixed gold marker, with ease-out motion landing precisely on the resolved pocket. Zero is green in both the strip and betting table. The reference table puts 3/6/…/36 above 2/5/…/35 and 1/4/…/34, zero on the left, and three 2:1 column bets on the right; dozens and the six even-money bets sit underneath. Red and black bets use diamond symbols.
+
+The same table scrolls horizontally on phones, preserving readable number targets. Touch swipes cancel taps; mouse-wheel scrolling and automatic keyboard focus scrolling also reveal off-screen bets. Rules block table input. Existing bankroll settlement and save v11 are retained.
+
+- 269 Rust tests pass (107 application/platform, 162 core), plus strict Clippy and formatting. Coverage includes strip landing and repeat-spin continuity, keyboard scrolling, responsive hit geometry, and 111 column/pocket outcomes. The original 1,702 TypeScript comparisons remain separate from the newly supported columns.
+- Native macOS packaging and the WASM release build pass. **81 browser regressions pass** locally in Chromium/Metal with retries disabled, including reference table geometry, all three column selections, strip landing, saved payout integrity, and horizontal phone swipes without accidental bets.
+- Visual checks at 1280×800, 390×740, and 360×560 confirm the prominent strip, green zero pockets, standard button rows, clipped/pannable phone table, and far-end column access. These are local desktop-browser/touch-emulation checks, not hosted CI or physical-phone acceptance.
+
+![Revised Roulette](screenshots/roulette.png)
+
+![Phone table](screenshots/roulette-phone.png)
+
+![Compact far-end bets](screenshots/roulette-compact.png)
+
+
+## Roulette port — 2 November 2026
+
+The single-zero European cabinet supports one straight-number, even-money, or dozen bet per spin. The dark neon table shares monitor settings, keyboard/mouse/touch input, synthesized PCM audio, reduced motion, and result feedback with the other games. A vector wheel and ball decelerate into the selected pocket; the result stays concealed until landing. Rules and Settings pause motion, and leaving finishes it silently.
+
+- **267 Rust tests passed** (106 application/platform, 161 core). Roulette coverage includes all pocket colors, zero losing every outside bet, legal/invalid stakes, tiny balances, capped bankroll boundaries, fixed-seed spin vectors and u64-based sampling, exactly-once settlement, navigation/reload isolation, rules pause, and zero-only restart.
+- The generated TypeScript oracle fixture checks **1,702 cases**: every one of the 46 bets against every one of the 37 pockets, including labels, multipliers, colors, payout, net, and final balance. Regenerate with `node scripts/generate-roulette-fixtures.ts ../gamevex`; metadata records the source revision and SHA256.
+- Save **v11** adds only the Roulette bankroll, migrating v1–v10 while preserving existing games and balances. Each spin settles and persists before animation; a reload or departure cannot erase or repeat an award. Only the display waits for landing. The result/history remain transient.
+- The usual minimum is $5; a remaining balance of $1–$4 can be wagered in full, correcting the reference implementation’s otherwise stranded balance. Stakes are capped at $100 million and bankrolls at $1 trillion; ceiling-bound awards report the actual credited payout and net.
+- Geometry checks cover ready, spinning, rules, and zero-balance states at 360×560, 390×740, 1280×720, and 1280×800, rejecting out-of-view or overlapping bet controls. The compact phone uses a 9×4 number grid; desktop retains the 12×3 roulette layout.
+- Strict workspace Clippy, formatting, native macOS packaging, and the WASM release build pass. The existing transitive `block 0.1.6` future-compatibility notice is unchanged.
+- **80 browser regressions passed** locally with Chromium/Metal, one worker, and retries disabled. All four Roulette tests passed again after the final layout adjustment: bet/stake selection, exactly-once saved awards/reload, rules pause, and phone/compact touch input.
+- Final visual checks at 1280×800, 390×740, and 360×560 verified wheel/stat spacing and result/footer separation. Captures use the isolated QA save namespace; normal user saves were not touched.
+
+![Roulette desktop](screenshots/roulette.png)
+
+![Roulette phone](screenshots/roulette-phone.png)
+
+![Roulette compact](screenshots/roulette-compact.png)
+
+These are local checks; hosted CI, deployment, and physical-phone acceptance are separate.
+
+
 ## Card-table fixes — 2 November 2026
 
 Hearts’ center trick keeps its existing vertical footprint while moving side cards outward with 6 px gaps. Geometry regressions cover compact, phone, and desktop card sizes. Solitaire stock draws now anchor feedback only to the stock pile; Spider row deals retain feedback on their receiving columns. Tests verify a single Deal sound and stock-to-waste flights without tableau animations.

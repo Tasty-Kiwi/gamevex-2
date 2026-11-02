@@ -12,6 +12,7 @@ mod patience_motion;
 mod platform;
 mod presentation;
 mod rendering;
+mod roulette_app;
 mod sudoku_app;
 mod table_feedback;
 mod touch_input;
@@ -63,6 +64,7 @@ pub(crate) struct Arcade {
     pub hearts_ui: hearts_app::HeartsUi,
     pub cribbage_ui: cribbage_app::CribbageUi,
     pub holdem_ui: holdem_app::HoldemUi,
+    pub roulette_ui: roulette_app::RouletteUi,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -142,6 +144,7 @@ impl Arcade {
             hearts_ui: Default::default(),
             cribbage_ui: Default::default(),
             holdem_ui: Default::default(),
+            roulette_ui: Default::default(),
             message,
             persistence,
             protected_save,
@@ -187,6 +190,12 @@ impl Arcade {
         }
         if leaving_holdem {
             self.holdem_abandon();
+        }
+        if (self.screen == Screen::Roulette
+            || (self.screen == Screen::Settings && self.settings_return == Screen::Roulette))
+            && !matches!(screen, Screen::Roulette | Screen::Settings)
+        {
+            self.roulette_ui.settle_motion();
         }
         self.holdem_ui.settle_motion();
         self.cribbage_ui.age = 1.0;
@@ -339,7 +348,8 @@ impl Arcade {
         }
         let table_action = matches!(
             action,
-            Action::HoldemPlay(..)
+            Action::RouletteSpin
+                | Action::HoldemPlay(..)
                 | Action::HoldemStart
                 | Action::CribbageCard(..)
                 | Action::CribbageDiscard
@@ -422,6 +432,13 @@ impl Arcade {
                 }
                 self.restore_modal_focus();
             }
+            Action::RouletteBet(bet) => self.roulette_bet(bet),
+            Action::RouletteStake(delta) => self.roulette_stake(delta),
+            Action::RouletteStakeMin => self.roulette_stake_limit(false),
+            Action::RouletteStakeMax => self.roulette_stake_limit(true),
+            Action::RouletteSpin => self.roulette_spin(),
+            Action::RouletteRules => self.roulette_ui.rules = !self.roulette_ui.rules,
+            Action::RouletteRestart => self.roulette_restart(),
             Action::HoldemStart => self.holdem_start(),
             Action::HoldemPlay(action) => self.holdem_play(action),
             Action::HoldemStake(delta) => self.holdem_stake(delta),
@@ -713,6 +730,7 @@ impl Arcade {
         self.hearts_ui = Default::default();
         self.cribbage_ui = Default::default();
         self.holdem_ui = Default::default();
+        self.roulette_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -889,6 +907,9 @@ fn lifecycle(
         if active && let Some(age) = &mut state.sudoku_ui.completion_age {
             *age = (*age + delta.min(0.1) as f32).min(3.0);
         }
+    }
+    if state.screen == Screen::Roulette && foreground && !transitioned && state.modal.is_none() {
+        state.roulette_tick(delta as f32);
     }
     if state.screen == Screen::Holdem && foreground && !transitioned && state.modal.is_none() {
         state.holdem_tick(delta as f32);
@@ -1288,6 +1309,8 @@ fn handle_input(
     if keys.just_pressed(KeyCode::Escape) {
         if state.modal.is_some() {
             state.act(Action::Cancel);
+        } else if state.screen == Screen::Roulette && state.roulette_ui.rules {
+            state.roulette_ui.rules = false;
         } else if state.screen == Screen::Holdem && state.holdem_ui.rules {
             state.holdem_ui.rules = false;
         } else if state.screen == Screen::Cribbage && state.cribbage_ui.rules {
@@ -1528,6 +1551,25 @@ fn handle_input(
             state.mahjong_ui.pan = (state.mahjong_ui.pan - Vec2::new(event.x, event.y) * scale)
                 .clamp(Vec2::ZERO, layout.mahjong_max_pan);
         }
+        if state.screen == Screen::Roulette
+            && state.modal.is_none()
+            && layout
+                .roulette_clip
+                .is_some_and(|r| state.cursor.is_some_and(|p| r.contains(p)))
+        {
+            let scale = if event.unit == MouseScrollUnit::Line {
+                36.0
+            } else {
+                1.0
+            };
+            let delta = if event.x.abs() > event.y.abs() {
+                event.x
+            } else {
+                event.y
+            };
+            state.roulette_ui.table_pan =
+                (state.roulette_ui.table_pan - delta * scale).clamp(0.0, layout.roulette_max_pan);
+        }
         if state.screen == Screen::Settings {
             let scale = if event.unit == MouseScrollUnit::Line {
                 36.0
@@ -1627,6 +1669,7 @@ fn play_sound(
             | Screen::Hearts
             | Screen::Cribbage
             | Screen::Holdem
+            | Screen::Roulette
     ) || patience_app::is_family(state.screen);
     let enabled =
         state.audio_started && !state.save.settings.muted && state.save.settings.volume > 0.0;
@@ -1649,7 +1692,9 @@ fn play_sound(
         .into_iter()
         .map(|cue| (Some(cue), 0.0))
         .collect();
-    let table_sounds = if state.screen == Screen::Holdem {
+    let table_sounds = if state.screen == Screen::Roulette {
+        state.roulette_ui.feedback.take_sounds()
+    } else if state.screen == Screen::Holdem {
         state.holdem_ui.feedback.take_sounds()
     } else if state.screen == Screen::Cribbage {
         state.cribbage_ui.feedback.take_sounds()
@@ -1810,6 +1855,7 @@ mod tests {
             hearts_ui: Default::default(),
             cribbage_ui: Default::default(),
             holdem_ui: Default::default(),
+            roulette_ui: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -3489,12 +3535,12 @@ mod tests {
                     |(_, h)| matches!(h.action, Action::Open(screen) if !matches!(screen, Screen::Settings | Screen::Lobby)),
                 )
                 .collect();
-            assert_eq!(games.len(), 12);
+            assert_eq!(games.len(), 13);
             let first = games[0].0;
             let last = games.last().unwrap().0;
             assert!(matches!(
                 games.last().unwrap().1.action,
-                Action::Open(Screen::Holdem)
+                Action::Open(Screen::Roulette)
             ));
             assert_eq!(games.last().unwrap().1.rect.height(), 0.0);
             {
@@ -3554,6 +3600,7 @@ fn capture_tools(
                 Screen::Hearts => "hearts",
                 Screen::Cribbage => "cribbage",
                 Screen::Holdem => "holdem",
+                Screen::Roulette => "roulette",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

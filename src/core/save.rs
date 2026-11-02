@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 10;
+pub const SAVE_VERSION: u32 = 11;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -155,6 +155,7 @@ pub struct Save {
     pub cribbage: crate::cribbage::Game,
     pub cribbage_wins: u32,
     pub holdem_balance: u64,
+    pub roulette_balance: u64,
 }
 
 #[derive(Deserialize)]
@@ -242,6 +243,7 @@ impl Save {
             cribbage: crate::cribbage::Game::new(seed ^ 0x4352_4942),
             cribbage_wins: 0,
             holdem_balance: 1000,
+            roulette_balance: 1000,
             patience_records: [None; 7],
             solitaire: crate::patience::Game::new(
                 crate::patience::Variant::Klondike1,
@@ -265,6 +267,9 @@ impl Save {
         self.settings.validate()?;
         self.hearts.validate()?;
         self.cribbage.validate()?;
+        if self.roulette_balance > crate::roulette::MAX_BALANCE {
+            return Err("roulette balance exceeds limit".into());
+        }
         if self.holdem_balance > 1_000_000_000_000 {
             return Err("Holdem bankroll exceeds limit".into());
         }
@@ -394,7 +399,7 @@ impl Save {
                 migrated.spider = old.spider;
                 migrated
             }
-            7..=9 => {
+            7..=10 => {
                 let mut value = value;
                 let fields = value.as_object_mut().ok_or("invalid save object")?;
                 fields.insert("version".into(), serde_json::json!(SAVE_VERSION));
@@ -414,10 +419,13 @@ impl Save {
                     );
                     fields.insert("cribbage_wins".into(), serde_json::json!(0));
                 }
-                fields.insert("holdem_balance".into(), serde_json::json!(1000));
+                if version <= 9 {
+                    fields.insert("holdem_balance".into(), serde_json::json!(1000));
+                }
+                fields.insert("roulette_balance".into(), serde_json::json!(1000));
                 serde_json::from_value(value).map_err(|e| format!("invalid migrated save: {e}"))?
             }
-            10 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            11 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -871,5 +879,26 @@ mod tests {
         game.elapsed_ms = 800;
         assert!(records.record(&game));
         assert_eq!(records.best(Difficulty::Beginner), Some(800));
+    }
+    #[test]
+    fn v10_adds_roulette_bankroll_without_changing_existing_games() {
+        let mut previous = Save::new(42);
+        previous.holdem_balance = 673;
+        previous.cribbage_wins = 3;
+        let mut value = serde_json::to_value(&previous).unwrap();
+        value["version"] = 10.into();
+        value.as_object_mut().unwrap().remove("roulette_balance");
+        let migrated = Save::from_json(&value.to_string()).unwrap();
+        assert_eq!(migrated, previous);
+        previous.roulette_balance = 825;
+        assert_eq!(
+            Save::from_json(&previous.to_json().unwrap()).unwrap(),
+            previous
+        );
+        let mut missing = serde_json::to_value(&previous).unwrap();
+        missing.as_object_mut().unwrap().remove("roulette_balance");
+        assert!(Save::from_json(&missing.to_string()).is_err());
+        previous.roulette_balance = crate::roulette::MAX_BALANCE + 1;
+        assert!(previous.validate().is_err());
     }
 }

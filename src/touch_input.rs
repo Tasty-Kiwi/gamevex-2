@@ -13,6 +13,7 @@ enum Pan {
     Sudoku,
     Mahjong,
     Patience,
+    Roulette,
     Settings,
 }
 
@@ -140,6 +141,8 @@ impl TouchPointer {
                     Some(Pan::Mahjong)
                 } else if l.patience_clip.is_some_and(|r| r.contains(surface)) {
                     Some(Pan::Patience)
+                } else if l.roulette_clip.is_some_and(|r| r.contains(surface)) {
+                    Some(Pan::Roulette)
                 } else if l.settings_clip.is_some_and(|r| r.contains(surface)) {
                     Some(Pan::Settings)
                 } else {
@@ -192,6 +195,10 @@ impl TouchPointer {
                             Some(Pan::Patience) => {
                                 s.patience_ui.pan = (s.patience_ui.pan - delta)
                                     .clamp(Vec2::ZERO, l.patience_max_pan);
+                            }
+                            Some(Pan::Roulette) => {
+                                s.roulette_ui.table_pan = (s.roulette_ui.table_pan - delta.x)
+                                    .clamp(0.0, l.roulette_max_pan);
                             }
                             Some(Pan::Settings) => {
                                 s.settings_scroll =
