@@ -2,6 +2,8 @@
 mod browser_audio;
 mod casino_audio;
 mod casino_feedback;
+mod hearts_app;
+mod hearts_motion;
 mod mahjong_app;
 mod patience_app;
 mod patience_motion;
@@ -56,6 +58,7 @@ pub(crate) struct Arcade {
     pub sudoku_ui: sudoku_app::SudokuUi,
     pub mahjong_ui: mahjong_app::MahjongUi,
     pub patience_ui: patience_app::PatienceUi,
+    pub hearts_ui: hearts_app::HeartsUi,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -73,6 +76,7 @@ pub(crate) struct Arcade {
 pub(crate) enum Pending {
     New(Difficulty, bool),
     Recover,
+    NewHearts,
     LeaveBlackjack(Screen),
     NewSudoku(u8, sudoku::Difficulty),
     SudokuSetup,
@@ -129,6 +133,7 @@ impl Arcade {
             sudoku_ui: Default::default(),
             mahjong_ui: Default::default(),
             patience_ui: Default::default(),
+            hearts_ui: Default::default(),
             message,
             persistence,
             protected_save,
@@ -165,6 +170,10 @@ impl Arcade {
     }
 
     fn open(&mut self, screen: Screen) {
+        self.hearts_ui.motion.clear();
+        self.hearts_ui.age = 0.0;
+        self.hearts_ui.hovered = None;
+        self.hearts_ui.feedback.clear();
         self.patience_ui.drag = None;
         self.patience_ui.motion.clear();
         if self.screen == Screen::Blackjack
@@ -308,7 +317,11 @@ impl Arcade {
         }
         let table_action = matches!(
             action,
-            Action::PatiencePick(..)
+            Action::HeartsCard(..)
+                | Action::HeartsPass
+                | Action::HeartsContinue
+                | Action::HeartsNew
+                | Action::PatiencePick(..)
                 | Action::PatienceTarget(..)
                 | Action::PatienceNew(..)
                 | Action::PatienceDeal
@@ -357,6 +370,7 @@ impl Arcade {
                 Some(Pending::NewSudoku(size, difficulty)) => self.new_sudoku(size, difficulty),
                 Some(Pending::NewMahjong(layout, seed, zen)) => self.new_mahjong(layout, seed, zen),
                 Some(Pending::NewPatience(v, seed)) => self.new_patience(v, seed),
+                Some(Pending::NewHearts) => self.new_hearts(),
                 Some(Pending::SudokuSetup) => self.restore_modal_focus(),
                 Some(Pending::Recover) => {
                     self.reset_saved_data();
@@ -374,6 +388,11 @@ impl Arcade {
                 }
                 self.restore_modal_focus();
             }
+            Action::HeartsCard(index) => self.hearts_card(index),
+            Action::HeartsPass => self.hearts_pass(),
+            Action::HeartsContinue => self.hearts_continue(),
+            Action::HeartsNew => self.request_hearts(),
+            Action::HeartsRules => self.hearts_ui.rules = !self.hearts_ui.rules,
             Action::Blackjack(command) => {
                 if self.blackjack_motion.busy() && !self.save.settings.reduced_motion {
                     return;
@@ -630,6 +649,7 @@ impl Arcade {
         self.sudoku_ui = Default::default();
         self.mahjong_ui = Default::default();
         self.patience_ui = Default::default();
+        self.hearts_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -644,6 +664,7 @@ impl Arcade {
     }
 
     fn open_modal(&mut self, pending: Pending) {
+        self.hearts_ui.motion.clear();
         self.patience_ui.drag = None;
         self.patience_ui.motion.clear();
         self.modal_return_focus = self.focus;
@@ -802,12 +823,19 @@ fn lifecycle(
             *age = (*age + delta.min(0.1) as f32).min(3.0);
         }
     }
+    if state.screen == Screen::Hearts && foreground && !transitioned && state.modal.is_none() {
+        state.hearts_tick(delta as f32);
+    }
     if !foreground || transitioned {
         state.lab.cancel_drag();
         state.patience_ui.drag = None;
         state.patience_ui.motion.clear();
         state.patience_ui.feedback.clear();
         state.mahjong_ui.feedback.clear();
+        state.hearts_ui.motion.clear();
+        state.hearts_ui.hovered = None;
+        state.hearts_ui.age = 0.0;
+        state.hearts_ui.feedback.clear();
     }
     state.save_age += delta.min(0.5) as f32;
     state.motion_time += delta.min(0.1) as f32;
@@ -943,6 +971,7 @@ fn handle_pointer_input(
     touch.sync_lifecycle(&mut state, &mut pointer);
     // Browser canvas metrics can change before winit emits a resize event.
     if !layout_valid {
+        state.hearts_ui.motion.clear();
         state.lab.cancel_drag();
         state.patience_ui.drag = None;
         state.patience_ui.motion.clear();
@@ -1180,6 +1209,8 @@ fn handle_input(
     if keys.just_pressed(KeyCode::Escape) {
         if state.modal.is_some() {
             state.act(Action::Cancel);
+        } else if state.screen == Screen::Hearts && state.hearts_ui.rules {
+            state.hearts_ui.rules = false;
         } else if state.patience_ui.drag.is_some() {
             state.patience_ui.drag = None;
             state.patience_ui.motion.clear();
@@ -1507,7 +1538,7 @@ fn play_sound(
 ) {
     let cue_screen = matches!(
         state.screen,
-        Screen::Blackjack | Screen::Baccarat | Screen::Mahjong
+        Screen::Blackjack | Screen::Baccarat | Screen::Mahjong | Screen::Hearts
     ) || patience_app::is_family(state.screen);
     let enabled =
         state.audio_started && !state.save.settings.muted && state.save.settings.volume > 0.0;
@@ -1530,7 +1561,9 @@ fn play_sound(
         .into_iter()
         .map(|cue| (Some(cue), 0.0))
         .collect();
-    let table_sounds = if state.screen == Screen::Mahjong {
+    let table_sounds = if state.screen == Screen::Hearts {
+        state.hearts_ui.feedback.take_sounds()
+    } else if state.screen == Screen::Mahjong {
         state.mahjong_ui.feedback.take_sounds()
     } else if patience_app::is_family(state.screen) {
         state.patience_ui.feedback.take_sounds()
@@ -1682,6 +1715,7 @@ mod tests {
             sudoku_ui: Default::default(),
             mahjong_ui: Default::default(),
             patience_ui: Default::default(),
+            hearts_ui: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -3329,12 +3363,12 @@ mod tests {
                     |(_, h)| matches!(h.action, Action::Open(screen) if !matches!(screen, Screen::Settings | Screen::Lobby)),
                 )
                 .collect();
-            assert_eq!(games.len(), 9);
+            assert_eq!(games.len(), 10);
             let first = games[0].0;
             let last = games.last().unwrap().0;
             assert!(matches!(
                 games.last().unwrap().1.action,
-                Action::Open(Screen::Spider)
+                Action::Open(Screen::Hearts)
             ));
             assert_eq!(games.last().unwrap().1.rect.height(), 0.0);
             {
@@ -3391,6 +3425,7 @@ fn capture_tools(
                 Screen::Solitaire => "solitaire",
                 Screen::FreeCell => "freecell",
                 Screen::Spider => "spider",
+                Screen::Hearts => "hearts",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

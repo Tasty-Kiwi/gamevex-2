@@ -56,6 +56,35 @@ impl Frame {
         self.push_axis_quad(pos, pos + size, color);
     }
 
+    /// Fill a convex polygon, or a simple polygon visible from its first vertex.
+    pub fn polygon(&mut self, points: &[Vec2], color: Color) {
+        if !valid_size(self.size) || points.len() < 3 || points.iter().any(|p| !p.is_finite()) {
+            return;
+        }
+        for pair in points[1..].windows(2) {
+            self.push_quad(points[0], pair[0], pair[1], pair[1], color);
+        }
+    }
+
+    /// Fill a rounded rectangle using a convex perimeter.
+    pub fn rounded_rect(&mut self, rect: Rect, radius: f32, color: Color) {
+        let r = radius.clamp(0.0, rect.width().min(rect.height()).max(0.0) * 0.5);
+        let corners = [
+            (Vec2::new(rect.max.x - r, rect.min.y + r), -90.0_f32),
+            (Vec2::new(rect.max.x - r, rect.max.y - r), 0.0),
+            (Vec2::new(rect.min.x + r, rect.max.y - r), 90.0),
+            (Vec2::new(rect.min.x + r, rect.min.y + r), 180.0),
+        ];
+        let mut perimeter = Vec::with_capacity(28);
+        for (center, start) in corners {
+            for step in 0..=6 {
+                let angle = (start + step as f32 * 15.0).to_radians();
+                perimeter.push(center + Vec2::new(angle.cos(), angle.sin()) * r);
+            }
+        }
+        self.polygon(&perimeter, color);
+    }
+
     /// Add a thick line as a solid quadrilateral.
     pub fn line(&mut self, a: Vec2, b: Vec2, width: f32, color: Color) {
         let width = width.max(self.min_stroke);

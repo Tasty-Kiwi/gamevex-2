@@ -195,6 +195,29 @@ pub(crate) fn card_face(
     selected: bool,
     rank_visible: bool,
 ) {
+    card_face_with_emphasis(f, r, card, selected, rank_visible, 1.0);
+}
+
+/// Share the same artwork while reducing every foreground element, including
+/// the separately rendered rank text, for cards that cannot currently be played.
+pub(crate) fn card_face_with_emphasis(
+    f: &mut Frame,
+    r: Rect,
+    card: gamevex_core::cards::Card,
+    selected: bool,
+    rank_visible: bool,
+    emphasis: f32,
+) {
+    let emphasis = emphasis.clamp(0.0, 1.0);
+    let tint = |color: Color| {
+        let c = color.to_srgba();
+        Color::srgba(
+            c.red * emphasis,
+            c.green * emphasis,
+            c.blue * emphasis,
+            c.alpha,
+        )
+    };
     let compact = r.width() < 100.0 || r.height() < 140.0;
     f.rect(
         r.min
@@ -211,13 +234,18 @@ pub(crate) fn card_face(
         r.min,
         r.size(),
         if selected { 2.5 } else { 1.5 },
-        if selected { GOLD } else { CYAN },
+        tint(if selected { GOLD } else { CYAN }),
     );
     let inset_size = if compact { 4.0 } else { 7.0 };
     let inset = r.min + Vec2::splat(inset_size);
-    f.outline(inset, r.size() - Vec2::splat(inset_size * 2.0), 0.75, EDGE);
+    f.outline(
+        inset,
+        r.size() - Vec2::splat(inset_size * 2.0),
+        0.75,
+        tint(EDGE),
+    );
     if card.face_up {
-        let color = if card.suit.is_red() { MAGENTA } else { CYAN };
+        let color = tint(if card.suit.is_red() { MAGENTA } else { CYAN });
         // Rank stays on the exposed left edge of an overlapping hand.
         if rank_visible {
             let rank_size = if compact {
@@ -268,7 +296,7 @@ pub(crate) fn card_face(
             let p = r.min + Vec2::new(d, d);
             let size = r.size() - Vec2::splat(d * 2.0);
             if size.min_element() > 0.0 {
-                f.outline(p, size, 1.0, if i % 2 == 0 { MAGENTA } else { EDGE });
+                f.outline(p, size, 1.0, tint(if i % 2 == 0 { MAGENTA } else { EDGE }));
             }
         }
     }

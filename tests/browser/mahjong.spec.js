@@ -107,7 +107,7 @@ async function openMahjong(page) {
   }).toBe(true);
   await expect.poll(async () => page.locator(canvas).evaluate((el) => {
     const current = JSON.parse(el.dataset.session || '{}');
-    return Boolean(current.version === 7 && current.mahjong && current.mahjong.tiles?.length === 144
+    return Boolean(current.version === 8 && current.mahjong && current.mahjong.tiles?.length === 144
       && current.solitaire && current.freecell && current.spider);
   })).toBe(true);
   await clickLobbyAction(page, 'mahjong');

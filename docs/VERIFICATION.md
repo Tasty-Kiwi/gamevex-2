@@ -273,6 +273,42 @@ All 194 Rust tests and strict workspace Clippy pass, including save migration, r
 
 ![Phone FreeCell controls](screenshots/freecell-phone-controls.png)
 
+## Hearts port — 2 November 2026
+
+Hearts is playable against three CPU seats. The Rust engine follows the original cabinet's left/right/across/hold pass rotation, 2-of-clubs opening, mandatory follow suit, first-trick point restrictions, hearts-breaking rule, 26-point moon transformation, and 100-point match threshold. CPU decisions use only their hand and the visible trick. Hands are grouped by suit and rank. Scores settle at the end of each hand; the lowest completed human match score is recorded independently.
+
+Save v8 adds a complete Hearts session and record. v7 migration preserves every existing cabinet, setting, and record; earlier migrations continue to initialize missing cabinets. Each pass, human/CPU card, resolved trick, and next-hand action saves immediately. Computer turns and trick collection run only in the foreground Hearts cabinet, pause in rules/settings/dialogs, and resume with a readable delay. Reopening a match does not redeal or replay queued sounds. New Match confirms replacement. Reset saved data includes Hearts.
+
+The table exposes only legal card targets during play and requires exactly three selected cards before enabling Pass. Mouse, phone touch, and Tab/Enter share these targets. Compact layouts cover 360×560 and 390×740; the desktop hand fits 1280×720 and 1280×800. Played cards ease into place, completed tricks stay visible for 1.2 seconds, and reduced motion keeps the static table and pacing without decorative motion. Existing synthesized card, selection, deal, trick, and result cues use the shared native/browser audio path.
+
+Rules tests validate every transition across 128 seeded matches, actual pass transfers, hold hands, moon scoring, the match threshold, invalid inputs, malformed saves, and a fixed-seed shuffle fingerprint. App tests cover pass selection, protected replacement, adjacent-game isolation, paused rules, readable trick collection, and hit bounds in the four supported sizes. All 211 Rust tests and strict workspace Clippy pass. The native application was exercised in an isolated save through passing, the opening lead, and a completed trick. All 60 local Chromium/Metal browser regressions pass with one worker and retries disabled (1.5 minutes), including phone touch, legal plays, rules help, exact paused save/reload, replacement confirmation, the existing cabinets, and native/browser audio-buffer parity. Hosted Linux CI and a physical phone remain separate acceptance checks.
+
+The presentation retains the four-seat reference layout while using GameVex's dark cyan palette, the shared card faces and backs used by the other cabinets, opponent hands at the top and sides, scores beside each seat, and a central four-position trick. The desktop hand overlaps along the bottom; phone hands use two overlapping rows so exposed card edges remain reachable. Selected cards lift with the shared selection outline, legal cards stay bright, and disabled cards retain readable suits. The shared renderer provides rounded table geometry; Hearts calls the existing card renderer for all faces and backs. Native and web visual checks covered desktop, 390×740, and compact 360×560 layouts; all 60 browser regressions still pass after this redesign.
+
+The palette was then aligned with the other cabinets: the playing field, card faces, and backs use dark blue-black surfaces; the existing shared card renderer supplies cyan/magenta suit shapes and card backs, and the active-seat accent is cyan. The four-seat geometry and overlapping hands are preserved. All 211 Rust tests, strict Clippy, and the five focused Hearts browser regressions pass after this color-only adjustment.
+
+Hearts hover now follows Card Lab: the same exponential easing, 18px lift, shared highlight, selected-card paint order, rank occlusion, and shared union of rendered/resting hit bounds. Illegal cards remain inspectable but block clicks from reaching legal cards underneath. Hover is transient and clears with rules/navigation/hand replacement. Added regression coverage holds a stationary mouse at the original bottom edge through multiple frames, then clicks that footprint and checks selection; Rust exercises both ordinary and reduced-motion modes. All 212 Rust tests, strict Clippy, and all six Hearts browser cases pass after this repair.
+
+Card availability uses brightness rather than changing the hand layout. Hearts calls the shared renderer with full emphasis for selectable cards and reduced emphasis for unavailable cards, including separately rendered rank labels. Disabled cards do not acquire a bright hover outline or lift. At the three-card pass limit, selected cards remain available for deselection while the other cards dim. The six Hearts browser regressions and 212 Rust tests still pass; other card cabinets keep full-emphasis rendering by default.
+
+Hearts now animates all card transfers with the shared artwork: full hand-to-trick flights, 12-card pass exchanges to the actual recipients, and four-card trick collection toward the resolved winner. New hands use a staggered round-robin deal, and remaining hand cards retain their identity while reflowing. Passes finish within 0.72s, collection within 0.52s, plays within 0.28s, and deals within 0.84s. Flights use eased paths, shrinking collection piles, and brief face/back turns; CPU-to-CPU passes stay face down. Incoming cards appear in hands as they arrive, and receiving seats are highlighted.
+
+The rules commit and save before presentation starts. Card actions wait until transfers finish; rules pauses motion, while navigation, dialogs, resize, and focus loss settle it without replay or model rollback. Reduced motion commits the same result without flights. Motion tests cover actual transfer ownership, non-human trick winners, bounded expiry, and all 52 deal cards; app tests cover immediate persistence, blocked input, pause/interruption, and reduced motion. All 217 Rust tests, strict Clippy, and 62 local Chromium/Metal browser regressions pass, including a full trick and reload during collection. These are local checks, not a new hosted CI run.
+
+![Hearts phone deal](screenshots/hearts-deal.png)
+
+![Hearts pass exchange](screenshots/hearts-passing.png)
+
+![Hearts trick collection](screenshots/hearts-collection.png)
+
+![Hearts playable card distinction](screenshots/hearts-playable.png)
+
+![Hearts hover](screenshots/hearts-hover.png)
+
+![Hearts table](screenshots/hearts.png)
+
+![Hearts phone table](screenshots/hearts-phone.png)
+
 ## Screenshots
 
 Actual native render captures, excluding window chrome.

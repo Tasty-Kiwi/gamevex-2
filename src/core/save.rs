@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 7;
+pub const SAVE_VERSION: u32 = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -150,6 +150,8 @@ pub struct Save {
     pub solitaire: crate::patience::Game,
     pub freecell: crate::patience::Game,
     pub spider: crate::patience::Game,
+    pub hearts: crate::hearts::Game,
+    pub hearts_best: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -232,6 +234,8 @@ impl Save {
                 crate::mahjong::Layout::Turtle,
                 seed ^ 0x004d_4148_4a4f_4e47,
             ),
+            hearts: crate::hearts::Game::new(seed ^ 0x4845_4152_5453),
+            hearts_best: None,
             patience_records: [None; 7],
             solitaire: crate::patience::Game::new(
                 crate::patience::Variant::Klondike1,
@@ -253,6 +257,10 @@ impl Save {
             return Err(format!("unsupported save version {}", self.version));
         }
         self.settings.validate()?;
+        self.hearts.validate()?;
+        if self.hearts_best.is_some_and(|score| score > 125) {
+            return Err("invalid Hearts record".into());
+        }
         self.minesweeper.game.validate()?;
         self.minesweeper.records.validate()?;
         self.blackjack.validate()?;
@@ -376,7 +384,19 @@ impl Save {
                 migrated.spider = old.spider;
                 migrated
             }
-            7 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            7 => {
+                let mut value = value;
+                let fields = value.as_object_mut().ok_or("invalid save object")?;
+                fields.insert("version".into(), serde_json::json!(SAVE_VERSION));
+                fields.insert(
+                    "hearts".into(),
+                    serde_json::to_value(crate::hearts::Game::new(0x4845_4152_5453))
+                        .map_err(|e| e.to_string())?,
+                );
+                fields.insert("hearts_best".into(), serde_json::Value::Null);
+                serde_json::from_value(value).map_err(|e| format!("invalid version-7 save: {e}"))?
+            }
+            8 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -708,6 +728,53 @@ mod tests {
             Save::from_json(&migrated.to_json().unwrap()).unwrap(),
             migrated
         );
+    }
+
+    #[test]
+    fn version_seven_migration_preserves_every_existing_cabinet() {
+        let mut old = Save::new(71);
+        old.settings.volume = 0.21;
+        old.freecell = crate::patience::Game::new(crate::patience::Variant::FreeCellRelaxed, 72);
+        old.patience_records[6] = Some(1234);
+        let mut value = serde_json::to_value(&old).unwrap();
+        value["version"] = 7.into();
+        value.as_object_mut().unwrap().remove("hearts");
+        value.as_object_mut().unwrap().remove("hearts_best");
+        let migrated = Save::from_json(&value.to_string()).unwrap();
+        let mut expected = serde_json::to_value(&old).unwrap();
+        let mut actual = serde_json::to_value(&migrated).unwrap();
+        for fields in [&mut expected, &mut actual] {
+            fields.as_object_mut().unwrap().remove("hearts");
+            fields.as_object_mut().unwrap().remove("hearts_best");
+        }
+        assert_eq!(actual, expected);
+        assert_eq!(migrated.hearts.phase, crate::hearts::Phase::Passing);
+        assert_eq!(
+            Save::from_json(&migrated.to_json().unwrap()).unwrap(),
+            migrated
+        );
+    }
+
+    #[test]
+    fn hearts_mid_trick_round_trip_and_corruption_rejection() {
+        let mut save = Save::new(81);
+        assert!(save.hearts.pass(&[0, 1, 2]));
+        if save.hearts.turn == 0 {
+            assert!(save.hearts.play(save.hearts.legal_indices(0)[0]));
+        } else {
+            assert!(save.hearts.cpu_step());
+        }
+        save.hearts_best = Some(0);
+        assert_eq!(Save::from_json(&save.to_json().unwrap()).unwrap(), save);
+        let mut invalid = save.clone();
+        invalid.hearts.hands[0].push(invalid.hearts.hands[1][0]);
+        assert!(invalid.to_json().is_err());
+        invalid = save.clone();
+        invalid.hearts_best = Some(126);
+        assert!(invalid.to_json().is_err());
+        let mut missing = serde_json::to_value(&save).unwrap();
+        missing.as_object_mut().unwrap().remove("hearts");
+        assert!(Save::from_json(&missing.to_string()).is_err());
     }
 
     #[test]

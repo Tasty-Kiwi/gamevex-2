@@ -29,6 +29,7 @@ pub enum Screen {
     Solitaire,
     FreeCell,
     Spider,
+    Hearts,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -74,6 +75,11 @@ pub enum Action {
     MahjongRestart,
     MahjongNew(gamevex_core::mahjong::Layout),
     MahjongZen(bool),
+    HeartsCard(usize),
+    HeartsPass,
+    HeartsContinue,
+    HeartsNew,
+    HeartsRules,
     PatiencePick(gamevex_core::patience::Pile, usize),
     PatienceTarget(gamevex_core::patience::Pile),
     PatienceDeal,
@@ -221,6 +227,14 @@ pub fn paint(
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Hearts => hearts::hearts(
+            &mut frame,
+            &mut state,
+            &mut layout,
+            margin,
+            w,
+            time.delta_secs(),
+        ),
         Screen::Baccarat => baccarat::baccarat(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Sudoku => sudoku::sudoku(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Solitaire | Screen::FreeCell | Screen::Spider => {
@@ -266,6 +280,7 @@ pub(crate) mod baccarat_motion;
 mod blackjack;
 pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
+mod hearts;
 mod mahjong;
 mod patience;
 mod screens;
@@ -292,6 +307,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         "focusIndex": state.focus,
         "focusCount": layout.hits.len(),
         "modal": match state.modal {
+            Some(Pending::NewHearts) => Some("hearts-replace"),
             Some(Pending::SudokuSetup) => Some("sudoku-setup"),
             Some(Pending::NewSudoku(..)) => Some("sudoku-replace"),
             Some(Pending::NewMahjong(..)) => Some("mahjong-replace"),
@@ -368,6 +384,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "solitaire":action_bounds(Screen::Solitaire),
             "freecell":action_bounds(Screen::FreeCell),
             "spider":action_bounds(Screen::Spider),
+            "hearts":action_bounds(Screen::Hearts),
             "lobbyClip":layout.lobby_clip.map(|r| [r.min.x,r.min.y,r.width(),r.height()]),
             "lobbyScroll":state.lobby_scroll,
             "lobbyMaxScroll":layout.lobby_max_scroll,
@@ -375,6 +392,52 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
         }
+    }
+    if state.screen == Screen::Hearts {
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::HeartsCard(i)
+                    if !state.hearts_ui.motion.busy()
+                        && ((state.save.hearts.phase == gamevex_core::hearts::Phase::Passing
+                            && (state.hearts_ui.selected.len() < 3
+                                || state.hearts_ui.selected.contains(&i)))
+                            || state.save.hearts.legal_indices(0).contains(&i)) =>
+                {
+                    format!("heartsCard{i}")
+                }
+                Action::HeartsPass => "heartsPass".into(),
+                Action::HeartsContinue => "heartsContinue".into(),
+                Action::HeartsNew => "heartsNew".into(),
+                Action::HeartsRules => "heartsRules".into(),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
+                Action::Open(Screen::Lobby) | Action::Back => "lobby".into(),
+                Action::Open(Screen::Settings) => "settings".into(),
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        let g = &state.save.hearts;
+        platform::diagnostics_attribute("data-hearts-view", &serde_json::json!({
+            "phase":g.phase,"turn":g.turn,"selected":state.hearts_ui.selected,"rulesOpen":state.hearts_ui.rules,
+            "legal":g.legal_indices(0),"handNumber":g.hand_number,"heartsBroken":g.hearts_broken,
+            "animating":state.hearts_ui.motion.busy(),"motion":state.hearts_ui.motion.kind().map(|k|format!("{k:?}")),"motionCards":state.hearts_ui.motion.flights().len(),"motionTime":state.hearts_ui.motion.flights().first().map(|f|f.elapsed),
+            "hovered":state.hearts_ui.hovered,"handPositions":state.hearts_ui.card_positions.iter().map(|p|[p.x,p.y]).collect::<Vec<_>>(),
+            "totals":g.totals,"handPoints":g.hand_points,
+        }).to_string());
     }
     if state.screen == Screen::Blackjack {
         let game = &state.save.blackjack;

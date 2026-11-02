@@ -6,9 +6,7 @@ mod lobby;
 mod mines;
 mod settings;
 
-#[cfg(test)]
-pub(super) use cards::card_hit_bounds;
-pub(super) use cards::{card_face, cards, rects_overlap};
+pub(super) use cards::{card_face, card_face_with_emphasis, card_hit_bounds, cards, rects_overlap};
 pub(super) use dialog::dialog;
 pub(super) use lobby::lobby;
 pub(super) use mines::mines;

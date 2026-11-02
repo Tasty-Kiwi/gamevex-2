@@ -45,6 +45,8 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             "Your Mahjong progress will be replaced.\nCancel to keep the current board."
         } else if matches!(s.modal, Some(Pending::NewPatience(..))) {
             "Your card-game progress will be replaced.\nCancel to keep this deal."
+        } else if matches!(s.modal, Some(Pending::NewHearts)) {
+            "Your Hearts match will be replaced.\nCancel to keep the current hand."
         } else if sudoku {
             "Your Sudoku entries and notes will be replaced.\nCancel to keep playing this puzzle."
         } else {
