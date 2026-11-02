@@ -22,10 +22,11 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
     f.rounded_outline(r.min, r.size(), 8.0, 2.0, GOLD);
     let recover = matches!(s.modal, Some(Pending::Recover));
     let sudoku = matches!(s.modal, Some(Pending::NewSudoku(..)));
+    let leave_holdem = matches!(s.modal, Some(Pending::LeaveHoldem(_)));
     let leave_blackjack = matches!(s.modal, Some(Pending::LeaveBlackjack(_)));
     f.text(
         r.min + Vec2::new(22.0, 24.0),
-        if leave_blackjack {
+        if leave_blackjack || leave_holdem {
             "Leave this round?"
         } else if recover {
             "Reset saved data?"
@@ -37,7 +38,9 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
     );
     f.text(
         r.min + Vec2::new(22.0, 83.0),
-        if leave_blackjack {
+        if leave_holdem {
+            "Chips already in the pot will be forfeited.\nYour unspent stack stays in your bankroll."
+        } else if leave_blackjack {
             "Your current Blackjack bets will be forfeited.\nUnspent credits will be kept."
         } else if recover {
             "Saved settings, records, and progress\nwill be replaced with a fresh session."
@@ -72,7 +75,7 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
         s,
         l,
         rect(r.min.x + 36.0 + bw, r.max.y - 65.0, bw, 40.0),
-        if leave_blackjack {
+        if leave_blackjack || leave_holdem {
             "Leave round"
         } else if recover {
             "Reset data"

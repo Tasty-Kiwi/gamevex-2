@@ -1,5 +1,30 @@
 # GameVex Rust demo verification
 
+## Texas Hold’em port — 2 November 2026
+
+The no-limit cabinet supports one human and 1–4 CPUs, matching buy-in stacks, $5/$10 blinds, a rotating dealer, preflop/flop/turn/river betting, all-in runouts, side pots, split pots, and clockwise odd-chip assignment. It shares the neon card renderer, hover lift, table sounds, reduced-motion behavior, and monitor settings with the other games. Community cards reveal in sequence; winning combinations and seats highlight in gold, and result feedback waits for the reveal.
+
+- `cargo test --workspace --locked`: **252 tests passed** (98 application/platform, 154 core). Coverage includes 128 mixed CPU/human hands across 2–5 seats and 128 passive seeded hands, card/chip conservation, big-blind raise options, invalid underraises, short all-ins, side pots, and odd chips.
+- The original TypeScript oracle matches **523 hand evaluations**, **128 deterministic CPU decisions**, and **32 ordinary action transitions**. Random decision branches are excluded from the CPU comparison. The fixture records the exact source hash/revision; regenerate with `node scripts/generate-holdem-fixtures.ts ../gamevex`.
+- One reference defect is intentionally corrected in transition comparisons: a full raise excludes the aggressor from the rebuilt queue, avoiding an extra action. The normalizer documents this explicitly; every remaining captured field is asserted. The Rust engine also enforces legal raise bounds and keeps the big blind’s unraised option.
+- Save v10 adds a validated Hold’em bankroll to v9 while preserving every existing cabinet. Only bankroll deltas persist; the current table is transient. Leaving or reloading forfeits committed chips and retains the unspent stack. Settings/Rules pause the hand; leaving from Settings uses the same confirmation. App tests verify all-in settlement does not credit twice and cover bankrolls below the normal minimum buy-in.
+- Workspace formatting, strict Clippy, native macOS packaging, and WASM release builds passed. The existing transitive `block 0.1.6` future-compatibility notice remains unchanged.
+- **75 browser regressions passed** locally with Chromium/Metal, one worker, and retries disabled. The suite includes eight Hold’em cases covering exact blinds/hidden cards, bankroll accounting, hand progression, leave/cancel, reload, touch setup/rules, all-in settlement/dealer rotation, and text visibility at 1×/2× display density.
+- Visual checks exercised desktop 1280×800, phone 390×740, and compact 360×560, including four CPU opponents and settled showdown controls. The 1280×720 view was checked visually after separating the player hand from the community cards; headless geometry checks reject overlap at every supported size.
+
+The preview’s `Page.captureScreenshot` with `captureBeyondViewport:true` temporarily distorted some glyphs at an overridden viewport. Capturing within the viewport preserved the labels; actual browser screenshots and glyph/layout diagnostics confirmed the game text remained intact. Temporary renderer instrumentation was removed. Pixel checks allow small antialiasing differences and detect substantial loss of title text.
+
+These are local Chromium/Metal and native build checks, not hosted CI, deployment, physical-phone acceptance, or other-browser certification. Work remains local on `main`, without a PR.
+
+![Hold’em showdown](screenshots/holdem-showdown.png)
+
+![Hold’em phone](screenshots/holdem-phone.png)
+
+![Hold’em compact](screenshots/holdem-compact.png)
+
+![Hold’em 720p](screenshots/holdem-720p.png)
+
+
 ## Cribbage port — 2 November 2026
 
 Cribbage now has a complete two-player match against the CPU to 121. The shared neon cards, hover lift, legal-card dimming, running count, dealer badges, two score tracks, hand/crib breakdowns, scoring feedback, and replacement confirmation work with mouse, keyboard controls, and phone touch. CPU pacing pauses for rules, navigation, dialogs, and focus loss; saved model transitions commit before presentation.

@@ -5,6 +5,7 @@ mod casino_feedback;
 mod cribbage_app;
 mod hearts_app;
 mod hearts_motion;
+mod holdem_app;
 mod mahjong_app;
 mod patience_app;
 mod patience_motion;
@@ -61,6 +62,7 @@ pub(crate) struct Arcade {
     pub patience_ui: patience_app::PatienceUi,
     pub hearts_ui: hearts_app::HeartsUi,
     pub cribbage_ui: cribbage_app::CribbageUi,
+    pub holdem_ui: holdem_app::HoldemUi,
     pub message: String,
     pub persistence: String,
     pub protected_save: bool,
@@ -81,6 +83,7 @@ pub(crate) enum Pending {
     NewHearts,
     NewCribbage,
     LeaveBlackjack(Screen),
+    LeaveHoldem(Screen),
     NewSudoku(u8, sudoku::Difficulty),
     SudokuSetup,
     NewMahjong(mahjong::Layout, u64, bool),
@@ -138,6 +141,7 @@ impl Arcade {
             patience_ui: Default::default(),
             hearts_ui: Default::default(),
             cribbage_ui: Default::default(),
+            holdem_ui: Default::default(),
             message,
             persistence,
             protected_save,
@@ -174,6 +178,17 @@ impl Arcade {
     }
 
     fn open(&mut self, screen: Screen) {
+        let leaving_holdem = (self.screen == Screen::Holdem
+            || (self.screen == Screen::Settings && self.settings_return == Screen::Holdem))
+            && !matches!(screen, Screen::Holdem | Screen::Settings);
+        if leaving_holdem && !self.holdem_ui.game.terminal() {
+            self.open_modal(Pending::LeaveHoldem(screen));
+            return;
+        }
+        if leaving_holdem {
+            self.holdem_abandon();
+        }
+        self.holdem_ui.settle_motion();
         self.cribbage_ui.age = 1.0;
         self.cribbage_ui.hovered = None;
         self.cribbage_ui.feedback.clear();
@@ -324,7 +339,9 @@ impl Arcade {
         }
         let table_action = matches!(
             action,
-            Action::CribbageCard(..)
+            Action::HoldemPlay(..)
+                | Action::HoldemStart
+                | Action::CribbageCard(..)
                 | Action::CribbageDiscard
                 | Action::CribbageGo
                 | Action::CribbageContinue
@@ -389,6 +406,10 @@ impl Arcade {
                     self.reset_saved_data();
                     self.persist();
                 }
+                Some(Pending::LeaveHoldem(target)) => {
+                    self.holdem_abandon();
+                    self.open(target);
+                }
                 Some(Pending::LeaveBlackjack(target)) => {
                     self.save.blackjack.command(blackjack::Command::Abandon);
                     self.open(target);
@@ -401,6 +422,17 @@ impl Arcade {
                 }
                 self.restore_modal_focus();
             }
+            Action::HoldemStart => self.holdem_start(),
+            Action::HoldemPlay(action) => self.holdem_play(action),
+            Action::HoldemStake(delta) => self.holdem_stake(delta),
+            Action::HoldemStakeMax => self.holdem_stake_max(),
+            Action::HoldemStakeMin => self.holdem_stake_min(),
+            Action::HoldemOpponents(delta) => self.holdem_opponents(delta),
+            Action::HoldemRaise(delta) => self.holdem_raise(delta),
+            Action::HoldemRaiseMin => self.holdem_raise_min(),
+            Action::HoldemRaisePot => self.holdem_raise_pot(),
+            Action::HoldemRules => self.holdem_ui.rules = !self.holdem_ui.rules,
+            Action::HoldemRestart => self.holdem_restart(),
             Action::CribbageCard(index) => self.cribbage_card(index),
             Action::CribbageDiscard => self.cribbage_discard(),
             Action::CribbageGo => self.cribbage_go(),
@@ -670,6 +702,7 @@ impl Arcade {
         self.patience_ui = Default::default();
         self.hearts_ui = Default::default();
         self.cribbage_ui = Default::default();
+        self.holdem_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
         self.settings_return = Screen::Lobby;
@@ -684,6 +717,7 @@ impl Arcade {
     }
 
     fn open_modal(&mut self, pending: Pending) {
+        self.holdem_ui.settle_motion();
         self.cribbage_ui.age = 1.0;
         self.cribbage_ui.hovered = None;
         self.cribbage_ui.feedback.clear();
@@ -846,6 +880,9 @@ fn lifecycle(
             *age = (*age + delta.min(0.1) as f32).min(3.0);
         }
     }
+    if state.screen == Screen::Holdem && foreground && !transitioned && state.modal.is_none() {
+        state.holdem_tick(delta as f32);
+    }
     if state.screen == Screen::Cribbage && foreground && !transitioned && state.modal.is_none() {
         state.cribbage_tick(delta as f32);
     }
@@ -858,6 +895,7 @@ fn lifecycle(
         state.patience_ui.motion.clear();
         state.patience_ui.feedback.clear();
         state.mahjong_ui.feedback.clear();
+        state.holdem_ui.settle_motion();
         state.cribbage_ui.age = 1.0;
         state.cribbage_ui.hovered = None;
         state.hearts_ui.motion.clear();
@@ -999,6 +1037,7 @@ fn handle_pointer_input(
     touch.sync_lifecycle(&mut state, &mut pointer);
     // Browser canvas metrics can change before winit emits a resize event.
     if !layout_valid {
+        state.holdem_ui.settle_motion();
         state.cribbage_ui.age = 1.0;
         state.cribbage_ui.hovered = None;
         state.hearts_ui.motion.clear();
@@ -1239,6 +1278,8 @@ fn handle_input(
     if keys.just_pressed(KeyCode::Escape) {
         if state.modal.is_some() {
             state.act(Action::Cancel);
+        } else if state.screen == Screen::Holdem && state.holdem_ui.rules {
+            state.holdem_ui.rules = false;
         } else if state.screen == Screen::Cribbage && state.cribbage_ui.rules {
             state.cribbage_ui.rules = false;
         } else if state.screen == Screen::Hearts && state.hearts_ui.rules {
@@ -1570,7 +1611,12 @@ fn play_sound(
 ) {
     let cue_screen = matches!(
         state.screen,
-        Screen::Blackjack | Screen::Baccarat | Screen::Mahjong | Screen::Hearts | Screen::Cribbage
+        Screen::Blackjack
+            | Screen::Baccarat
+            | Screen::Mahjong
+            | Screen::Hearts
+            | Screen::Cribbage
+            | Screen::Holdem
     ) || patience_app::is_family(state.screen);
     let enabled =
         state.audio_started && !state.save.settings.muted && state.save.settings.volume > 0.0;
@@ -1593,7 +1639,9 @@ fn play_sound(
         .into_iter()
         .map(|cue| (Some(cue), 0.0))
         .collect();
-    let table_sounds = if state.screen == Screen::Cribbage {
+    let table_sounds = if state.screen == Screen::Holdem {
+        state.holdem_ui.feedback.take_sounds()
+    } else if state.screen == Screen::Cribbage {
         state.cribbage_ui.feedback.take_sounds()
     } else if state.screen == Screen::Hearts {
         state.hearts_ui.feedback.take_sounds()
@@ -1751,6 +1799,7 @@ mod tests {
             patience_ui: Default::default(),
             hearts_ui: Default::default(),
             cribbage_ui: Default::default(),
+            holdem_ui: Default::default(),
             message: String::new(),
             persistence: String::new(),
             protected_save: true,
@@ -3398,12 +3447,12 @@ mod tests {
                     |(_, h)| matches!(h.action, Action::Open(screen) if !matches!(screen, Screen::Settings | Screen::Lobby)),
                 )
                 .collect();
-            assert_eq!(games.len(), 11);
+            assert_eq!(games.len(), 12);
             let first = games[0].0;
             let last = games.last().unwrap().0;
             assert!(matches!(
                 games.last().unwrap().1.action,
-                Action::Open(Screen::Cribbage)
+                Action::Open(Screen::Holdem)
             ));
             assert_eq!(games.last().unwrap().1.rect.height(), 0.0);
             {
@@ -3462,6 +3511,7 @@ fn capture_tools(
                 Screen::Spider => "spider",
                 Screen::Hearts => "hearts",
                 Screen::Cribbage => "cribbage",
+                Screen::Holdem => "holdem",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

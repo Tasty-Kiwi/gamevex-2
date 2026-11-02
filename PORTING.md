@@ -10,11 +10,12 @@ Priority agreed on 1 November 2026. Work stays in `gamevex-2`, directly on `main
    - Four-seat matches with three CPU opponents, rotating passes, legal-play guidance, moon scoring, and saved matches/records.
 3. **Cribbage — complete**
    - Two-player matches to 121, CPU discards/pegging, go and last-card rules, ordered hand/crib scoring, saved progress and win counts.
-4. **Texas Hold'em**
+4. **Texas Hold'em — complete**
+   - No-limit hands against 1–4 CPUs, fixed blinds, legal betting and short all-ins, side/split pots, showdown evaluation, and saved bankroll.
 5. **Roulette**
 6. **Backgammon**
 
-Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, Spider, Hearts, and Cribbage are already playable. Card Lab remains an interaction sandbox.
+Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, Spider, Hearts, Cribbage, and Texas Hold'em are already playable. Card Lab remains an interaction sandbox.
 
 ## Removed from the port
 

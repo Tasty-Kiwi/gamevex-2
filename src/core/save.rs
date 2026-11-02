@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 9;
+pub const SAVE_VERSION: u32 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -154,6 +154,7 @@ pub struct Save {
     pub hearts_best: Option<u32>,
     pub cribbage: crate::cribbage::Game,
     pub cribbage_wins: u32,
+    pub holdem_balance: u64,
 }
 
 #[derive(Deserialize)]
@@ -240,6 +241,7 @@ impl Save {
             hearts_best: None,
             cribbage: crate::cribbage::Game::new(seed ^ 0x4352_4942),
             cribbage_wins: 0,
+            holdem_balance: 1000,
             patience_records: [None; 7],
             solitaire: crate::patience::Game::new(
                 crate::patience::Variant::Klondike1,
@@ -263,6 +265,9 @@ impl Save {
         self.settings.validate()?;
         self.hearts.validate()?;
         self.cribbage.validate()?;
+        if self.holdem_balance > 1_000_000_000_000 {
+            return Err("Holdem bankroll exceeds limit".into());
+        }
         if self.hearts_best.is_some_and(|score| score > 125) {
             return Err("invalid Hearts record".into());
         }
@@ -389,7 +394,7 @@ impl Save {
                 migrated.spider = old.spider;
                 migrated
             }
-            7 | 8 => {
+            7..=9 => {
                 let mut value = value;
                 let fields = value.as_object_mut().ok_or("invalid save object")?;
                 fields.insert("version".into(), serde_json::json!(SAVE_VERSION));
@@ -401,15 +406,18 @@ impl Save {
                     );
                     fields.insert("hearts_best".into(), serde_json::Value::Null);
                 }
-                fields.insert(
-                    "cribbage".into(),
-                    serde_json::to_value(crate::cribbage::Game::new(0x4352_4942))
-                        .map_err(|e| e.to_string())?,
-                );
-                fields.insert("cribbage_wins".into(), serde_json::json!(0));
+                if version <= 8 {
+                    fields.insert(
+                        "cribbage".into(),
+                        serde_json::to_value(crate::cribbage::Game::new(0x4352_4942))
+                            .map_err(|e| e.to_string())?,
+                    );
+                    fields.insert("cribbage_wins".into(), serde_json::json!(0));
+                }
+                fields.insert("holdem_balance".into(), serde_json::json!(1000));
                 serde_json::from_value(value).map_err(|e| format!("invalid migrated save: {e}"))?
             }
-            9 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            10 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -781,6 +789,26 @@ mod tests {
         let mut expected = original;
         expected.cribbage = migrated.cribbage.clone();
         assert_eq!(migrated, expected);
+    }
+
+    #[test]
+    fn version_nine_adds_holdem_bankroll_without_replacing_any_games() {
+        let original = Save::new(93);
+        let mut old = serde_json::to_value(&original).unwrap();
+        old["version"] = 9.into();
+        old.as_object_mut().unwrap().remove("holdem_balance");
+        assert_eq!(Save::from_json(&old.to_string()).unwrap(), original);
+        let mut current = original.clone();
+        current.holdem_balance = 995;
+        assert_eq!(
+            Save::from_json(&current.to_json().unwrap()).unwrap(),
+            current
+        );
+        let mut missing = serde_json::to_value(&current).unwrap();
+        missing.as_object_mut().unwrap().remove("holdem_balance");
+        assert!(Save::from_json(&missing.to_string()).is_err());
+        current.holdem_balance = 1_000_000_000_001;
+        assert!(current.to_json().is_err());
     }
 
     #[test]

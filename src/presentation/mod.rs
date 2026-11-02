@@ -31,6 +31,7 @@ pub enum Screen {
     Spider,
     Hearts,
     Cribbage,
+    Holdem,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -76,6 +77,17 @@ pub enum Action {
     MahjongRestart,
     MahjongNew(gamevex_core::mahjong::Layout),
     MahjongZen(bool),
+    HoldemStart,
+    HoldemPlay(gamevex_core::holdem::Action),
+    HoldemStake(i32),
+    HoldemStakeMax,
+    HoldemStakeMin,
+    HoldemOpponents(i32),
+    HoldemRaise(i32),
+    HoldemRaiseMin,
+    HoldemRaisePot,
+    HoldemRules,
+    HoldemRestart,
     CribbageCard(usize),
     CribbageDiscard,
     CribbageGo,
@@ -234,6 +246,14 @@ pub fn paint(
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Holdem => holdem::holdem(
+            &mut frame,
+            &mut state,
+            &mut layout,
+            margin,
+            w,
+            time.delta_secs(),
+        ),
         Screen::Cribbage => cribbage::cribbage(
             &mut frame,
             &mut state,
@@ -297,6 +317,7 @@ pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
 mod cribbage;
 mod hearts;
+mod holdem;
 mod mahjong;
 mod patience;
 mod screens;
@@ -325,6 +346,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         "modal": match state.modal {
             Some(Pending::NewHearts) => Some("hearts-replace"),
             Some(Pending::NewCribbage) => Some("cribbage-replace"),
+            Some(Pending::LeaveHoldem(_)) => Some("holdem-leave"),
             Some(Pending::SudokuSetup) => Some("sudoku-setup"),
             Some(Pending::NewSudoku(..)) => Some("sudoku-replace"),
             Some(Pending::NewMahjong(..)) => Some("mahjong-replace"),
@@ -403,6 +425,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "spider":action_bounds(Screen::Spider),
             "hearts":action_bounds(Screen::Hearts),
             "cribbage":action_bounds(Screen::Cribbage),
+            "holdem":action_bounds(Screen::Holdem),
             "lobbyClip":layout.lobby_clip.map(|r| [r.min.x,r.min.y,r.width(),r.height()]),
             "lobbyScroll":state.lobby_scroll,
             "lobbyMaxScroll":layout.lobby_max_scroll,
@@ -410,6 +433,74 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
         }
+    }
+    if state.screen == Screen::Holdem || matches!(state.modal, Some(Pending::LeaveHoldem(_))) {
+        use gamevex_core::holdem::{Action as P, Phase};
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::HoldemStart => "holdemStart".into(),
+                Action::HoldemPlay(p) => match p {
+                    P::Fold => "holdemFold",
+                    P::Check => "holdemCheck",
+                    P::Call => "holdemCall",
+                    P::Bet(_) | P::Raise(_) => "holdemBet",
+                    P::AllIn => "holdemAllIn",
+                }
+                .into(),
+                Action::HoldemStake(d) => if d < 0 {
+                    "holdemStakeDown"
+                } else {
+                    "holdemStakeUp"
+                }
+                .into(),
+                Action::HoldemStakeMin => "holdemStakeMin".into(),
+                Action::HoldemStakeMax => "holdemStakeMax".into(),
+                Action::HoldemOpponents(d) => if d < 0 {
+                    "holdemOpponentsDown"
+                } else {
+                    "holdemOpponentsUp"
+                }
+                .into(),
+                Action::HoldemRaise(d) => if d < 0 {
+                    "holdemRaiseDown"
+                } else {
+                    "holdemRaiseUp"
+                }
+                .into(),
+                Action::HoldemRaiseMin => "holdemRaiseMin".into(),
+                Action::HoldemRaisePot => "holdemRaisePot".into(),
+                Action::HoldemRules => "holdemRules".into(),
+                Action::HoldemRestart => "holdemRestart".into(),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
+                Action::Open(Screen::Lobby) | Action::Back => "lobby".into(),
+                Action::Open(Screen::Settings) => "settings".into(),
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        let g = &state.holdem_ui.game;
+        platform::diagnostics_attribute("data-holdem-view",&serde_json::json!({
+            "phase":g.phase,"turn":g.turn,"board":g.board,"bankroll":state.save.holdem_balance,
+            "buyIn":state.holdem_ui.buy_in,"opponents":g.seats.len()-1,"raiseTarget":state.holdem_ui.raise_target,
+            "animating":state.holdem_ui.busy(state.save.settings.reduced_motion),"rulesOpen":state.holdem_ui.rules,
+            "handNumber":g.hand_number,"dealer":g.dealer,"pot":g.pot(),"payouts":g.payouts,
+            "legal":g.legal_actions(0).iter().map(|a|match a{P::Fold=>"fold",P::Check=>"check",P::Call=>"call",P::Bet(_)=>"bet",P::Raise(_)=>"raise",P::AllIn=>"all_in"}).collect::<Vec<_>>(),
+            "seats":g.seats.iter().enumerate().map(|(i,s)|serde_json::json!({"stack":s.stack,"folded":s.folded,"committed":s.committed,"hole":if i==0||(g.phase==Phase::Showdown&&!s.folded){Some(&s.hole)}else{None}})).collect::<Vec<_>>()
+        }).to_string());
     }
     if state.screen == Screen::Cribbage {
         let mut bounds = serde_json::Map::new();
