@@ -1,0 +1,64 @@
+name: Browser regressions
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-web:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-validation
+      - name: Install pinned wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
+      - name: Build WebAssembly app
+        run: scripts/build-web.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gamevex-web
+          path: web/
+          if-no-files-found: error
+          retention-days: 7
+
+  browser-regressions:
+    needs: build-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/download-artifact@v4
+        with:
+          name: gamevex-web
+          path: web/
+      - run: npm ci
+      - name: Install software Vulkan runtime
+        run: sudo apt-get update && sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
+      - name: Install headless Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run all browser regressions
+        run: npm run test:browser
+      - name: Upload browser failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7

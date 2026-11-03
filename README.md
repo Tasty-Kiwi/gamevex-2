@@ -2,7 +2,7 @@
 
 A local-first Rust arcade prototype. The workspace lives here; the existing GameVex web application remains separate.
 
-Play at **https://tasty-kiwi.github.io/gamevex-2/** in a desktop browser with WebGPU support. On `main`, successful Rust checks and release builds publish `web/` to GitHub Pages. Pages deployment waits for the browser regressions on the release artifact. The CI workflow can also be run manually from GitHub Actions.
+Play at **https://tasty-kiwi.github.io/gamevex-2/** in a desktop browser with WebGPU support. On `main`, successful Rust checks, release builds, and browser smoke tests publish `web/` to GitHub Pages. The full browser regression suite runs on demand through the **Browser regressions** workflow. Both workflows can be run manually from GitHub Actions.
 
 ## Architecture
 
@@ -148,10 +148,17 @@ The browser regression harness requires Node.js and the built web package:
 ```sh
 npm ci
 npx playwright install chromium
+scripts/build-web.sh
 npm run test:browser
 ```
 
-Chromium specs cover ordered card clicks, secondary flips, slot placement/rejection, drag cancellation on resize, Expert horizontal pan, and Blackjack/Baccarat round persistence and settlement, browser audio startup/cache/voice release, and Sudoku editing, hints, restoration, mode changes, setup cancellation/confirmation, disabled controls, highlight preferences, modal keyboard navigation, hex input, responsive bounds, touch-only navigation/editing, canceled taps, swipe panning, touch card dragging, and Mahjong pair picking, hints/undo, reloads, replacement cancellation, layout selection, phone panning, Zen persistence and its frozen clock, mode-change confirmation, solitaire-family play and persistence, mouse dragging, and delayed-frame hint consumption. CI validates Rust on macOS, builds and uploads both targets, then runs the browser regressions on Ubuntu with software WebGPU. Diagnostics additionally expose logical hit bounds and current interaction state when explicitly enabled.
+Use `npm run test:browser:smoke -- --workers=1` for the three automatic smoke cases: card input/navigation, Blackjack settlement and save/reload, and Sudoku editing and save/reload. `npm run test:browser -- --workers=1` always runs the complete suite, including these cases.
+
+CI runs on pull requests and pushes to `main`, avoiding duplicate branch-push runs. It retains all Rust checks and both release builds, then runs only the browser smoke cases against that run's web artifact. Newer updates cancel superseded build and smoke jobs; active Pages deployments are allowed to finish. The existing `browser-regressions` CI check name is retained for branch protection, but it now reports the smoke suite.
+
+To run every browser regression in GitHub Actions, open **Actions → Browser regressions → Run workflow**, select a branch, and start the run. Alternatively, use `gh workflow run browser-regressions.yml --ref main` (replace `main` to test another branch). Each run builds the selected revision's WASM artifact before executing the full suite on Ubuntu with software WebGPU and uploading failure screenshots/traces. It does not deploy. This workflow has no automatic or scheduled trigger; it becomes available for dispatch once its file is on the default branch.
+
+Chromium specs cover ordered card clicks, secondary flips, slot placement/rejection, drag cancellation on resize, Expert horizontal pan, and Blackjack/Baccarat round persistence and settlement, browser audio startup/cache/voice release, and Sudoku editing, hints, restoration, mode changes, setup cancellation/confirmation, disabled controls, highlight preferences, modal keyboard navigation, hex input, responsive bounds, touch-only navigation/editing, canceled taps, swipe panning, touch card dragging, and Mahjong pair picking, hints/undo, reloads, replacement cancellation, layout selection, phone panning, Zen persistence and its frozen clock, mode-change confirmation, solitaire-family play and persistence, mouse dragging, and delayed-frame hint consumption. CI validates Rust on macOS, builds and uploads both targets, then runs browser smoke tests on Ubuntu with software WebGPU; the full suite is available through the manual workflow. Diagnostics additionally expose logical hit bounds and current interaction state when explicitly enabled.
 
 See [the verification report](docs/VERIFICATION.md) for measured results, actual runtime checks, screenshots, and remaining limits.
 

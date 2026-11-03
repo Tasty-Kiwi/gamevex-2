@@ -153,7 +153,7 @@ function exposedCardPoint(bounds, index) {
   return { x: bounds[index][0] + bounds[index][2] * 0.2, y: bounds[index][1] + bounds[index][3] * 0.35 };
 }
 
-test('card clicks keep rapid selections ordered and CRT-aware', async ({ page }) => {
+test('card clicks keep rapid selections ordered and CRT-aware', { tag: '@smoke' }, async ({ page }) => {
   await enterCards(page);
   const bounds = await settledBounds(page);
   const first = exposedCardPoint(bounds, 0);
@@ -227,7 +227,7 @@ test('Expert mines board supports horizontal pan on a narrow viewport', async ({
   await expect.poll(async () => (await interaction(page)).pan[0]).not.toBe(before);
 });
 
-test('Blackjack deals one hand, resolves it, and restores the round after reload', async ({ page }) => {
+test('Blackjack deals one hand, resolves it, and restores the round after reload', { tag: '@smoke' }, async ({ page }) => {
   await openReady(page);
   await clickLobbyAction(page, 'blackjack');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Blackjack');
@@ -509,7 +509,7 @@ async function expectSudokuBoundsInsideViewport(page) {
   }
 }
 
-test('Sudoku pencil notes, erase, undo, and reload keep the editable cell state', async ({ page }) => {
+test('Sudoku pencil notes, erase, undo, and reload keep the editable cell state', { tag: '@smoke' }, async ({ page }) => {
   await enterSudoku(page);
   const target = await firstVisibleEditableCell(page);
   expect(target).not.toBeNull();

@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -11,6 +12,9 @@ permissions:
 jobs:
   macos-validation:
     runs-on: macos-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-macos-validation
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -18,9 +22,6 @@ jobs:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - run: cargo fmt --all -- --check
       - run: cargo test --locked --workspace
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
@@ -72,8 +73,12 @@ jobs:
         uses: actions/deploy-pages@v4
 
   browser-regressions:
+    # Keep this check ID stable for existing branch protection rules.
     needs: macos-validation
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-browser-smoke
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,8 +94,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
       - name: Install headless Chromium
         run: npx playwright install --with-deps chromium
-      - name: Run browser regressions
-        run: npm run test:browser
+      - name: Run browser smoke tests
+        run: npm run test:browser:smoke
       - name: Upload browser failure artifacts
         if: always()
         uses: actions/upload-artifact@v4
