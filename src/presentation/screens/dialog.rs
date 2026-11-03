@@ -53,6 +53,8 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             "Your Cribbage match will be replaced.\nCancel to keep the current round."
         } else if matches!(s.modal, Some(Pending::BackgammonReplace(_))) {
             "Your Backgammon game will be replaced.\nCancel to keep the current board."
+        } else if matches!(s.modal, Some(Pending::NewTicTacToe)) {
+            "Your Tic-tac-toe match will be replaced.\nCancel to keep the current board."
         } else if matches!(s.modal, Some(Pending::NewConnect4(_))) {
             "Your Connect 4 match will be replaced.\nCancel to keep the current board."
         } else if matches!(s.modal, Some(Pending::NewHearts)) {

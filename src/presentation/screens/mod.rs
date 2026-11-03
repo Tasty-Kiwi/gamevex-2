@@ -159,3 +159,46 @@ pub(crate) fn suit(f: &mut Frame, c: Vec2, r: f32, suit: Suit, color: Color) {
         }
     }
 }
+
+pub(crate) fn difficulty_label(level: u8) -> &'static str {
+    match level {
+        1 => "Easy",
+        2 => "Casual",
+        3 => "Normal",
+        4 => "Hard",
+        5 => "Expert",
+        _ => "Normal",
+    }
+}
+
+pub(crate) fn difficulty_buttons(
+    f: &mut Frame,
+    s: &Arcade,
+    l: &mut ViewLayout,
+    r: Rect,
+    current: u8,
+    action: Action,
+) {
+    let width = r.width() / 5.0;
+    for level in 1..=5 {
+        let select = match action {
+            Action::Connect4Difficulty(_) => Action::Connect4Difficulty(level),
+            Action::TicTacToeDifficulty(_) => Action::TicTacToeDifficulty(level),
+            _ => return,
+        };
+        button(
+            f,
+            s,
+            l,
+            rect(
+                r.min.x + (level - 1) as f32 * width,
+                r.min.y,
+                width - 8.0,
+                34.0,
+            ),
+            difficulty_label(level),
+            select,
+            current == level,
+        );
+    }
+}

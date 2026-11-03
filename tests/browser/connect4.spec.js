@@ -94,6 +94,6 @@ test.describe('Connect 4 touch controls', () => {
     await expect.poll(async () => (await read(page, 'interaction')).modal).toBe('connect4-replace');
     await action(page, 'confirm');
     await expect.poll(async () => (await view(page)).mode).toBe('Computer');
-    expect((await view(page)).history).toEqual([]);
+    await expect.poll(async () => (await view(page)).history).toEqual([]);
   });
 });

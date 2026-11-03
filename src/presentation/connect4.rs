@@ -111,8 +111,18 @@ pub(super) fn draw(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32
         status_color,
     );
 
+    // Difficulty button row (placed between status and board)
+    let difficulty_y = status_y + if small { 22.0 } else { 26.0 };
+    let difficulty_h = 34.0;
+    let difficulty_w = w.min(600.0);
+    let difficulty_x = m;
+    let difficulty_rect = Rect::from_corners(
+        Vec2::new(difficulty_x, difficulty_y),
+        Vec2::new(difficulty_x + difficulty_w, difficulty_y + difficulty_h),
+    );
+
     // Responsive board dimensions
-    let board_top = status_y + 46.0;
+    let board_top = difficulty_rect.max.y + 24.0;
     let bottom_limit = (f.size.y - 42.0).max(board_top + 180.0);
     let available_h = bottom_limit - board_top;
     let max_cell_w = (w / COLS as f32).floor();
@@ -276,6 +286,15 @@ pub(super) fn draw(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32
             theme.muted,
         );
     }
+
+    screens::difficulty_buttons(
+        f,
+        s,
+        l,
+        difficulty_rect,
+        game.difficulty,
+        Action::Connect4Difficulty(game.difficulty),
+    );
 }
 
 #[cfg(test)]

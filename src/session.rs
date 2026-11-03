@@ -58,6 +58,7 @@ impl Arcade {
             blackjack_motion: Default::default(),
             baccarat_motion: Default::default(),
             casino_feedback: Default::default(),
+            tictactoe_ui: Default::default(),
             connect4_ui: Default::default(),
             sudoku_ui: Default::default(),
             mahjong_ui: Default::default(),
@@ -150,6 +151,9 @@ pub(super) fn lifecycle(
         if active && let Some(age) = &mut state.sudoku_ui.completion_age {
             *age = (*age + delta.min(0.1) as f32).min(3.0);
         }
+    }
+    if state.screen == Screen::TicTacToe && foreground && !transitioned && state.modal.is_none() {
+        state.tictactoe_tick(delta.min(0.1) as f32);
     }
     if state.screen == Screen::Connect4 && foreground && !transitioned && state.modal.is_none() {
         state.connect4_tick(delta.min(0.1) as f32);

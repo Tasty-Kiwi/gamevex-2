@@ -4,7 +4,7 @@ const gameCategories = {
   mines: 'puzzle', sudoku: 'puzzle', mahjong: 'puzzle',
   blackjack: 'highLimit', baccarat: 'highLimit', holdem: 'highLimit', roulette: 'highLimit',
   solitaire: 'solitaire', freecell: 'solitaire', spider: 'solitaire',
-  hearts: 'cardAndBoard', cribbage: 'cardAndBoard', backgammon: 'cardAndBoard', connect4: 'cardAndBoard', cards: 'cardAndBoard',
+  hearts: 'cardAndBoard', cribbage: 'cardAndBoard', backgammon: 'cardAndBoard', connect4: 'cardAndBoard', tictactoe: 'cardAndBoard', cards: 'cardAndBoard',
 };
 
 const read = (page) => page.locator('#gamevex').evaluate(

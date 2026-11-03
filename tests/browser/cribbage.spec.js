@@ -79,7 +79,7 @@ async function openCribbage(page) {
   await expect.poll(async () => c.evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
   await expect.poll(async () => c.evaluate((el) => {
     const current = JSON.parse(el.dataset.session || '{}');
-    return current.version === 13 && Boolean(current.cribbage);
+    return current.version === 14 && Boolean(current.cribbage);
   })).toBe(true);
   await clickLobbyAction(page, 'cribbage');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Cribbage');

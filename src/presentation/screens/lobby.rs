@@ -60,6 +60,7 @@ impl LobbyCategory {
                     | Screen::Cribbage
                     | Screen::Backgammon
                     | Screen::Connect4
+                    | Screen::TicTacToe
                     | Screen::Cards
             ),
         }
@@ -87,7 +88,7 @@ impl EntryRole {
     }
 }
 
-const ENTRIES: [(&str, &str, &str, EntryRole, Screen); 15] = [
+const ENTRIES: [(&str, &str, &str, EntryRole, Screen); 16] = [
     (
         "MINESWEEPER",
         "Read the field. Trust the numbers.",
@@ -178,6 +179,13 @@ const ENTRIES: [(&str, &str, &str, EntryRole, Screen); 15] = [
         "SPIN",
         EntryRole::Accent,
         Screen::Roulette,
+    ),
+    (
+        "TIC-TAC-TOE",
+        "Three in a row. Make your move.",
+        "PLAY",
+        EntryRole::Accent,
+        Screen::TicTacToe,
     ),
     (
         "CONNECT 4",

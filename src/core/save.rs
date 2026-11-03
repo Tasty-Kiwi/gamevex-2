@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 13;
+pub const SAVE_VERSION: u32 = 14;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -162,6 +162,7 @@ pub struct Save {
     pub backgammon: crate::backgammon::Game,
     pub backgammon_wins: u32,
     pub connect4: crate::connect4::Game,
+    pub tictactoe: crate::tictactoe::Game,
 }
 
 #[derive(Deserialize)]
@@ -269,6 +270,7 @@ impl Save {
                 seed ^ 0x5350_4944_4552_0001,
             ),
             connect4: crate::connect4::Game::new(crate::connect4::Mode::Computer),
+            tictactoe: crate::tictactoe::Game::new(),
         }
     }
 
@@ -281,6 +283,7 @@ impl Save {
         self.cribbage.validate()?;
         self.backgammon.validate()?;
         self.connect4.validate()?;
+        self.tictactoe.validate()?;
         if self.roulette_balance > crate::roulette::MAX_BALANCE {
             return Err("roulette balance exceeds limit".into());
         }
@@ -413,7 +416,7 @@ impl Save {
                 migrated.spider = old.spider;
                 migrated
             }
-            7..=12 => {
+            7..=13 => {
                 let mut value = value;
                 let fields = value.as_object_mut().ok_or("invalid save object")?;
                 fields.insert("version".into(), serde_json::json!(SAVE_VERSION));
@@ -457,14 +460,21 @@ impl Save {
                     );
                     fields.insert("backgammon_wins".into(), serde_json::json!(0));
                 }
+                if version <= 12 {
+                    fields.insert(
+                        "connect4".into(),
+                        serde_json::to_value(crate::connect4::Game::default())
+                            .map_err(|e| e.to_string())?,
+                    );
+                }
                 fields.insert(
-                    "connect4".into(),
-                    serde_json::to_value(crate::connect4::Game::default())
+                    "tictactoe".into(),
+                    serde_json::to_value(crate::tictactoe::Game::default())
                         .map_err(|e| e.to_string())?,
                 );
                 serde_json::from_value(value).map_err(|e| format!("invalid migrated save: {e}"))?
             }
-            13 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            14 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -995,6 +1005,7 @@ mod tests {
         let mut old = serde_json::to_value(&expected).unwrap();
         old["version"] = 12.into();
         old.as_object_mut().unwrap().remove("connect4");
+        old.as_object_mut().unwrap().remove("tictactoe");
         assert_eq!(Save::from_json(&old.to_string()).unwrap(), expected);
         assert!(expected.connect4.play(3));
         assert_eq!(
@@ -1006,5 +1017,98 @@ mod tests {
         assert!(Save::from_json(&missing.to_string()).is_err());
         expected.connect4.board[0] = 99;
         assert!(expected.to_json().is_err());
+    }
+
+    #[test]
+    fn v13_adds_tictactoe_without_replacing_existing_sessions_or_connect4() {
+        let mut expected = Save::new(456);
+        expected.roulette_balance = 950;
+        expected.holdem_balance = 2000;
+        expected.cribbage_wins = 5;
+        expected.backgammon_wins = 3;
+        assert!(expected.connect4.play(3));
+        assert!(expected.connect4.has_progress());
+
+        let mut old = serde_json::to_value(&expected).unwrap();
+        old["version"] = 13.into();
+        old.as_object_mut().unwrap().remove("tictactoe");
+        let migrated = Save::from_json(&old.to_string()).unwrap();
+        assert_eq!(migrated, expected);
+        assert_eq!(migrated.version, SAVE_VERSION);
+        assert_eq!(migrated.connect4, expected.connect4);
+        assert!(migrated.connect4.has_progress());
+        assert_eq!(migrated.tictactoe, crate::tictactoe::Game::default());
+
+        assert_eq!(
+            Save::from_json(&migrated.to_json().unwrap()).unwrap(),
+            migrated
+        );
+
+        let mut missing = serde_json::to_value(&expected).unwrap();
+        missing.as_object_mut().unwrap().remove("tictactoe");
+        assert!(Save::from_json(&missing.to_string()).is_err());
+
+        expected.tictactoe.board[0] = 99;
+        assert!(expected.to_json().is_err());
+    }
+
+    #[test]
+    fn save_difficulty_serde_defaults_and_validation() {
+        let mut save = Save::new(777);
+        assert!(save.connect4.play(3));
+        assert!(save.tictactoe.play(4));
+
+        let mut val = serde_json::to_value(&save).unwrap();
+
+        // 1. Missing difficulty in JSON loads as 5 without altering board or progress
+        val["connect4"]
+            .as_object_mut()
+            .unwrap()
+            .remove("difficulty");
+        val["tictactoe"]
+            .as_object_mut()
+            .unwrap()
+            .remove("difficulty");
+        let loaded = Save::from_json(&val.to_string()).unwrap();
+        assert_eq!(loaded.connect4.difficulty, 5);
+        assert_eq!(loaded.tictactoe.difficulty, 5);
+        assert_eq!(loaded.connect4.board, save.connect4.board);
+        assert_eq!(loaded.tictactoe.board, save.tictactoe.board);
+        assert_eq!(loaded.connect4.history, save.connect4.history);
+        assert_eq!(loaded.tictactoe.history, save.tictactoe.history);
+
+        // 2. Invalid difficulty 0 or 6 in connect4 or tictactoe is rejected
+        let mut bad_c4_zero = val.clone();
+        bad_c4_zero["connect4"]["difficulty"] = 0.into();
+        assert!(Save::from_json(&bad_c4_zero.to_string()).is_err());
+
+        let mut bad_c4_six = val.clone();
+        bad_c4_six["connect4"]["difficulty"] = 6.into();
+        assert!(Save::from_json(&bad_c4_six.to_string()).is_err());
+
+        let mut bad_ttt_zero = val.clone();
+        bad_ttt_zero["tictactoe"]["difficulty"] = 0.into();
+        assert!(Save::from_json(&bad_ttt_zero.to_string()).is_err());
+
+        let mut bad_ttt_six = val.clone();
+        bad_ttt_six["tictactoe"]["difficulty"] = 6.into();
+        assert!(Save::from_json(&bad_ttt_six.to_string()).is_err());
+
+        // 3. Changing difficulty preserves moves and other game difficulty
+        assert!(save.connect4.set_difficulty(2));
+        assert_eq!(save.connect4.difficulty, 2);
+        assert_eq!(save.tictactoe.difficulty, 5);
+        assert_eq!(save.connect4.history, vec![3]);
+
+        assert!(save.tictactoe.set_difficulty(4));
+        assert_eq!(save.connect4.difficulty, 2);
+        assert_eq!(save.tictactoe.difficulty, 4);
+        assert_eq!(save.tictactoe.history, vec![4]);
+
+        let roundtrip = Save::from_json(&save.to_json().unwrap()).unwrap();
+        assert_eq!(roundtrip.connect4.difficulty, 2);
+        assert_eq!(roundtrip.tictactoe.difficulty, 4);
+        assert_eq!(roundtrip.connect4.history, vec![3]);
+        assert_eq!(roundtrip.tictactoe.history, vec![4]);
     }
 }

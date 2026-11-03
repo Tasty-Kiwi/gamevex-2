@@ -13,6 +13,7 @@ pub mod poker;
 pub mod roulette;
 pub mod save;
 pub mod sudoku;
+pub mod tictactoe;
 
 pub use blackjack::{
     Blackjack, Command as BlackjackCommand, HandOutcome as BlackjackHandOutcome,

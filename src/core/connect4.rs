@@ -130,6 +130,13 @@ fn has_won(board: &[u8], target: u8) -> bool {
         .any(|line| line.iter().all(|&idx| board[idx] == target))
 }
 
+pub const MIN_DIFFICULTY: u8 = 1;
+pub const MAX_DIFFICULTY: u8 = 5;
+
+pub fn default_difficulty() -> u8 {
+    5
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
     pub board: Vec<u8>,
@@ -137,6 +144,8 @@ pub struct Game {
     pub mode: Mode,
     pub status: Status,
     pub history: Vec<u8>,
+    #[serde(default = "default_difficulty")]
+    pub difficulty: u8,
 }
 
 impl Default for Game {
@@ -153,7 +162,16 @@ impl Game {
             mode,
             status: Status::Playing,
             history: Vec::new(),
+            difficulty: default_difficulty(),
         }
+    }
+
+    pub fn set_difficulty(&mut self, level: u8) -> bool {
+        if !(MIN_DIFFICULTY..=MAX_DIFFICULTY).contains(&level) || level == self.difficulty {
+            return false;
+        }
+        self.difficulty = level;
+        true
     }
 
     pub fn legal(&self, column: usize) -> bool {
@@ -232,9 +250,19 @@ impl Game {
             return None;
         }
 
+        // Level 1: lowest varied legal moves (no immediate win or block check)
+        if self.difficulty == 1 {
+            let mut h = 1u64.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            for &m in &self.history {
+                h = h.wrapping_mul(31).wrapping_add(m as u64 + 1);
+            }
+            let legal_cols: Vec<usize> = (0..COLS).filter(|&c| self.board[c] == 0).collect();
+            return Some(legal_cols[(h % legal_cols.len() as u64) as usize]);
+        }
+
         let mut scratch_board = self.board.clone();
 
-        // 1. Immediate Win: If Yellow can win immediately, take it.
+        // 1. Immediate Win: If Yellow can win immediately, take it. (Levels 2..=5)
         for &col in &legal_moves {
             let row = (0..ROWS)
                 .rev()
@@ -248,7 +276,17 @@ impl Game {
             }
         }
 
-        // 2. Immediate Block: If Red has an immediate winning threat, Yellow must block it.
+        // Level 2: immediate wins plus variety (does not block opponent threats)
+        if self.difficulty == 2 {
+            let mut h = 2u64.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            for &m in &self.history {
+                h = h.wrapping_mul(31).wrapping_add(m as u64 + 1);
+            }
+            let legal_cols: Vec<usize> = (0..COLS).filter(|&c| self.board[c] == 0).collect();
+            return Some(legal_cols[(h % legal_cols.len() as u64) as usize]);
+        }
+
+        // 2. Immediate Block: If Red has an immediate winning threat, Yellow must block it. (Levels 3..=5)
         let mut red_threats = Vec::new();
         for &col in &legal_moves {
             let row = (0..ROWS)
@@ -268,7 +306,12 @@ impl Game {
 
         // 3. Minimax search with alpha-beta pruning, bounded depth suitable for WASM.
         let empty_count = self.board.iter().filter(|&&c| c == 0).count();
-        let depth = 6.min(empty_count);
+        let depth_cap = match self.difficulty {
+            3 => 2,
+            4 => 4,
+            _ => 6,
+        };
+        let depth = depth_cap.min(empty_count);
 
         let candidate_moves = if !red_threats.is_empty() {
             // Must block at least one threat if multiple exist
@@ -299,6 +342,12 @@ impl Game {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if !(MIN_DIFFICULTY..=MAX_DIFFICULTY).contains(&self.difficulty) {
+            return Err(format!(
+                "difficulty {} must be between {MIN_DIFFICULTY} and {MAX_DIFFICULTY}",
+                self.difficulty
+            ));
+        }
         if self.board.len() != ROWS * COLS {
             return Err("board must have exactly 42 cells".into());
         }
@@ -335,6 +384,7 @@ impl Game {
 
         // Authoritative replay of history
         let mut replay = Game::new(self.mode);
+        replay.difficulty = self.difficulty;
         for (i, &col) in self.history.iter().enumerate() {
             if replay.status != Status::Playing {
                 return Err(format!(
@@ -722,5 +772,125 @@ mod tests {
         let mut bad_status = g.clone();
         bad_status.status = Status::Won(Player::Yellow);
         assert!(bad_status.validate().is_err());
+
+        let mut bad_diff_low = g.clone();
+        bad_diff_low.difficulty = 0;
+        assert!(bad_diff_low.validate().is_err());
+
+        let mut bad_diff_high = g.clone();
+        bad_diff_high.difficulty = 6;
+        assert!(bad_diff_high.validate().is_err());
+    }
+
+    #[test]
+    fn difficulty_contract_and_serde_defaults() {
+        assert_eq!(MIN_DIFFICULTY, 1);
+        assert_eq!(MAX_DIFFICULTY, 5);
+        assert_eq!(default_difficulty(), 5);
+
+        let mut g = Game::new(Mode::Computer);
+        assert_eq!(g.difficulty, 5);
+
+        // Invalid changes rejected
+        assert!(!g.set_difficulty(0));
+        assert!(!g.set_difficulty(6));
+        assert!(!g.set_difficulty(5)); // no change
+        assert_eq!(g.difficulty, 5);
+
+        // Play some moves
+        assert!(g.play(3));
+        let snapshot_board = g.board.clone();
+        let snapshot_turn = g.turn;
+        let snapshot_history = g.history.clone();
+        let snapshot_status = g.status;
+
+        // Valid change preserves gameplay state
+        assert!(g.set_difficulty(3));
+        assert_eq!(g.difficulty, 3);
+        assert_eq!(g.board, snapshot_board);
+        assert_eq!(g.turn, snapshot_turn);
+        assert_eq!(g.history, snapshot_history);
+        assert_eq!(g.status, snapshot_status);
+        assert!(g.validate().is_ok());
+
+        // Same level rejected
+        assert!(!g.set_difficulty(3));
+
+        // Missing difficulty in JSON defaults to 5
+        let json_without_diff = serde_json::json!({
+            "board": snapshot_board,
+            "turn": snapshot_turn,
+            "mode": g.mode,
+            "status": snapshot_status,
+            "history": snapshot_history,
+        });
+        let loaded: Game = serde_json::from_value(json_without_diff).unwrap();
+        assert_eq!(loaded.difficulty, 5);
+        assert_eq!(loaded.board, snapshot_board);
+        assert_eq!(loaded.history, snapshot_history);
+        assert!(loaded.validate().is_ok());
+    }
+
+    #[test]
+    fn all_difficulty_levels_produce_legal_moves() {
+        for diff in MIN_DIFFICULTY..=MAX_DIFFICULTY {
+            let mut g = Game::new(Mode::Computer);
+            assert!(g.set_difficulty(diff) || diff == 5);
+            assert!(g.play(3)); // Red plays center
+            assert_eq!(g.turn, Player::Yellow);
+
+            let bot_choice = g.bot_column();
+            assert!(bot_choice.is_some());
+            let col = bot_choice.unwrap();
+            assert!(g.legal(col));
+            assert!(g.play(col));
+            assert!(g.validate().is_ok());
+        }
+    }
+
+    #[test]
+    fn difficulty_win_and_block_tactics_and_differing_choices() {
+        // Position where Yellow has an immediate win in column 3 (row 5 cols 0, 1, 2, 3)
+        let mut win_game = Game::new(Mode::Computer);
+        for col in [6, 0, 6, 1, 6, 2, 5] {
+            assert!(win_game.play(col));
+        }
+        assert_eq!(win_game.turn, Player::Yellow);
+
+        // Level 2, 3, 4, 5 all take the immediate win at column 3
+        for diff in 2..=5 {
+            let mut g = win_game.clone();
+            g.difficulty = diff;
+            assert_eq!(g.bot_column(), Some(3));
+        }
+
+        // Level 1 does not guarantee taking immediate win
+        let mut l1_win = win_game.clone();
+        l1_win.difficulty = 1;
+        let l1_choice = l1_win.bot_column().unwrap();
+        assert!(l1_win.legal(l1_choice));
+        // L1 choice with this history is column 5, differing from Level 2..=5
+        assert_ne!(l1_choice, 3);
+
+        // Position where Red has an immediate winning threat at column 3 (row 5 cols 0, 1, 2)
+        let mut block_game = Game::new(Mode::Computer);
+        for col in [0, 0, 1, 1, 2] {
+            assert!(block_game.play(col));
+        }
+        assert_eq!(block_game.turn, Player::Yellow);
+
+        // Level 3, 4, 5 must block at column 3
+        for diff in 3..=5 {
+            let mut g = block_game.clone();
+            g.difficulty = diff;
+            assert_eq!(g.bot_column(), Some(3));
+        }
+
+        // Level 2 does not block Red's threat
+        let mut l2_block = block_game.clone();
+        l2_block.difficulty = 2;
+        let l2_choice = l2_block.bot_column().unwrap();
+        assert!(l2_block.legal(l2_choice));
+        assert_ne!(l2_choice, 3);
     }
 }

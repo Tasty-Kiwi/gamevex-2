@@ -115,10 +115,19 @@ pub(crate) const TOPICS: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "Tic-tac-toe",
+        &[
+            "You play X against the computer's O. Take turns marking empty cells. Complete a row, column, or diagonal of three to win. A full board without a winner is a draw.",
+            "Click or tap a cell, use 1-9 in row order, or focus the board and use arrows then Enter or Space. You play first. Expert plays optimally.",
+            "New game asks before replacing an unfinished match. Moves save immediately. Leaving the cabinet or opening Settings pauses the computer until you return.",
+        ],
+    ),
+    (
         "Connect 4",
         &[
             "Drop a disc into one of seven columns. Gravity carries it to the lowest empty space. Connect four of your discs horizontally, vertically, or diagonally to win. A full board without a winner is a draw.",
             "You play first against the computer. Your pieces and the computer pieces use the same theme colors as Backgammon. Click or tap a column, use 1-7, or focus a column with Tab and use Left/Right then Enter or Space.",
+            "Choose a difficulty button from Easy to Expert. Click or tap a level, or use Tab and Enter/Space. Each game saves its level; changing it affects the next CPU move and keeps your board.",
             "New game asks before replacing an unfinished match. Your board saves after every move. Leaving the cabinet pauses computer play until you return.",
         ],
     ),

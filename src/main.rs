@@ -21,6 +21,7 @@ mod session;
 mod sudoku_app;
 mod table_feedback;
 pub mod theme;
+mod tictactoe_app;
 mod touch_input;
 
 use arcade_input::{handle_input, handle_pointer_input, pointer_pressed};
@@ -71,6 +72,7 @@ pub(crate) struct Arcade {
     pub blackjack_motion: presentation::blackjack_motion::BlackjackMotion,
     pub baccarat_motion: presentation::baccarat_motion::BaccaratMotion,
     pub casino_feedback: casino_feedback::CasinoFeedback,
+    pub tictactoe_ui: tictactoe_app::TicTacToeUi,
     pub connect4_ui: connect4_app::Connect4Ui,
     pub sudoku_ui: sudoku_app::SudokuUi,
     pub mahjong_ui: mahjong_app::MahjongUi,
@@ -98,6 +100,7 @@ pub(crate) enum Pending {
     New(Difficulty, bool),
     Recover,
     NewConnect4(connect4::Mode),
+    NewTicTacToe,
     NewHearts,
     NewCribbage,
     LeaveBlackjack(Screen),
@@ -278,6 +281,7 @@ impl Arcade {
                 Some(Pending::NewSudoku(size, difficulty)) => self.new_sudoku(size, difficulty),
                 Some(Pending::NewMahjong(layout, seed, zen)) => self.new_mahjong(layout, seed, zen),
                 Some(Pending::NewPatience(v, seed)) => self.new_patience(v, seed),
+                Some(Pending::NewTicTacToe) => self.new_tictactoe(),
                 Some(Pending::NewConnect4(mode)) => self.new_connect4(mode),
                 Some(Pending::NewHearts) => self.new_hearts(),
                 Some(Pending::NewCribbage) => self.new_cribbage(),
@@ -303,8 +307,16 @@ impl Arcade {
                 }
                 self.restore_modal_focus();
             }
+            Action::TicTacToeCell(cell) => self.tictactoe_play(cell),
+            Action::TicTacToeNew => self.tictactoe_request_new(),
+            Action::TicTacToeDifficulty(level) => {
+                self.tictactoe_set_difficulty(level);
+            }
             Action::Connect4Drop(column) => self.connect4_drop(column),
             Action::Connect4New => self.connect4_request_new(self.save.connect4.mode),
+            Action::Connect4Difficulty(level) => {
+                self.connect4_set_difficulty(level);
+            }
             Action::BackgammonPoint(point) => self.backgammon_point(point),
             Action::BackgammonRoll => self.backgammon_roll(),
             Action::BackgammonNew => self.backgammon_new(false),
@@ -592,6 +604,26 @@ impl Arcade {
         }
     }
 
+    pub(crate) fn connect4_set_difficulty(&mut self, level: u8) -> bool {
+        let clamped = level.clamp(1, 5);
+        if self.save.connect4.set_difficulty(clamped) {
+            self.persist();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn tictactoe_set_difficulty(&mut self, level: u8) -> bool {
+        let clamped = level.clamp(1, 5);
+        if self.save.tictactoe.set_difficulty(clamped) {
+            self.persist();
+            true
+        } else {
+            false
+        }
+    }
+
     fn reset_saved_data(&mut self) {
         self.save = Save::new(fresh_seed());
         self.baccarat_focus = None;
@@ -600,6 +632,7 @@ impl Arcade {
         self.blackjack_motion.clear();
         self.baccarat_motion.clear();
         self.casino_feedback.clear();
+        self.tictactoe_ui = Default::default();
         self.connect4_ui = Default::default();
         self.sudoku_ui = Default::default();
         self.mahjong_ui = Default::default();
@@ -957,6 +990,7 @@ mod tests {
             blackjack_motion: Default::default(),
             baccarat_motion: Default::default(),
             casino_feedback: Default::default(),
+            tictactoe_ui: Default::default(),
             connect4_ui: Default::default(),
             sudoku_ui: Default::default(),
             mahjong_ui: Default::default(),
@@ -1091,6 +1125,156 @@ mod tests {
             assert_eq!(history[0], 3);
             assert_eq!(history[2], 2);
         }
+    }
+
+    #[test]
+    fn tictactoe_replacement_pause_and_resume_preserve_other_games() {
+        let mut state = test_arcade();
+        let adjacent = state.save.connect4.clone();
+        state.open(Screen::TicTacToe);
+        state.act(Action::TicTacToeCell(0));
+        let board = state.save.tictactoe.clone();
+        state.act(Action::TicTacToeNew);
+        assert!(matches!(state.modal, Some(Pending::NewTicTacToe)));
+        state.tictactoe_tick(1.0);
+        state.act(Action::TicTacToeCell(1));
+        assert_eq!(state.save.tictactoe, board);
+        state.act(Action::Cancel);
+        state.open(Screen::Settings);
+        state.tictactoe_tick(1.0);
+        assert_eq!(state.save.tictactoe, board);
+        state.act(Action::Back);
+        state.tictactoe_tick(1.0);
+        assert_eq!(state.save.tictactoe.history, [0, 4]);
+        assert_eq!(
+            Save::from_json(&state.save.to_json().unwrap()).unwrap(),
+            state.save
+        );
+        state.act(Action::TicTacToeNew);
+        state.act(Action::Confirm);
+        assert!(state.save.tictactoe.history.is_empty());
+        assert_eq!(state.save.connect4, adjacent);
+    }
+
+    #[test]
+    fn tictactoe_controls_fit_and_keyboard_activation_only_drops_once() {
+        for (width, height) in [(320, 568), (390, 844), (1280, 720), (1000, 560)] {
+            let mut app = App::new();
+            let mut state = test_arcade();
+            state.open(Screen::TicTacToe);
+            state.save.settings.reduced_motion = true;
+            state.save.tictactoe = tictactoe::Game::new();
+            app.insert_resource(state)
+                .insert_resource(Time::<()>::default())
+                .init_resource::<ButtonInput<KeyCode>>()
+                .add_message::<MouseWheel>()
+                .init_resource::<ViewLayout>()
+                .init_resource::<rendering::Frame>()
+                .init_resource::<rendering::RenderOptions>()
+                .add_systems(Update, (handle_input, presentation::paint).chain());
+            app.world_mut().spawn((
+                Window {
+                    resolution: WindowResolution::new(width, height),
+                    ..default()
+                },
+                PrimaryWindow,
+            ));
+            app.update();
+            let layout = app.world().resource::<ViewLayout>();
+            assert!(matches!(
+                layout.hits[tictactoe_app::BOARD_FOCUS].action,
+                Action::TicTacToeCell(4)
+            ));
+            assert_eq!(
+                layout
+                    .hits
+                    .iter()
+                    .filter(|h| matches!(h.action, Action::TicTacToeCell(_)))
+                    .count(),
+                9
+            );
+            for (i, hit) in layout.hits.iter().enumerate() {
+                assert!(
+                    hit.rect.min.x >= 0.0
+                        && hit.rect.min.y >= 0.0
+                        && hit.rect.max.x <= width as f32
+                        && hit.rect.max.y <= height as f32
+                );
+                for other in &layout.hits[i + 1..] {
+                    let overlap = hit.rect.intersect(other.rect);
+                    assert!(
+                        overlap.width() <= 0.0 || overlap.height() <= 0.0,
+                        "overlap at {width}x{height}: {:?} {:?}",
+                        hit.rect,
+                        other.rect
+                    );
+                }
+            }
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::Enter);
+            app.update();
+            assert_eq!(app.world().resource::<Arcade>().save.tictactoe.history, [4]);
+            app.world_mut().resource_mut::<Arcade>().tictactoe_tick(1.0);
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .reset_all();
+            // Both events can arrive between rendered frames. Moving the
+            // selection must not swallow the activation in that same frame.
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::ArrowLeft);
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::Space);
+            app.update();
+            let history = &app.world().resource::<Arcade>().save.tictactoe.history;
+            assert_eq!(history.len(), 3);
+            assert_eq!(history[0], 4);
+            assert_eq!(history[2], 3);
+        }
+    }
+
+    #[test]
+    fn difficulty_preserved_across_new_game_and_midgame_change() {
+        let mut state = test_arcade();
+        state.open(Screen::Connect4);
+        state.act(Action::Connect4Difficulty(2));
+        assert_eq!(state.save.connect4.difficulty, 2);
+
+        // Play a piece
+        state.act(Action::Connect4Drop(3));
+        assert_eq!(state.save.connect4.history, [3]);
+
+        // Midgame difficulty change preserves board and history
+        state.act(Action::Connect4Difficulty(4));
+        assert_eq!(state.save.connect4.difficulty, 4);
+        assert_eq!(state.save.connect4.history, [3]);
+
+        // Starting a new game preserves the chosen difficulty
+        state.new_connect4(connect4::Mode::Computer);
+        assert_eq!(state.save.connect4.difficulty, 4);
+        assert!(state.save.connect4.history.is_empty());
+
+        // Same for TicTacToe
+        state.open(Screen::TicTacToe);
+        state.act(Action::TicTacToeDifficulty(3));
+        assert_eq!(state.save.tictactoe.difficulty, 3);
+        // Connect4 difficulty unaffected
+        assert_eq!(state.save.connect4.difficulty, 4);
+
+        state.act(Action::TicTacToeCell(4));
+        assert_eq!(state.save.tictactoe.history, [4]);
+
+        // Midgame difficulty change preserves board
+        state.act(Action::TicTacToeDifficulty(1));
+        assert_eq!(state.save.tictactoe.difficulty, 1);
+        assert_eq!(state.save.tictactoe.history, [4]);
+
+        // New game preserves difficulty
+        state.new_tictactoe();
+        assert_eq!(state.save.tictactoe.difficulty, 1);
+        assert!(state.save.tictactoe.history.is_empty());
     }
 
     fn pointer_app(screen: Screen) -> (App, Entity) {
@@ -2750,6 +2934,7 @@ mod tests {
                 Screen::Cribbage,
                 Screen::Holdem,
                 Screen::Roulette,
+                Screen::TicTacToe,
                 Screen::Connect4,
                 Screen::Backgammon,
             ] {
@@ -3121,7 +3306,7 @@ mod tests {
                     76.0
                 );
             }
-            assert_eq!(games.len(), 15);
+            assert_eq!(games.len(), 16);
             app.world_mut()
                 .resource_mut::<Arcade>()
                 .act(Action::LobbyCategory(None));
@@ -3167,6 +3352,7 @@ fn capture_tools(
                 Screen::Cribbage => "cribbage",
                 Screen::Holdem => "holdem",
                 Screen::Roulette => "roulette",
+                Screen::TicTacToe => "tictactoe",
                 Screen::Connect4 => "connect4",
                 Screen::Backgammon => "backgammon",
             };

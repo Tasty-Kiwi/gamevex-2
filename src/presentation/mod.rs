@@ -25,6 +25,7 @@ pub enum Screen {
     Roulette,
     Backgammon,
     Connect4,
+    TicTacToe,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -74,6 +75,10 @@ pub enum Action {
     MahjongZen(bool),
     Connect4Drop(usize),
     Connect4New,
+    Connect4Difficulty(u8),
+    TicTacToeCell(usize),
+    TicTacToeNew,
+    TicTacToeDifficulty(u8),
     BackgammonPoint(u8),
     BackgammonRoll,
     BackgammonNew,
@@ -268,6 +273,7 @@ pub fn paint(
             time.delta_secs(),
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::TicTacToe => tictactoe::draw(&mut frame, &state, &mut layout, margin, w),
         Screen::Connect4 => connect4::draw(&mut frame, &state, &mut layout, margin, w),
         Screen::Backgammon => {
             backgammon::backgammon(&mut frame, &mut state, &mut layout, margin, w)
@@ -366,6 +372,7 @@ mod roulette;
 mod screens;
 mod sudoku;
 mod table_fx;
+mod tictactoe;
 
 use blackjack::blackjack;
 use screens::{button, cards as draw_cards, dialog, lobby, mines, rects_overlap, settings};
@@ -387,6 +394,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         "focusIndex": state.focus,
         "focusCount": layout.hits.len(),
         "modal": match state.modal {
+            Some(Pending::NewTicTacToe) => Some("tictactoe-replace"),
             Some(Pending::NewConnect4(_)) => Some("connect4-replace"),
             Some(Pending::NewHearts) => Some("hearts-replace"),
             Some(Pending::NewCribbage) => Some("cribbage-replace"),
@@ -493,6 +501,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "cribbage":action_bounds(Screen::Cribbage),
             "holdem":action_bounds(Screen::Holdem),
             "roulette":action_bounds(Screen::Roulette),
+            "tictactoe":action_bounds(Screen::TicTacToe),
             "connect4":action_bounds(Screen::Connect4),
             "backgammon":action_bounds(Screen::Backgammon),
             "lobbyClip":layout.lobby_clip.map(|r| [r.min.x,r.min.y,r.width(),r.height()]),
@@ -533,12 +542,43 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             .to_string(),
         );
     }
+    if state.screen == Screen::TicTacToe {
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::TicTacToeCell(cell) => format!("cell{cell}"),
+                Action::TicTacToeNew => "new".into(),
+                Action::TicTacToeDifficulty(level) => format!("difficulty{level}"),
+                Action::Open(Screen::Settings) => "settings".into(),
+                Action::Open(Screen::Lobby) => "lobby".into(),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-tictactoe-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        let view = serde_json::to_value(&state.save.tictactoe).unwrap_or_default();
+        platform::diagnostics_attribute("data-tictactoe-view", &view.to_string());
+    }
     if state.screen == Screen::Connect4 {
         let mut bounds = serde_json::Map::new();
         for hit in &layout.hits {
             let key = match hit.action {
                 Action::Connect4Drop(column) => format!("column{column}"),
                 Action::Connect4New => "new".into(),
+                Action::Connect4Difficulty(level) => format!("difficulty{level}"),
                 Action::Open(Screen::Settings) => "settings".into(),
                 Action::Open(Screen::Lobby) => "lobby".into(),
                 Action::Cancel => "cancel".into(),

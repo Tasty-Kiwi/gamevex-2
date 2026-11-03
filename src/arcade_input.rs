@@ -368,6 +368,10 @@ pub(super) fn handle_input(
             }
         }
     }
+    if state.screen == Screen::TicTacToe && state.tictactoe_key(&keys, &layout) {
+        wheel.clear();
+        return;
+    }
     if state.screen == Screen::Connect4 && state.connect4_key(&keys, &layout) {
         wheel.clear();
         return;

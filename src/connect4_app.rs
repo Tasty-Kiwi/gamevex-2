@@ -59,7 +59,9 @@ impl Connect4Ui {
 impl Arcade {
     /// Resets the Connect 4 session to a new game with the given mode.
     pub(crate) fn new_connect4(&mut self, mode: Mode) {
+        let diff = self.save.connect4.difficulty;
         self.save.connect4 = Game::new(mode);
+        self.save.connect4.set_difficulty(diff);
         self.connect4_ui = Connect4Ui::default();
         self.modal = None;
         self.fractional_ms = 0.0;

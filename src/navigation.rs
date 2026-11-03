@@ -107,6 +107,7 @@ impl Arcade {
                 });
                 0
             }
+            Screen::TicTacToe => tictactoe_app::BOARD_FOCUS,
             Screen::Connect4 => connect4_app::BOARD_FOCUS,
             Screen::Sudoku => sudoku_app::BOARD_FOCUS,
             _ => 0,
