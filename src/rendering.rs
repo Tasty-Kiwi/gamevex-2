@@ -249,6 +249,13 @@ pub struct ArcadeRenderPlugin;
 
 impl Plugin for ArcadeRenderPlugin {
     fn build(&self, app: &mut App) {
+        // Embed the interface font so native and WASM builds work offline.
+        let font = Font::try_from_bytes(include_bytes!("../assets/fonts/Oxanium.ttf").to_vec())
+            .expect("bundled Oxanium font must be valid");
+        app.world_mut()
+            .resource_mut::<Assets<Font>>()
+            .insert(Handle::<Font>::default().id(), font)
+            .expect("default font handle must be valid");
         load_internal_asset!(app, CRT_SHADER, "../assets/crt.wgsl", Shader::from_wgsl);
         app.add_plugins(Material2dPlugin::<CrtMaterial>::default())
             .init_resource::<Frame>()
