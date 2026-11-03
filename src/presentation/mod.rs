@@ -1027,7 +1027,7 @@ fn header(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             false,
         );
     }
-    if s.screen != Screen::Lobby {
+    if matches!(s.screen, Screen::Settings | Screen::Manual) {
         x -= 84.0;
         button(
             f,
