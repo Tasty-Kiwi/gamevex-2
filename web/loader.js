@@ -79,6 +79,22 @@ window.addEventListener("unhandledrejection", (event) => {
   showError("The arcade could not start or continue.", describeError(event.reason));
 });
 
+// Hold the lock for this document's lifetime. A second tab can play in memory
+// and must reload to become the writer, so it cannot promote a stale snapshot.
+function acquireSaveWriter() {
+  if (!navigator.locks) return Promise.resolve(false);
+  const qa = location.search.slice(1).split("&").find((part) => part.startsWith("qa="))?.slice(3);
+  const key = ["fresh", "corrupt", "unavailable"].includes(qa)
+    ? "gamevex.rust-demo.qa.v1"
+    : "gamevex.rust-demo.v1";
+  return new Promise((resolve) => {
+    navigator.locks.request(key, { ifAvailable: true }, (lock) => {
+      resolve(Boolean(lock));
+      if (lock) return new Promise(() => {});
+    }).catch(() => resolve(false));
+  });
+}
+
 async function start() {
   if (!window.isSecureContext) {
     throw new Error("WebGPU requires a secure context. Open this page from http://localhost or an HTTPS site.");
@@ -91,6 +107,7 @@ async function start() {
 
   status.textContent = "Starting GameVex…";
   const { default: initialize } = await import("./pkg/gamevex_app.js");
+  canvas.dataset.saveWriter = String(await acquireSaveWriter());
   await initialize();
   status.textContent = "GameVex Rust Demo · WebGPU";
   canvas.focus({ preventScroll: true });

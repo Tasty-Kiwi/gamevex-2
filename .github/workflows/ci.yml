@@ -47,7 +47,7 @@ jobs:
 
   deploy-pages:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: macos-validation
+    needs: [macos-validation, browser-regressions]
     runs-on: ubuntu-latest
     permissions:
       pages: write

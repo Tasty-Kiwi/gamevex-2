@@ -293,6 +293,15 @@ impl Game {
             is_raise,
         })
     }
+    /// Raise to the current bet plus the pot after matching the call.
+    pub fn pot_sized_target(&self, seat: usize) -> Option<u32> {
+        let bounds = self.bet_bounds(seat)?;
+        Some(
+            (self.current_bet + self.pot() + self.to_call(seat))
+                .clamp(bounds.min_total, bounds.max_total),
+        )
+    }
+
     pub fn apply(&mut self, action: Action) -> bool {
         let Some(i) = self.turn else { return false };
         if !self
@@ -934,6 +943,19 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pot_sized_target_includes_the_call_and_respects_the_stack_cap() {
+        let mut game = Game::idle(1);
+        assert!(game.start(100, 1));
+        assert_eq!(game.pot_sized_target(0), Some(30));
+        assert!(game.apply(Action::Call));
+        assert_eq!(game.pot_sized_target(1), Some(30));
+
+        let mut short = Game::idle(1);
+        assert!(short.start(25, 1));
+        assert_eq!(short.pot_sized_target(0), Some(25));
+    }
 
     #[test]
     fn short_all_in_does_not_reopen_a_closed_raise() {

@@ -23,7 +23,9 @@ pub fn load() -> Result<Option<String>, String> {
                 return Ok(Some(value));
             }
             let corrupt = "{ invalid GameVex save";
-            storage.set_item(key, corrupt).map_err(js_error)?;
+            if owns_save_writer() {
+                storage.set_item(key, corrupt).map_err(js_error)?;
+            }
             return Ok(Some(corrupt.into()));
         }
         return storage.get_item(key).map_err(js_error);
@@ -79,6 +81,9 @@ pub fn store(contents: &str) -> Result<(), String> {
     {
         if qa_mode() == Some("unavailable") {
             return Err("QA: storage unavailable".into());
+        }
+        if !owns_save_writer() {
+            return Err("save writer unavailable · close other arcade tabs and reload".into());
         }
         let window = web_sys::window().ok_or_else(|| "browser window is unavailable".to_owned())?;
         let storage = window
@@ -138,12 +143,38 @@ pub fn diagnostics_save(json: &str) {
 pub fn stage_snapshot(save: &gamevex_core::Save, allowed: bool) {
     #[cfg(target_arch = "wasm32")]
     LIFECYCLE_SNAPSHOT.with(|snapshot| {
-        *snapshot.borrow_mut() = allowed.then(|| save.clone());
+        *snapshot.borrow_mut() = (allowed && owns_save_writer()).then(|| save.clone());
     });
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = (save, allowed);
     }
+}
+
+/// Timer ticks update the staged session without cloning boards or undo histories.
+pub fn stage_elapsed(save: &gamevex_core::Save) {
+    #[cfg(target_arch = "wasm32")]
+    LIFECYCLE_SNAPSHOT.with(|snapshot| {
+        if let Some(staged) = snapshot.borrow_mut().as_mut() {
+            staged.minesweeper.game.elapsed_ms = save.minesweeper.game.elapsed_ms;
+            staged.sudoku.game.elapsed_ms = save.sudoku.game.elapsed_ms;
+            staged.mahjong.elapsed_ms = save.mahjong.elapsed_ms;
+            staged.solitaire.elapsed_ms = save.solitaire.elapsed_ms;
+            staged.freecell.elapsed_ms = save.freecell.elapsed_ms;
+            staged.spider.elapsed_ms = save.spider.elapsed_ms;
+            staged.backgammon.elapsed_ms = save.backgammon.elapsed_ms;
+        }
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = save;
+}
+
+#[cfg(target_arch = "wasm32")]
+fn owns_save_writer() -> bool {
+    canvas_element()
+        .and_then(|canvas| canvas.get_attribute("data-save-writer"))
+        .as_deref()
+        == Some("true")
 }
 
 /// Installs app-lifetime handlers that flush the staged save before backgrounding or exit.
@@ -285,12 +316,13 @@ fn install_lifecycle_saves_wasm() {
         return;
     };
     let callback = Closure::<dyn FnMut()>::new(|| {
-        let Some(save) = LIFECYCLE_SNAPSHOT.with(|snapshot| snapshot.borrow().clone()) else {
-            return;
-        };
-        if let Ok(json) = save.to_json() {
-            let _ = store(&json);
-        }
+        LIFECYCLE_SNAPSHOT.with(|snapshot| {
+            if let Some(save) = snapshot.borrow().as_ref()
+                && let Ok(json) = save.to_json()
+            {
+                let _ = store(&json);
+            }
+        });
     });
     let function = callback.as_ref().unchecked_ref();
     let _ = window.add_event_listener_with_callback("blur", function);

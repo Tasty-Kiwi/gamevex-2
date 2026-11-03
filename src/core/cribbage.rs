@@ -820,7 +820,7 @@ impl Game {
             }
         }
         match self.phase {
-            Phase::Pegging if self.count > 31 || self.show_step != 0 => {
+            Phase::Pegging if self.count >= 31 || self.show_step != 0 || self.played.len() == 8 => {
                 return Err("invalid pegging phase state".into());
             }
             Phase::Show if self.show_step > 2 || self.count != 0 || !self.sequence.is_empty() => {
@@ -1014,6 +1014,16 @@ mod tests {
         let restored: Game = serde_json::from_slice(&data).unwrap();
         assert_eq!(restored, g);
         assert!(restored.validate().is_ok());
+
+        assert_eq!(g.phase, Phase::RoundComplete);
+        g.phase = Phase::Pegging;
+        g.show_step = 0;
+        let save = crate::Save {
+            cribbage: g,
+            ..crate::Save::default()
+        };
+        let json = serde_json::to_string(&save).unwrap();
+        assert!(crate::Save::from_json(&json).is_err());
     }
     #[test]
     fn sixty_four_seeded_complete_matches_validate_after_every_action() {

@@ -167,7 +167,7 @@ impl Game {
         let mut candidates: Vec<usize> = (0..self.cells.len()).filter(|&i| !safe_set[i]).collect();
         let mut rng = self.seed;
         for n in (1..candidates.len()).rev() {
-            let j = (next_random(&mut rng) as usize) % (n + 1);
+            let j = (next_random(&mut rng) % (n as u64 + 1)) as usize;
             candidates.swap(n, j);
         }
         for &i in candidates.iter().take(self.mine_count()) {
@@ -392,6 +392,19 @@ mod tests {
         second.command(Command::Reveal(240));
         assert_eq!(first, second);
         assert!(first.validate().is_ok());
+    }
+
+    #[test]
+    fn seed_42_uses_the_portable_mine_layout() {
+        let mut game = Game::new(Difficulty::Beginner, 42);
+        game.command(Command::Reveal(0));
+        let mines: Vec<_> = game
+            .cells
+            .iter()
+            .enumerate()
+            .filter_map(|(index, cell)| cell.mine.then_some(index))
+            .collect();
+        assert_eq!(mines, [3, 13, 15, 16, 17, 20, 24, 56, 63, 71]);
     }
 
     #[test]

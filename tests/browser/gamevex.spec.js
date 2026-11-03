@@ -1,3 +1,4 @@
+import { screenPoint } from './interaction.js';
 import { revealLobbyGame } from './lobby.js';
 import { expect, test } from '@playwright/test';
 
@@ -70,28 +71,6 @@ async function settledBounds(page) {
     return Boolean(stable);
   }, { timeout: 12_000 }).toBe(true);
   return previous;
-}
-
-// Rust publishes logical surface bounds. Convert those to CSS points by
-// inverting the same radial CRT mapping used by pointer input.
-async function screenPoint(page, x, y) {
-  const point = await page.locator(canvas).evaluate((el, p) => {
-    const rect = el.getBoundingClientRect();
-    const k = Number(el.dataset.curvature || 0);
-    const qx = (p.x / rect.width) * 2 - 1;
-    const qy = (p.y / rect.height) * 2 - 1;
-    let lo = 0;
-    const qRadius = Math.hypot(qx, qy);
-    let hi = Math.max(1, qRadius);
-    for (let i = 0; i < 32; i++) {
-      const r = (lo + hi) / 2;
-      if (r * (1 + k * r * r) < qRadius) lo = r;
-      else hi = r;
-    }
-    const scale = qRadius ? ((lo + hi) / 2) / qRadius : 1;
-    return { x: rect.left + rect.width * (1 + qx * scale) / 2, y: rect.top + rect.height * (1 + qy * scale) / 2 };
-  }, { x, y });
-  return point;
 }
 
 async function clickSurface(page, x, y, button = 'left') {
@@ -879,4 +858,40 @@ test.describe('touch input regressions', () => {
     await dragTouch(page, exposedCardPoint(cards, 0), center(slots[0]));
     await expect.poll(async () => (await interaction(page)).slots[0]).toBe(0);
   });
+});
+
+test('Baccarat selects Deal by keyboard after choosing a wager', async ({ page }) => {
+  await openReady(page);
+  await clickLobbyAction(page, 'baccarat');
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Baccarat');
+  const save = () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.session).baccarat);
+  await page.keyboard.press('p');
+  await expect.poll(async () => (await save()).selected).toBe('player');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await save()).phase).toBe('settled');
+  expect((await save()).bet).toBe(10);
+});
+
+test('an idle tab cannot overwrite the writer’s newer save', async ({ page, context }) => {
+  await openReady(page);
+  await expect(page.locator(canvas)).toHaveAttribute('data-save-writer', 'true');
+  const idle = await context.newPage();
+  await openReady(idle);
+  await expect(idle.locator(canvas)).toHaveAttribute('data-save-writer', 'false');
+  await page.bringToFront();
+  await clickLobbyAction(page, 'baccarat');
+  await expect.poll(async () => (await interaction(page)).screen).toBe('Baccarat');
+  await page.keyboard.press('p');
+  const savedSelection = () => page.evaluate(() => (
+    JSON.parse(localStorage.getItem('gamevex.rust-demo.qa.v1'))?.baccarat.selected
+  ));
+  await expect.poll(savedSelection).toBe('player');
+  await idle.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')));
+  expect(await savedSelection()).toBe('player');
+  await page.close();
+  await idle.reload();
+  await expect(idle.locator(canvas)).toHaveAttribute('data-save-writer', 'true');
+  await expect.poll(() => idle.locator(canvas).evaluate((el) => (
+    JSON.parse(el.dataset.session || '{}').baccarat?.selected
+  ))).toBe('player');
 });

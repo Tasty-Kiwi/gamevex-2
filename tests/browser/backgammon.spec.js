@@ -1,3 +1,4 @@
+import { screenPoint } from './interaction.js';
 import { revealLobbyGame } from './lobby.js';
 import { expect, test } from '@playwright/test';
 
@@ -6,28 +7,6 @@ const storageKey = 'gamevex.rust-demo.qa.v1';
 
 function center(bounds) {
   return { x: bounds[0] + bounds[2] / 2, y: bounds[1] + bounds[3] / 2 };
-}
-
-async function screenPoint(page, x, y) {
-  return page.locator(canvas).evaluate((el, p) => {
-    const rect = el.getBoundingClientRect();
-    const k = Number(el.dataset.curvature || 0);
-    const qx = (p.x / rect.width) * 2 - 1;
-    const qy = (p.y / rect.height) * 2 - 1;
-    const radius = Math.hypot(qx, qy);
-    let lo = 0;
-    let hi = Math.max(1, radius);
-    for (let i = 0; i < 32; i++) {
-      const r = (lo + hi) / 2;
-      if (r * (1 + k * r * r) < radius) lo = r;
-      else hi = r;
-    }
-    const scale = radius ? ((lo + hi) / 2) / radius : 1;
-    return {
-      x: rect.left + rect.width * (1 + qx * scale) / 2,
-      y: rect.top + rect.height * (1 + qy * scale) / 2,
-    };
-  }, { x, y });
 }
 
 async function clickBounds(page, bounds) {
@@ -311,4 +290,13 @@ test('Backgammon near-bear-off fixture reaches a win once and restores it after 
   await clickLobbyAction(page, 'backgammon');
   expect(stable((await save(page)).backgammon)).toEqual(won);
   expect((await save(page)).backgammon_wins).toBe(1);
+});
+
+test('Backgammon saves its running clock without another move', async ({ page }) => {
+  await openBackgammon(page);
+  await clickAction(page, 'backgammonRoll');
+  await expect.poll(async () => (await view(page)).phase).toBe('moving');
+  await expect.poll(() => page.evaluate(() => (
+    JSON.parse(localStorage.getItem('gamevex.rust-demo.qa.v1')).backgammon.elapsed_ms
+  )), { timeout: 20_000 }).toBeGreaterThan(0);
 });

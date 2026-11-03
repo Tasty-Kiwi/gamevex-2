@@ -77,7 +77,7 @@ impl Shoe {
             }
         }
         for i in (1..shoe.cards.len()).rev() {
-            let j = (shoe.next_u64() as usize) % (i + 1);
+            let j = (shoe.next_u64() % (i as u64 + 1)) as usize;
             shoe.cards.swap(i, j);
         }
         shoe
@@ -285,6 +285,10 @@ mod tests {
 
     #[test]
     fn seeded_shoes_contain_each_card_once_and_replay_the_same_draws() {
+        assert_eq!(
+            Shoe::shuffled(42).draw(),
+            Some(Card::new(12, Suit::Clubs, true))
+        );
         for seed in [0, 1, 42, u64::MAX] {
             let mut first = Shoe::shuffled(seed);
             let mut second = Shoe::shuffled(seed);

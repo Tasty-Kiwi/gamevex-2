@@ -458,74 +458,32 @@ impl Game {
         !self.history.is_empty()
     }
     pub fn hint(&mut self) -> Option<(Pile, usize, Pile)> {
-        let sources = [
-            Pile::Waste,
-            Pile::Cell(0),
-            Pile::Cell(1),
-            Pile::Cell(2),
-            Pile::Cell(3),
-        ];
-        for p in sources {
-            let n = self.cards(p).len();
-            if n > 0 {
-                for i in (0..n).rev() {
-                    for j in 0..4 {
-                        let q = Pile::Foundation(j);
-                        if self.legal_move(p, i, q) {
-                            self.assisted = true;
-                            return Some((p, i, q));
-                        }
-                    }
-                }
-            }
+        let sources = [Pile::Waste]
+            .into_iter()
+            .chain((0..self.cells.len()).map(Pile::Cell))
+            .chain((0..self.tableau.len()).map(Pile::Tableau))
+            .chain((0..self.foundations.len()).map(Pile::Foundation));
+        let destinations: Vec<_> = (0..self.foundations.len())
+            .map(Pile::Foundation)
+            .chain((0..self.tableau.len()).map(Pile::Tableau))
+            .chain((0..self.cells.len()).map(Pile::Cell))
+            .collect();
+        if self.won() {
+            return None;
         }
-        for foundation in 0..self.foundations.len() {
-            if let Some(index) = self.foundations[foundation].len().checked_sub(1) {
-                let source = Pile::Foundation(foundation);
-                for destination in 0..self.tableau.len() {
-                    let target = Pile::Tableau(destination);
-                    if self.legal_move(source, index, target) {
+        for to in destinations {
+            for from in sources.clone() {
+                if matches!((from, to), (Pile::Cell(_), Pile::Cell(_))) {
+                    continue;
+                }
+                let count = match from {
+                    Pile::Cell(index) => usize::from(self.cells[index].is_some()),
+                    _ => self.pile(from).len(),
+                };
+                for index in (0..count).rev() {
+                    if self.legal_move(from, index, to) {
                         self.assisted = true;
-                        return Some((source, index, target));
-                    }
-                }
-            }
-        }
-        for (i, col) in self.tableau.iter().enumerate() {
-            for k in (0..col.len()).rev() {
-                let p = Pile::Tableau(i);
-                if !self.variant.is_spider()
-                    && self.moving(p, k).is_some_and(|cards| cards.len() == 1)
-                {
-                    for foundation in 0..self.foundations.len() {
-                        let q = Pile::Foundation(foundation);
-                        if self.legal_move(p, k, q) {
-                            self.assisted = true;
-                            return Some((p, k, q));
-                        }
-                    }
-                }
-                let destinations: Vec<_> = (0..self.tableau.len()).map(Pile::Tableau).collect();
-                for q in destinations {
-                    if self.legal_move(p, k, q) {
-                        self.assisted = true;
-                        return Some((p, k, q));
-                    }
-                }
-            }
-        }
-        // An empty free cell is a legal escape even when no tableau or
-        // foundation move is available. Prefer the constructive moves above.
-        if self.variant.is_freecell() {
-            for cell in 0..self.cells.len() {
-                for column in 0..self.tableau.len() {
-                    if let Some(index) = self.tableau[column].len().checked_sub(1) {
-                        let source = Pile::Tableau(column);
-                        let target = Pile::Cell(cell);
-                        if self.legal_move(source, index, target) {
-                            self.assisted = true;
-                            return Some((source, index, target));
-                        }
+                        return Some((from, index, to));
                     }
                 }
             }
@@ -807,6 +765,15 @@ impl Game {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hint_finds_waste_to_tableau_after_two_draws() {
+        let mut game = Game::new(Variant::Klondike1, 1);
+        assert!(game.deal());
+        assert!(game.deal());
+        assert_eq!(game.hint(), Some((Pile::Waste, 1, Pile::Tableau(5))));
+        assert!(game.assisted);
+    }
+
     #[test]
     fn freecell_hint_always_finds_a_legal_opening_with_empty_cells() {
         for variant in [Variant::FreeCell, Variant::FreeCellRelaxed] {

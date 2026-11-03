@@ -305,6 +305,16 @@ pub fn paint(
         }
         Screen::Mahjong => mahjong::mahjong(&mut frame, &mut state, &mut layout, margin, w),
     }
+    if state.screen == Screen::Baccarat
+        && let Some(target) = state.baccarat_focus
+        && let Some(index) = layout
+            .hits
+            .iter()
+            .position(|hit| matches!(hit.action, Action::Baccarat(command) if command == target))
+    {
+        state.focus = index;
+        state.baccarat_focus = None;
+    }
     publish_diagnostics(&state, &layout, size);
     if state.screen == Screen::Cards {
         platform::publish_cards(Some(

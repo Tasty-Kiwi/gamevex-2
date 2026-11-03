@@ -100,10 +100,8 @@ impl Arcade {
         }
     }
     pub(crate) fn holdem_raise_pot(&mut self) {
-        if let Some(b) = self.holdem_ui.game.bet_bounds(0) {
-            self.holdem_ui.raise_target = (self.holdem_ui.game.current_bet
-                + self.holdem_ui.game.pot())
-            .clamp(b.min_total, b.max_total);
+        if let Some(target) = self.holdem_ui.game.pot_sized_target(0) {
+            self.holdem_ui.raise_target = target;
         }
     }
     pub(crate) fn holdem_start(&mut self) {

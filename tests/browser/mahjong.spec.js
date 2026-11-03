@@ -1,3 +1,4 @@
+import { screenPoint } from './interaction.js';
 import { revealLobbyGame } from './lobby.js';
 import { expect, test } from '@playwright/test';
 
@@ -5,28 +6,6 @@ const canvas = '#gamevex';
 
 function center(bounds) {
   return { x: bounds[0] + bounds[2] / 2, y: bounds[1] + bounds[3] / 2 };
-}
-
-async function screenPoint(page, x, y) {
-  return page.locator(canvas).evaluate((el, p) => {
-    const rect = el.getBoundingClientRect();
-    const k = Number(el.dataset.curvature || 0);
-    const qx = (p.x / rect.width) * 2 - 1;
-    const qy = (p.y / rect.height) * 2 - 1;
-    let lo = 0;
-    let hi = Math.max(1, Math.hypot(qx, qy));
-    for (let i = 0; i < 32; i++) {
-      const r = (lo + hi) / 2;
-      if (r * (1 + k * r * r) < Math.hypot(qx, qy)) lo = r;
-      else hi = r;
-    }
-    const radius = Math.hypot(qx, qy);
-    const scale = radius ? ((lo + hi) / 2) / radius : 1;
-    return {
-      x: rect.left + rect.width * (1 + qx * scale) / 2,
-      y: rect.top + rect.height * (1 + qy * scale) / 2,
-    };
-  }, { x, y });
 }
 
 async function clickSurface(page, x, y) {

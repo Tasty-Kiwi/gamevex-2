@@ -434,7 +434,8 @@ impl Game {
                 return Err("invalid passing state".into());
             }
             Phase::Playing
-                if self.trick.len() >= 4
+                if self.completed_tricks >= 13
+                    || self.trick.len() >= 4
                     || self.turn != (self.leader + self.trick.len()) % 4
                     || (0..4).any(|seat| {
                         self.hands[seat].len()
@@ -608,6 +609,27 @@ fn discard_priority(card: Card) -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_finished_hand_cannot_restore_as_playing() {
+        let mut game = Game::new(1);
+        assert!(game.pass(&[0, 1, 2]));
+        while game.phase != Phase::HandComplete {
+            match game.phase {
+                Phase::Playing if game.turn == 0 => assert!(game.play(game.legal_indices(0)[0])),
+                Phase::Playing => assert!(game.cpu_step()),
+                Phase::TrickComplete => assert!(game.resolve_trick()),
+                phase => panic!("unexpected phase {phase:?}"),
+            }
+        }
+        game.phase = Phase::Playing;
+        let save = crate::Save {
+            hearts: game,
+            ..crate::Save::default()
+        };
+        let json = serde_json::to_string(&save).unwrap();
+        assert!(crate::Save::from_json(&json).is_err());
+    }
+
     #[test]
     fn deterministic_and_valid_initial_deal() {
         let a = Game::new(42);

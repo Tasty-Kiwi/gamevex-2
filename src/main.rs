@@ -1,3 +1,4 @@
+mod arcade_input;
 mod backgammon_app;
 #[cfg(any(target_arch = "wasm32", test))]
 mod browser_audio;
@@ -8,16 +9,19 @@ mod hearts_app;
 mod hearts_motion;
 mod holdem_app;
 mod mahjong_app;
+mod navigation;
 mod patience_app;
 mod patience_motion;
 mod platform;
 mod presentation;
 mod rendering;
 mod roulette_app;
+mod session;
 mod sudoku_app;
 mod table_feedback;
 mod touch_input;
 
+use arcade_input::{handle_input, handle_pointer_input, pointer_pressed};
 use bevy::{
     audio::{AudioSink, AudioSinkPlayback, AudioSource, Volume},
     input::{
@@ -35,6 +39,9 @@ use bevy::{
 use gamevex_core::{Command as GameCommand, cards::CardLab, *};
 use presentation::{Action, LobbyCategory, Screen, ViewLayout};
 use rendering::ArcadeRenderPlugin;
+#[cfg(test)]
+use session::account_play_time;
+use session::lifecycle;
 
 #[derive(Resource)]
 pub(crate) struct Arcade {
@@ -44,6 +51,7 @@ pub(crate) struct Arcade {
     pub lab: CardLab,
     pub modal: Option<Pending>,
     pub focus: usize,
+    pub baccarat_focus: Option<baccarat::Command>,
     pub modal_return_focus: usize,
     pub settings_return_focus: usize,
     pub keyboard: bool,
@@ -98,202 +106,10 @@ pub(crate) enum Pending {
 }
 
 impl Arcade {
-    fn load() -> Self {
-        let mut save = Save::new(fresh_seed());
-        let (persistence, protected_save) = match platform::load() {
-            Ok(Some(json)) => match Save::from_json(&json) {
-                Ok(loaded) => {
-                    save = loaded;
-                    ("Session restored · saved on this device".into(), false)
-                }
-                Err(error) => (format!("Save needs recovery. Open Settings. {error}"), true),
-            },
-            Ok(None) => ("Local save ready".into(), false),
-            Err(error) if error.starts_with("Invalid saved data:") => {
-                (format!("Save needs recovery. Open Settings. {error}"), true)
-            }
-            Err(error) => (format!("Playing in memory · {error}"), false),
-        };
-        let message = match save.minesweeper.game.status {
-            Status::Ready => "Your first reveal is always safe.",
-            Status::Playing => "Saved field restored. The timer resumes during active play.",
-            Status::Won => "Field cleared. Start a new run when ready.",
-            Status::Lost => "Mine hit. Start a new run when ready.",
-        }
-        .to_owned();
-        Self {
-            save,
-            screen: Screen::Lobby,
-            settings_return: Screen::Lobby,
-            lab: CardLab::default(),
-            modal: None,
-            focus: 0,
-            modal_return_focus: 0,
-            settings_return_focus: 0,
-            keyboard: false,
-            cell: 0,
-            flag_mode: false,
-            pan: Vec2::ZERO,
-            settings_scroll: 0.0,
-            lobby_scroll: 0.0,
-            lobby_category: None,
-            manual_topic: None,
-            cursor: None,
-            card_positions: [Vec2::splat(-1000.0); 5],
-            drag_offset: Vec2::ZERO,
-            motion_time: 0.0,
-            blackjack_motion: Default::default(),
-            baccarat_motion: Default::default(),
-            casino_feedback: Default::default(),
-            sudoku_ui: Default::default(),
-            mahjong_ui: Default::default(),
-            patience_ui: Default::default(),
-            hearts_ui: Default::default(),
-            cribbage_ui: Default::default(),
-            holdem_ui: Default::default(),
-            backgammon_ui: Default::default(),
-            roulette_ui: Default::default(),
-            message,
-            persistence,
-            protected_save,
-            backend: "Detecting graphics adapter…".into(),
-            fps: 0.0,
-            last_active: false,
-            lifecycle: platform::lifecycle_epoch(),
-            fractional_ms: 0.0,
-            save_age: 0.0,
-            sound: None,
-            audio_started: false,
-        }
-    }
-
-    fn persist(&mut self) {
-        self.save_age = 0.0;
-        platform::stage_snapshot(&self.save, !self.protected_save);
-        if let Ok(json) = self.save.to_json() {
-            platform::diagnostics_save(&json);
-        }
-        if self.protected_save {
-            return;
-        }
-        self.persistence = match self.save.to_json().and_then(|json| platform::store(&json)) {
-            Ok(()) => "Session saved on this device".into(),
-            Err(error) => format!("Playing in memory · save failed: {error}"),
-        };
-    }
-
     fn unfinished(&self) -> bool {
         self.save.minesweeper.game.status == Status::Playing
             || (self.save.minesweeper.game.status == Status::Ready
                 && self.save.minesweeper.game.cells.iter().any(|c| c.flagged))
-    }
-
-    fn open(&mut self, screen: Screen) {
-        let leaving_holdem = (self.screen == Screen::Holdem
-            || (self.screen == Screen::Settings && self.settings_return == Screen::Holdem))
-            && !matches!(screen, Screen::Holdem | Screen::Settings);
-        if leaving_holdem && !self.holdem_ui.game.terminal() {
-            self.open_modal(Pending::LeaveHoldem(screen));
-            return;
-        }
-        if leaving_holdem {
-            self.holdem_abandon();
-        }
-        if (self.screen == Screen::Roulette
-            || (self.screen == Screen::Settings && self.settings_return == Screen::Roulette))
-            && !matches!(screen, Screen::Roulette | Screen::Settings)
-        {
-            self.roulette_ui.settle_motion();
-        }
-        self.backgammon_ui.settle_motion();
-        self.holdem_ui.settle_motion();
-        self.cribbage_ui.age = 1.0;
-        self.cribbage_ui.hovered = None;
-        self.cribbage_ui.feedback.clear();
-        self.hearts_ui.motion.clear();
-        self.hearts_ui.age = 0.0;
-        self.hearts_ui.hovered = None;
-        self.hearts_ui.feedback.clear();
-        self.patience_ui.drag = None;
-        self.patience_ui.motion.clear();
-        if self.screen == Screen::Blackjack
-            && !matches!(screen, Screen::Blackjack | Screen::Settings)
-            && self.save.blackjack.legal(blackjack::Command::Abandon)
-        {
-            self.open_modal(Pending::LeaveBlackjack(screen));
-            return;
-        }
-        if screen == Screen::Settings {
-            self.settings_scroll = 0.0;
-            self.settings_return = self.screen;
-            self.settings_return_focus = self.focus;
-        }
-        if screen != self.screen && screen != Screen::Settings && self.screen != Screen::Settings {
-            self.casino_feedback.clear();
-        }
-        if self.screen == Screen::Sudoku && !matches!(screen, Screen::Sudoku | Screen::Settings) {
-            self.sudoku_ui.history.clear();
-        }
-        if screen == Screen::Sudoku && self.screen != Screen::Settings {
-            self.sudoku_ui.selected = self
-                .save
-                .sudoku
-                .game
-                .givens
-                .iter()
-                .position(|v| *v == 0)
-                .unwrap_or(0);
-            self.sudoku_ui.pan = Vec2::ZERO;
-            self.sudoku_ui.follow = true;
-            self.sudoku_ui.message.clear();
-            self.sudoku_ui.completion_age = None;
-        }
-        if screen == Screen::Mahjong && self.screen != Screen::Settings {
-            self.mahjong_ui = Default::default();
-        }
-        if patience_app::is_family(screen) && self.screen != Screen::Settings {
-            self.patience_ui = Default::default();
-        }
-        self.mahjong_ui.feedback.clear();
-        self.patience_ui.feedback.clear();
-        if screen == Screen::Lobby && self.screen != Screen::Settings {
-            self.lobby_category = None;
-            self.lobby_scroll = 0.0;
-        }
-        if screen == Screen::Manual && self.screen != Screen::Settings {
-            self.manual_topic = None;
-            self.lobby_scroll = 0.0;
-        }
-        self.screen = screen;
-        if patience_app::is_family(screen) {
-            self.patience_ui.can_finish = self.patience_game().can_auto_finish();
-            if self.patience_game().moves == 0 && !self.save.settings.reduced_motion {
-                let game = self.patience_game().clone();
-                self.patience_ui.motion.deal(&game);
-            }
-        }
-        if !matches!(screen, Screen::Blackjack | Screen::Settings) {
-            self.blackjack_motion.clear();
-        }
-        if !matches!(screen, Screen::Baccarat | Screen::Settings) {
-            self.baccarat_motion.clear();
-        }
-        self.focus = match screen {
-            Screen::Mines => 9,
-            Screen::Blackjack if self.save.blackjack.phase == blackjack::Phase::Betting => 7,
-            Screen::Blackjack => 3,
-            Screen::Baccarat => 3,
-            Screen::Sudoku => sudoku_app::BOARD_FOCUS,
-            _ => 0,
-        };
-        self.keyboard = false;
-        self.lab.cancel_drag();
-        self.last_active = false;
-        if screen == Screen::Cards {
-            self.card_positions = [Vec2::splat(-1000.0); 5];
-            self.motion_time = 0.0;
-        }
-        self.persist();
     }
 
     fn new_game(&mut self, difficulty: Difficulty, repeat: bool) {
@@ -441,6 +257,7 @@ impl Arcade {
                     let focus = self.settings_return_focus;
                     self.open(target);
                     self.focus = focus;
+                    self.baccarat_focus = None;
                 } else {
                     self.open(Screen::Lobby);
                 }
@@ -542,16 +359,21 @@ impl Arcade {
                         .baccarat(command, &before, &self.save.baccarat);
                     self.baccarat_motion
                         .start(command, &before, &self.save.baccarat);
-                    self.focus = match command {
+                    self.baccarat_focus = match command {
                         baccarat::Command::Select(_)
                             if self.save.baccarat.legal(baccarat::Command::Deal) =>
                         {
-                            9
+                            Some(baccarat::Command::Deal)
                         }
-                        baccarat::Command::Deal
-                        | baccarat::Command::NextRound
-                        | baccarat::Command::Restart => 3,
-                        _ => self.focus,
+                        baccarat::Command::Deal => Some(if self.save.baccarat.balance == 0 {
+                            baccarat::Command::Restart
+                        } else {
+                            baccarat::Command::NextRound
+                        }),
+                        baccarat::Command::NextRound | baccarat::Command::Restart => {
+                            Some(baccarat::Command::Select(baccarat::BetSide::Player))
+                        }
+                        _ => None,
                     };
                     self.persist();
                 }
@@ -768,6 +590,7 @@ impl Arcade {
 
     fn reset_saved_data(&mut self) {
         self.save = Save::new(fresh_seed());
+        self.baccarat_focus = None;
         self.protected_save = false;
         self.lab.reset();
         self.blackjack_motion.clear();
@@ -794,26 +617,6 @@ impl Arcade {
         self.fractional_ms = 0.0;
         self.last_active = false;
         self.message = "Your first reveal is always safe.".into();
-    }
-
-    fn open_modal(&mut self, pending: Pending) {
-        self.backgammon_ui.settle_motion();
-        self.holdem_ui.settle_motion();
-        self.cribbage_ui.age = 1.0;
-        self.cribbage_ui.hovered = None;
-        self.cribbage_ui.feedback.clear();
-        self.hearts_ui.motion.clear();
-        self.patience_ui.drag = None;
-        self.patience_ui.motion.clear();
-        self.modal_return_focus = self.focus;
-        self.modal = Some(pending);
-        // Dialog hit order starts with Cancel, keeping destructive confirmation opt-in.
-        self.focus = 0;
-    }
-
-    fn restore_modal_focus(&mut self) {
-        self.modal = None;
-        self.focus = self.modal_return_focus;
     }
 }
 
@@ -911,772 +714,6 @@ fn diagnostics(adapter: Option<Res<RenderAdapterInfo>>, mut state: ResMut<Arcade
         platform::diagnostics_save(&json);
     }
     platform::ready();
-}
-
-fn lifecycle(
-    time: Res<Time<Real>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    mut state: ResMut<Arcade>,
-    mut focused: MessageReader<WindowFocused>,
-    mut close: MessageReader<WindowCloseRequested>,
-) {
-    let Ok(window) = windows.single() else {
-        return;
-    };
-    let epoch = platform::lifecycle_epoch();
-    let transitioned = focused.read().count() > 0 || epoch != state.lifecycle;
-    let foreground = window.focused && platform::visible();
-    let active = foreground
-        && matches!(
-            state.screen,
-            Screen::Mines
-                | Screen::Sudoku
-                | Screen::Mahjong
-                | Screen::Solitaire
-                | Screen::FreeCell
-                | Screen::Spider
-        )
-        && state.modal.is_none();
-    let delta = time.delta_secs_f64();
-    let millis = account_play_time(
-        delta,
-        active,
-        state.last_active,
-        transitioned,
-        &mut state.fractional_ms,
-    );
-    if patience_app::is_family(state.screen) && state.patience_game().has_progress() {
-        state.patience_game_mut().advance_time(millis);
-    }
-    if state.screen == Screen::Mahjong {
-        state.save.mahjong.advance_time(millis);
-        if active && let Some(age) = &mut state.mahjong_ui.completion_age {
-            *age = (*age + delta.min(0.1) as f32).min(2.0);
-        }
-    } else if state.screen == Screen::Mines {
-        state.save.minesweeper.game.advance_elapsed(millis, active);
-    } else if state.screen == Screen::Sudoku {
-        state.save.sudoku.game.advance_time(millis);
-        if active && let Some(age) = &mut state.sudoku_ui.completion_age {
-            *age = (*age + delta.min(0.1) as f32).min(3.0);
-        }
-    }
-    if state.screen == Screen::Backgammon && foreground && !transitioned && state.modal.is_none() {
-        state.backgammon_tick(delta as f32);
-    }
-    if state.screen == Screen::Roulette && foreground && !transitioned && state.modal.is_none() {
-        state.roulette_tick(delta as f32);
-    }
-    if state.screen == Screen::Holdem && foreground && !transitioned && state.modal.is_none() {
-        state.holdem_tick(delta as f32);
-    }
-    if state.screen == Screen::Cribbage && foreground && !transitioned && state.modal.is_none() {
-        state.cribbage_tick(delta as f32);
-    }
-    if state.screen == Screen::Hearts && foreground && !transitioned && state.modal.is_none() {
-        state.hearts_tick(delta as f32);
-    }
-    if !foreground || transitioned {
-        state.lab.cancel_drag();
-        state.patience_ui.drag = None;
-        state.patience_ui.motion.clear();
-        state.patience_ui.feedback.clear();
-        state.mahjong_ui.feedback.clear();
-        state.backgammon_ui.settle_motion();
-        state.holdem_ui.settle_motion();
-        state.cribbage_ui.age = 1.0;
-        state.cribbage_ui.hovered = None;
-        state.hearts_ui.motion.clear();
-        state.hearts_ui.hovered = None;
-        state.hearts_ui.age = 0.0;
-        state.hearts_ui.feedback.clear();
-    }
-    state.save_age += delta.min(0.5) as f32;
-    state.motion_time += delta.min(0.1) as f32;
-    if state.screen == Screen::Blackjack && foreground && state.modal.is_none() {
-        let was_busy = state.blackjack_motion.busy();
-        if state.save.settings.reduced_motion {
-            state.blackjack_motion.clear();
-        } else {
-            state.blackjack_motion.tick(delta.min(0.1) as f32);
-        }
-        if was_busy && !state.blackjack_motion.busy() {
-            state.focus = if state.save.blackjack.phase == blackjack::Phase::Betting {
-                7
-            } else {
-                3
-            };
-        }
-    }
-    if state.screen == Screen::Baccarat && foreground && state.modal.is_none() {
-        let was_busy = state.baccarat_motion.busy();
-        if state.save.settings.reduced_motion {
-            state.baccarat_motion.clear();
-        } else {
-            state.baccarat_motion.tick(delta.min(0.1) as f32);
-        }
-        if was_busy && !state.baccarat_motion.busy() {
-            state.focus = 3;
-        }
-    }
-    if foreground {
-        if state.save.settings.reduced_motion {
-            state.patience_ui.motion.clear();
-        } else if state.modal.is_none() {
-            state.patience_ui.motion.tick(delta as f32);
-        }
-        state.mahjong_ui.feedback.tick(delta as f32);
-        state.patience_ui.feedback.tick(delta as f32);
-    }
-    if foreground
-        && state.modal.is_none()
-        && matches!(state.screen, Screen::Blackjack | Screen::Baccarat)
-    {
-        state.casino_feedback.tick(delta as f32);
-        let reduced = state.save.settings.reduced_motion;
-        if state.screen == Screen::Blackjack {
-            let view = state
-                .blackjack_motion
-                .sample(&state.save.blackjack, reduced);
-            let hidden = state
-                .blackjack_motion
-                .dealer_hidden(&state.save.blackjack, reduced);
-            let finished = reduced || !state.blackjack_motion.busy();
-            state.casino_feedback.observe(
-                view.hands.iter().map(|h| h.cards.len()).collect(),
-                view.dealer.len(),
-                hidden,
-                finished,
-            );
-        } else {
-            let view = state.baccarat_motion.sample(&state.save.baccarat, reduced);
-            let finished = reduced || !state.baccarat_motion.busy();
-            state.casino_feedback.observe(
-                vec![view.player.len()],
-                view.banker.len(),
-                false,
-                finished,
-            );
-        }
-    }
-    if (state.last_active && !active)
-        || transitioned
-        || close.read().count() > 0
-        || (active
-            && ((state.screen == Screen::Mines
-                && state.save.minesweeper.game.status == Status::Playing)
-                || (state.screen == Screen::Sudoku && !state.save.sudoku.game.complete)
-                || (state.screen == Screen::Mahjong && !state.save.mahjong.won())
-                || (patience_app::is_family(state.screen) && !state.patience_game().won()))
-            && state.save_age >= 5.0)
-    {
-        state.persist();
-    }
-    platform::stage_snapshot(&state.save, !state.protected_save);
-    state.last_active = active;
-    state.lifecycle = epoch;
-    if delta > 0.0 {
-        state.fps = state.fps * 0.95 + (1.0 / delta as f32) * 0.05;
-    }
-}
-
-fn account_play_time(
-    delta_seconds: f64,
-    active: bool,
-    was_active: bool,
-    transitioned: bool,
-    fractional_ms: &mut f64,
-) -> u64 {
-    if !active
-        || !was_active
-        || transitioned
-        || !delta_seconds.is_finite()
-        || !(0.0..0.5).contains(&delta_seconds)
-    {
-        return 0;
-    }
-    *fractional_ms += delta_seconds * 1_000.0;
-    let whole_ms = fractional_ms.floor() as u64;
-    *fractional_ms -= whole_ms as f64;
-    whole_ms
-}
-
-/// Preserve the OS event order and each press/release position. ButtonInput's
-/// per-frame sets can collapse fast clicks and pair them with a later cursor move.
-fn handle_pointer_input(
-    windows: Query<&Window, With<PrimaryWindow>>,
-    mut events: MessageReader<WindowEvent>,
-    layout: Res<ViewLayout>,
-    mut state: ResMut<Arcade>,
-    mut pointer: Local<Option<Vec2>>,
-    mut touch: Local<touch_input::TouchPointer>,
-) {
-    let Ok(window) = windows.single() else {
-        return;
-    };
-    let metrics = platform::canvas_metrics();
-    let size = metrics
-        .map(|[w, h, _]| Vec2::new(w, h))
-        .unwrap_or(Vec2::new(window.width(), window.height()));
-    let to_css = metrics
-        .map(|[_, _, density]| window.scale_factor() / density)
-        .unwrap_or(1.0);
-    let mut layout_valid = layout.size == size;
-    touch.sync_lifecycle(&mut state, &mut pointer);
-    // Browser canvas metrics can change before winit emits a resize event.
-    if !layout_valid {
-        state.backgammon_ui.settle_motion();
-        state.holdem_ui.settle_motion();
-        state.cribbage_ui.age = 1.0;
-        state.cribbage_ui.hovered = None;
-        state.hearts_ui.motion.clear();
-        state.lab.cancel_drag();
-        state.patience_ui.drag = None;
-        state.patience_ui.motion.clear();
-        touch.reset(&mut state, &mut pointer);
-    }
-    if !window.focused || !platform::visible() {
-        touch.reset(&mut state, &mut pointer);
-    }
-    let difficulty = state.save.minesweeper.game.difficulty;
-    let sudoku_mode = (
-        state.save.sudoku.game.size,
-        state.save.sudoku.game.difficulty,
-    );
-    for event in events.read() {
-        let input_valid = layout_valid
-            && window.focused
-            && platform::visible()
-            && state.save.minesweeper.game.difficulty == difficulty
-            && sudoku_mode
-                == (
-                    state.save.sudoku.game.size,
-                    state.save.sudoku.game.difficulty,
-                )
-            && layout.surface == Some(state.screen)
-            && layout.lobby_category == state.lobby_category
-            && layout.manual_topic == state.manual_topic
-            && layout.modal == state.modal.is_some();
-        if let WindowEvent::TouchInput(event) = event {
-            touch.handle(
-                event,
-                event.position * to_css,
-                input_valid,
-                &mut state,
-                &layout,
-                &mut pointer,
-            );
-            continue;
-        }
-        match event {
-            WindowEvent::CursorMoved(event) if !touch.active() => {
-                *pointer = Some(event.position * to_css)
-            }
-            WindowEvent::CursorLeft(_) if !touch.active() => {
-                *pointer = None;
-                state.lab.cancel_drag();
-                state.patience_ui.drag = None;
-                state.patience_ui.motion.clear();
-            }
-            WindowEvent::WindowResized(_) | WindowEvent::WindowScaleFactorChanged(_) => {
-                state.lab.cancel_drag();
-                state.patience_ui.drag = None;
-                state.patience_ui.motion.clear();
-                touch.reset(&mut state, &mut pointer);
-                layout_valid = false;
-            }
-            WindowEvent::WindowFocused(event) if !event.focused => {
-                *pointer = None;
-                state.lab.cancel_drag();
-                state.patience_ui.drag = None;
-                state.patience_ui.motion.clear();
-                touch.reset(&mut state, &mut pointer);
-            }
-            _ => {}
-        }
-        state.cursor = pointer.and_then(|point| {
-            rendering::screen_to_surface(
-                point,
-                size,
-                if state.save.settings.crt {
-                    state.save.settings.curvature
-                } else {
-                    0.0
-                },
-            )
-        });
-        if state.cursor.is_none() {
-            state.lab.cancel_drag();
-            state.patience_ui.drag = None;
-        }
-        state.patience_drag_update();
-        if !window.focused || !platform::visible() {
-            continue;
-        }
-        if let WindowEvent::MouseButtonInput(event) = event {
-            // A preceding event may have navigated or opened a dialog. Wait for
-            // paint to build the new surface before accepting another action.
-            if touch.active() || !input_valid {
-                continue;
-            }
-            match event.state {
-                ButtonState::Pressed => {
-                    let card_press = event.button == MouseButton::Left
-                        && patience_app::is_family(state.screen)
-                        && state.modal.is_none()
-                        && state.patience_press(&layout);
-                    if card_press {
-                        state.audio_started = true;
-                        state.keyboard = false;
-                    } else {
-                        pointer_pressed(&mut state, &layout, event.button);
-                    }
-                }
-                ButtonState::Released
-                    if event.button == MouseButton::Left && state.patience_ui.drag.is_some() =>
-                {
-                    state.patience_drag_update();
-                    state.patience_release(&layout);
-                }
-                ButtonState::Released
-                    if event.button == MouseButton::Left && state.lab.drag.is_some() =>
-                {
-                    let slot = state
-                        .cursor
-                        .and_then(|p| layout.slots.iter().position(|r| r.contains(p)));
-                    state.lab.drop_in(slot);
-                }
-                _ => {}
-            }
-        }
-    }
-    state.cursor = pointer.and_then(|point| {
-        rendering::screen_to_surface(
-            point,
-            size,
-            if state.save.settings.crt {
-                state.save.settings.curvature
-            } else {
-                0.0
-            },
-        )
-    });
-}
-
-fn pointer_pressed(state: &mut Arcade, layout: &ViewLayout, button: MouseButton) {
-    if !matches!(button, MouseButton::Left | MouseButton::Right) {
-        return;
-    }
-    state.audio_started = true;
-    state.keyboard = false;
-    if let Some((index, hit)) = layout
-        .hits
-        .iter()
-        .enumerate()
-        .rev()
-        .find(|(_, hit)| state.cursor.is_some_and(|p| hit.rect.contains(p)))
-    {
-        state.focus = index;
-        if let Action::Board = hit.action {
-            if let Some(board) = &layout.board
-                && let Some(i) = state.cursor.and_then(|p| {
-                    board.index(
-                        p,
-                        state.save.minesweeper.game.cols(),
-                        state.save.minesweeper.game.rows(),
-                    )
-                })
-            {
-                state.cell = i;
-                let command = if button == MouseButton::Right || state.flag_mode {
-                    GameCommand::ToggleFlag(i)
-                } else if state.save.minesweeper.game.cells[i].revealed {
-                    GameCommand::Chord(i)
-                } else {
-                    GameCommand::Reveal(i)
-                };
-                state.command(command);
-            }
-        } else if matches!(hit.action, Action::SudokuCell) {
-            if button == MouseButton::Left
-                && let Some(board) = &layout.sudoku
-            {
-                let size = usize::from(state.save.sudoku.game.size);
-                if let Some(i) = state.cursor.and_then(|p| board.index(p, size, size)) {
-                    state.sudoku_ui.selected = i;
-                    state.sudoku_ui.follow = false;
-                }
-            }
-        } else if button == MouseButton::Left {
-            state.act(hit.action);
-        }
-    } else if state.screen == Screen::Cards
-        && state.modal.is_none()
-        && let Some(i) = layout.card_order.iter().rev().copied().find(|i| {
-            state
-                .cursor
-                .is_some_and(|p| layout.card_hits[*i].contains(p))
-        })
-    {
-        if button == MouseButton::Right {
-            state.lab.select(i);
-            state.lab.flip_selected();
-        } else if state.lab.pick(i) {
-            state.drag_offset = state.cursor.unwrap() - layout.cards[i].min;
-        }
-    }
-}
-
-fn handle_input(
-    keys: Res<ButtonInput<KeyCode>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    mut wheel: MessageReader<MouseWheel>,
-    layout: Res<ViewLayout>,
-    mut state: ResMut<Arcade>,
-) {
-    let Ok(window) = windows.single() else {
-        return;
-    };
-    if !window.focused || !platform::visible() {
-        wheel.clear();
-        return;
-    }
-    if layout.surface != Some(state.screen)
-        || layout.modal != state.modal.is_some()
-        || layout.lobby_category != state.lobby_category
-        || layout.manual_topic != state.manual_topic
-    {
-        wheel.clear();
-        return;
-    }
-    let gesture = keys.get_just_pressed().next().is_some();
-    if gesture {
-        state.audio_started = true;
-    }
-    if keys.get_just_pressed().next().is_some() {
-        state.keyboard = true;
-    }
-    if [
-        KeyCode::SuperLeft,
-        KeyCode::SuperRight,
-        KeyCode::ControlLeft,
-        KeyCode::ControlRight,
-        KeyCode::AltLeft,
-        KeyCode::AltRight,
-    ]
-    .iter()
-    .any(|key| keys.pressed(*key))
-    {
-        wheel.clear();
-        return;
-    }
-    if keys.just_pressed(KeyCode::Escape) {
-        if state.modal.is_some() {
-            state.act(Action::Cancel);
-        } else if state.patience_ui.drag.is_some() {
-            state.patience_ui.drag = None;
-            state.patience_ui.motion.clear();
-        } else if state.lab.drag.is_some() {
-            state.lab.cancel_drag();
-            state.patience_ui.drag = None;
-            state.patience_ui.motion.clear();
-        } else if state.screen == Screen::Manual && state.manual_topic.is_some() {
-            state.act(Action::ManualTopic(None));
-        } else if state.screen == Screen::Lobby && state.lobby_category.is_some() {
-            state.act(Action::LobbyCategory(None));
-        } else if state.screen != Screen::Lobby {
-            state.act(Action::Back);
-        }
-        return;
-    }
-    if state.screen == Screen::Blackjack
-        && state.modal.is_none()
-        && ((state.blackjack_motion.busy() && !state.save.settings.reduced_motion)
-            || (layout.surface == Some(Screen::Blackjack)
-                && !layout
-                    .hits
-                    .iter()
-                    .any(|h| matches!(h.action, Action::Blackjack(_)))))
-    {
-        wheel.clear();
-        return;
-    }
-    if state.screen == Screen::Baccarat
-        && state.modal.is_none()
-        && ((state.baccarat_motion.busy() && !state.save.settings.reduced_motion)
-            || (layout.surface == Some(Screen::Baccarat)
-                && !layout
-                    .hits
-                    .iter()
-                    .any(|h| matches!(h.action, Action::Baccarat(_)))))
-    {
-        wheel.clear();
-        return;
-    }
-    let focus_count = layout.hits.len();
-    if keys.just_pressed(KeyCode::Tab) && focus_count > 0 {
-        state.keyboard = true;
-        let backwards = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-        state.focus = if backwards {
-            (state.focus + focus_count - 1) % focus_count
-        } else {
-            (state.focus + 1) % focus_count
-        };
-    }
-    state.focus = state.focus.min(focus_count.saturating_sub(1));
-    let board_focused = layout
-        .hits
-        .get(state.focus)
-        .is_some_and(|h| matches!(h.action, Action::Board));
-    if state.modal.is_some() {
-        if (keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space))
-            && let Some(hit) = layout.hits.get(state.focus)
-        {
-            state.act(hit.action);
-        }
-        wheel.clear();
-        return;
-    }
-    if state.screen == Screen::Blackjack {
-        use blackjack::Command as Bj;
-        for (key, command) in [
-            (KeyCode::KeyH, Bj::Hit),
-            (KeyCode::KeyS, Bj::Stand),
-            (KeyCode::KeyD, Bj::Double),
-            (KeyCode::KeyP, Bj::Split),
-            (KeyCode::KeyR, Bj::Surrender),
-            (KeyCode::KeyY, Bj::Insure),
-            (KeyCode::KeyN, Bj::DeclineInsurance),
-        ] {
-            if keys.just_pressed(key) {
-                state.act(Action::Blackjack(command));
-            }
-        }
-    }
-    if state.screen == Screen::Baccarat {
-        use baccarat::{BetSide, Command as Bc};
-        for (key, command) in [
-            (KeyCode::KeyP, Bc::Select(BetSide::Player)),
-            (KeyCode::KeyB, Bc::Select(BetSide::Banker)),
-            (KeyCode::KeyT, Bc::Select(BetSide::Tie)),
-            (KeyCode::KeyD, Bc::Deal),
-            (KeyCode::KeyN, Bc::NextRound),
-            (KeyCode::KeyR, Bc::Restart),
-        ] {
-            if keys.just_pressed(key) {
-                state.act(Action::Baccarat(command));
-            }
-        }
-    }
-    sudoku_app::board_keys(&mut state, &keys, &layout);
-    mahjong_app::keys(&mut state, &keys, &layout);
-    patience_app::keys(&mut state, &keys, &layout);
-    if state.screen == Screen::Mines && board_focused {
-        let cols = state.save.minesweeper.game.cols();
-        let rows = state.save.minesweeper.game.rows();
-        let mut row = state.cell / cols;
-        let mut col = state.cell % cols;
-        if keys.just_pressed(KeyCode::ArrowLeft) {
-            col = col.saturating_sub(1);
-            state.keyboard = true;
-        }
-        if keys.just_pressed(KeyCode::ArrowRight) {
-            col = (col + 1).min(cols - 1);
-            state.keyboard = true;
-        }
-        if keys.just_pressed(KeyCode::ArrowUp) {
-            row = row.saturating_sub(1);
-            state.keyboard = true;
-        }
-        if keys.just_pressed(KeyCode::ArrowDown) {
-            row = (row + 1).min(rows - 1);
-            state.keyboard = true;
-        }
-        state.cell = row * cols + col;
-        if state.keyboard
-            && let Some(board) = &layout.board
-        {
-            let point = board.origin + Vec2::new(col as f32, row as f32) * board.cell;
-            if point.x < board.clip.min.x {
-                state.pan.x -= board.clip.min.x - point.x;
-            }
-            if point.y < board.clip.min.y {
-                state.pan.y -= board.clip.min.y - point.y;
-            }
-            if point.x + board.cell > board.clip.max.x {
-                state.pan.x += point.x + board.cell - board.clip.max.x;
-            }
-            if point.y + board.cell > board.clip.max.y {
-                state.pan.y += point.y + board.cell - board.clip.max.y;
-            }
-        }
-        let i = state.cell;
-        if keys.just_pressed(KeyCode::Space) {
-            state.command(GameCommand::Reveal(i));
-        }
-        if keys.just_pressed(KeyCode::KeyF) {
-            state.command(GameCommand::ToggleFlag(i));
-        }
-        if keys.just_pressed(KeyCode::Enter) {
-            state.command(GameCommand::Chord(i));
-        }
-    } else if (keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space))
-        && let Some(hit) = layout.hits.get(state.focus)
-    {
-        state.act(hit.action);
-    }
-    if state.screen == Screen::Cards {
-        if keys.just_pressed(KeyCode::ArrowRight) {
-            state.lab.select_next();
-        }
-        if keys.just_pressed(KeyCode::ArrowLeft) {
-            state.lab.select_previous();
-        }
-        if keys.just_pressed(KeyCode::KeyF) {
-            state.lab.flip_selected();
-        }
-        for (key, slot) in [
-            (KeyCode::Digit1, 0),
-            (KeyCode::Digit2, 1),
-            (KeyCode::Digit3, 2),
-        ] {
-            if keys.just_pressed(key)
-                && let Some(i) = state.lab.selected
-            {
-                state.lab.pick(i);
-                state.lab.drop_in(Some(slot));
-            }
-        }
-        if keys.just_pressed(KeyCode::Backspace) {
-            state.act(Action::ReturnCard);
-        }
-    }
-    if state.screen == Screen::Settings {
-        if keys.just_pressed(KeyCode::PageDown) {
-            state.settings_scroll += 180.0;
-        }
-        if keys.just_pressed(KeyCode::PageUp) {
-            state.settings_scroll -= 180.0;
-        }
-    }
-    if matches!(state.screen, Screen::Lobby | Screen::Manual) && state.modal.is_none() {
-        let step = if keys.just_pressed(KeyCode::PageDown) {
-            240.0
-        } else if keys.just_pressed(KeyCode::PageUp) {
-            -240.0
-        } else {
-            0.0
-        };
-        if step != 0.0 {
-            state.keyboard = false;
-            state.lobby_scroll = (state.lobby_scroll + step).clamp(0.0, layout.lobby_max_scroll);
-        }
-    }
-    for event in wheel.read() {
-        state.keyboard = false;
-        if matches!(state.screen, Screen::Lobby | Screen::Manual) && state.modal.is_none() {
-            let scale = if event.unit == MouseScrollUnit::Line {
-                36.0
-            } else {
-                1.0
-            };
-            state.lobby_scroll =
-                (state.lobby_scroll - event.y * scale).clamp(0.0, layout.lobby_max_scroll);
-        }
-        if patience_app::is_family(state.screen)
-            && state.modal.is_none()
-            && layout
-                .patience_clip
-                .is_some_and(|r| state.cursor.is_some_and(|p| r.contains(p)))
-        {
-            let scale = if event.unit == MouseScrollUnit::Line {
-                36.0
-            } else {
-                1.0
-            };
-            state.patience_ui.pan = (state.patience_ui.pan - Vec2::new(event.x, event.y) * scale)
-                .clamp(Vec2::ZERO, layout.patience_max_pan);
-        }
-        if state.screen == Screen::Mahjong
-            && state.modal.is_none()
-            && layout
-                .mahjong_clip
-                .is_some_and(|r| state.cursor.is_some_and(|p| r.contains(p)))
-        {
-            let scale = if event.unit == MouseScrollUnit::Line {
-                36.0
-            } else {
-                1.0
-            };
-            state.mahjong_ui.pan = (state.mahjong_ui.pan - Vec2::new(event.x, event.y) * scale)
-                .clamp(Vec2::ZERO, layout.mahjong_max_pan);
-        }
-        if state.screen == Screen::Roulette
-            && state.modal.is_none()
-            && layout
-                .roulette_clip
-                .is_some_and(|r| state.cursor.is_some_and(|p| r.contains(p)))
-        {
-            let scale = if event.unit == MouseScrollUnit::Line {
-                36.0
-            } else {
-                1.0
-            };
-            let delta = if event.x.abs() > event.y.abs() {
-                event.x
-            } else {
-                event.y
-            };
-            state.roulette_ui.table_pan =
-                (state.roulette_ui.table_pan - delta * scale).clamp(0.0, layout.roulette_max_pan);
-        }
-        if state.screen == Screen::Settings {
-            let scale = if event.unit == MouseScrollUnit::Line {
-                36.0
-            } else {
-                1.0
-            };
-            state.settings_scroll =
-                (state.settings_scroll - event.y * scale).clamp(0.0, layout.settings_max_scroll);
-        }
-        if state.screen == Screen::Sudoku
-            && state.modal.is_none()
-            && layout
-                .sudoku
-                .as_ref()
-                .is_some_and(|board| state.cursor.is_some_and(|p| board.clip.contains(p)))
-        {
-            let scale = if event.unit == MouseScrollUnit::Line {
-                36.0
-            } else {
-                1.0
-            };
-            state.sudoku_ui.follow = false;
-            if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
-                state.sudoku_ui.pan.x -= event.y * scale;
-            } else {
-                state.sudoku_ui.pan -= Vec2::new(event.x, event.y) * scale;
-            }
-            state.sudoku_ui.pan = state.sudoku_ui.pan.clamp(Vec2::ZERO, layout.sudoku_max_pan);
-        }
-        if state.screen == Screen::Mines
-            && layout
-                .board
-                .as_ref()
-                .is_some_and(|b| state.cursor.is_some_and(|p| b.clip.contains(p)))
-        {
-            let scale = if event.unit == MouseScrollUnit::Line {
-                36.0
-            } else {
-                1.0
-            };
-            if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
-                state.pan.x -= event.y * scale;
-            } else {
-                state.pan -= Vec2::new(event.x, event.y) * scale;
-            }
-        }
-    }
 }
 
 #[derive(Resource)]
@@ -1897,6 +934,7 @@ mod tests {
             lab: CardLab::default(),
             modal: None,
             focus: 0,
+            baccarat_focus: None,
             modal_return_focus: 0,
             settings_return_focus: 0,
             keyboard: false,
