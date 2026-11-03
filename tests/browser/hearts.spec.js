@@ -136,11 +136,10 @@ async function beginPassing(page, touch = false) {
   await expect.poll(async () => phaseName((await view(page)).phase)).toBe('playing');
 }
 
-test('Hearts lobby entry, three-card passing, and rules action are accessible', async ({ page }) => {
+test('Hearts lobby entry, three-card passing are accessible', async ({ page }) => {
   test.setTimeout(45_000);
   await openHearts(page);
   expect(phaseName((await view(page)).phase)).toBe('passing');
-  expect((await actions(page)).heartsRules).toHaveLength(4);
   const otherGamesBefore = nonHeartsGameplay(await save(page));
   for (const index of [0, 1]) await clickAction(page, `heartsCard${index}`);
   await expect.poll(async () => (await view(page)).selected.length).toBe(2);
@@ -219,7 +218,7 @@ test.describe('Hearts phone controls', () => {
       bounds: JSON.parse(el.dataset.actionBounds || '{}'),
     }));
     expect(viewport).toEqual([390, 740]);
-    const controls = [...Array.from({ length: 13 }, (_, index) => `heartsCard${index}`), 'heartsRules', 'heartsNew'];
+    const controls = [...Array.from({ length: 13 }, (_, index) => `heartsCard${index}`), 'heartsNew'];
     for (const key of controls) {
       expect(bounds[key], `${key} has a published hit bound`).toHaveLength(4);
       expect(bounds[key][0]).toBeGreaterThanOrEqual(0);
@@ -228,11 +227,6 @@ test.describe('Hearts phone controls', () => {
       expect(bounds[key][1] + bounds[key][3]).toBeLessThanOrEqual(740.5);
     }
     expect(bounds.heartsPass).toBeUndefined();
-    await clickAction(page, 'heartsRules');
-    await expect.poll(async () => (await view(page)).rulesOpen).toBe(true);
-    expect(Object.keys(await actions(page)).filter((key) => key.startsWith('heartsCard'))).toHaveLength(0);
-    await clickAction(page, 'heartsRules');
-    await expect.poll(async () => (await view(page)).rulesOpen).toBe(false);
     await expect.poll(async () => (await actions(page)).heartsCard12).toHaveLength(4);
     await expect.poll(async () => (await actions(page)).heartsPass).toBeUndefined();
     await beginPassing(page, true);

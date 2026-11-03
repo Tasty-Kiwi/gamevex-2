@@ -173,23 +173,18 @@ test('Cribbage pauses in the lobby, reloads the saved match, and leaves adjacent
 test.describe('Cribbage phone controls', () => {
   test.use({ viewport: { width: 390, height: 740 }, hasTouch: true });
 
-  test('touch can discard two cards and open rules without advancing gameplay', async ({ page }) => {
+  test('touch can discard two cards', async ({ page }) => {
     test.setTimeout(60_000);
     await openCribbage(page);
     const before = (await save(page)).cribbage;
     const bounds = await actions(page);
-    for (const key of ['cribbageCard0', 'cribbageCard1', 'cribbageRules']) {
+    for (const key of ['cribbageCard0', 'cribbageCard1']) {
       expect(bounds[key], `${key} has a published phone hit bound`).toHaveLength(4);
       expect(bounds[key][0]).toBeGreaterThanOrEqual(0);
       expect(bounds[key][1]).toBeGreaterThanOrEqual(0);
       expect(bounds[key][0] + bounds[key][2]).toBeLessThanOrEqual(390.5);
       expect(bounds[key][1] + bounds[key][3]).toBeLessThanOrEqual(740.5);
     }
-    await touchAction(page, 'cribbageRules');
-    await expect.poll(async () => (await view(page)).rulesOpen).toBe(true);
-    expect(Object.keys(await actions(page)).filter((key) => key.startsWith('cribbageCard'))).toHaveLength(0);
-    await touchAction(page, 'cribbageRules');
-    await expect.poll(async () => (await view(page)).rulesOpen).toBe(false);
     expect(stable((await save(page)).cribbage)).toEqual(stable(before));
     await discardTwo(page, true);
   });

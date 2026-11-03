@@ -768,6 +768,35 @@ test.describe('touch input regressions', () => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
 
+  test('the lobby manual opens, scrolls, and returns through its contents', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 560 });
+    await openReady(page);
+    const bounds = () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
+    const tap = (rect) => {
+      const { x, y } = center(rect);
+      return touchSurface(page, x, y);
+    };
+    await tap((await bounds()).manual);
+    await expect.poll(async () => (await interaction(page)).screen).toBe('Manual');
+    const topics = (await bounds()).manualTopics;
+    expect(Object.keys(topics)).toHaveLength(14);
+    for (const [x, y, w, h] of Object.values(topics)) {
+      expect(x + w).toBeLessThanOrEqual(360);
+      expect(y + h).toBeLessThanOrEqual(527);
+    }
+    await tap(topics.Blackjack);
+    await expect.poll(async () => (await bounds()).manualTopic).toBe('Blackjack');
+    await page.keyboard.press('PageDown');
+    await expect.poll(async () => (await bounds()).manualScroll).toBeGreaterThan(0);
+    await tap((await bounds()).manualContents);
+    await expect.poll(async () => (await bounds()).manualTopic).toBeNull();
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
+    await clickLobbyAction(page, 'blackjack', true);
+    await expect.poll(async () => (await interaction(page)).screen).toBe('Blackjack');
+    expect((await bounds()).manual).toBeUndefined();
+  });
+
   test('a touch opens Sudoku from the lobby', async ({ page }) => {
     await openReady(page);
     await clickLobbyAction(page, 'sudoku', true);

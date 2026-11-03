@@ -9,13 +9,11 @@ pub(crate) struct CribbageUi {
     pub hovered: Option<usize>,
     pub positions: Vec<Vec2>,
     pub age: f32,
-    pub rules: bool,
     pub feedback: TableFeedback,
 }
 impl Arcade {
     fn cribbage_ready(&self) -> bool {
         self.screen == Screen::Cribbage
-            && !self.cribbage_ui.rules
             && (self.save.settings.reduced_motion || self.cribbage_ui.age >= 0.35)
     }
     pub(crate) fn cribbage_card(&mut self, index: usize) {
@@ -94,9 +92,6 @@ impl Arcade {
             return;
         }
         self.cribbage_ui.feedback.tick(dt);
-        if self.cribbage_ui.rules {
-            return;
-        }
         self.cribbage_ui.age += dt;
         if self.cribbage_ui.age >= 0.85
             && self.save.cribbage.phase == Phase::Pegging
@@ -112,7 +107,7 @@ impl Arcade {
 mod tests {
     use super::*;
     #[test]
-    fn confirmed_discard_saves_and_rules_pause_cpu() {
+    fn confirmed_discard_saves_and_cpu_advances() {
         let mut s = crate::tests::test_arcade();
         s.screen = Screen::Cribbage;
         s.save.settings.reduced_motion = true;
@@ -125,10 +120,6 @@ mod tests {
         assert_eq!((s.save.hearts.clone(), s.save.solitaire.clone()), untouched);
         s.save.cribbage.turn = 1;
         let paused = s.save.cribbage.clone();
-        s.cribbage_ui.rules = true;
-        s.cribbage_tick(2.0);
-        assert_eq!(paused, s.save.cribbage);
-        s.cribbage_ui.rules = false;
         s.cribbage_tick(2.0);
         assert_ne!(paused, s.save.cribbage);
     }
@@ -156,10 +147,7 @@ mod tests {
             let l = app.world().resource::<ViewLayout>();
             let mut cards = 0;
             for hit in &l.hits {
-                if matches!(
-                    hit.action,
-                    Action::CribbageCard(_) | Action::CribbageNew | Action::CribbageRules
-                ) {
+                if matches!(hit.action, Action::CribbageCard(_) | Action::CribbageNew) {
                     assert!(
                         hit.rect.min.x >= 0.0 && hit.rect.max.x <= width as f32,
                         "x {width}x{height} {:?}",

@@ -8,7 +8,6 @@ const POINT_A: Color = Color::srgb(0.075, 0.15, 0.18);
 const POINT_B: Color = Color::srgb(0.13, 0.08, 0.17);
 
 pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
-    let hit_start = l.hits.len();
     let game = s.save.backgammon.clone();
     s.backgammon_ui.refresh(&game);
     let ui = &s.backgammon_ui;
@@ -48,11 +47,11 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
     let control_h = if short { 29.0 } else { 34.0 };
     let gap = if small { 5.0 } else { 8.0 };
     let control_widths = if small {
-        [45.0, 52.0, 71.0, 49.0]
+        [45.0, 52.0, 71.0]
     } else {
-        [64.0, 68.0, 105.0, 72.0]
+        [64.0, 68.0, 105.0]
     };
-    let total: f32 = control_widths.iter().sum::<f32>() + gap * 3.0;
+    let total: f32 = control_widths.iter().sum::<f32>() + gap * 2.0;
     let mut x = (m + w - total).max(m);
     for (i, (label, action)) in [
         ("Roll", Action::BackgammonRoll),
@@ -65,17 +64,12 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
             Action::BackgammonDifficulty,
         ),
         ("New", Action::BackgammonNew),
-        ("Rules", Action::BackgammonRules),
     ]
     .into_iter()
     .enumerate()
     {
-        if ui.rules {
-            x += control_widths[i] + gap;
-            continue;
-        }
         let enabled = match i {
-            0 => game.phase == Phase::AwaitRoll && game.turn == Side::White && !ui.rules && !busy,
+            0 => game.phase == Phase::AwaitRoll && game.turn == Side::White && !busy,
             _ => true,
         };
         let control_rect = rect(x, top, control_widths[i], control_h);
@@ -229,7 +223,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         1.0,
         EDGE,
     );
-    let legal = if !ui.rules && game.turn == Side::White && game.phase == Phase::Moving {
+    let legal = if game.turn == Side::White && game.phase == Phase::Moving {
         ui.legal.clone()
     } else {
         vec![]
@@ -241,8 +235,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         .filter(|mv| Some(mv.from) == source)
         .map(|mv| mv.to)
         .collect();
-    let moves_available =
-        game.turn == Side::White && game.phase == Phase::Moving && !ui.rules && !busy;
+    let moves_available = game.turn == Side::White && game.phase == Phase::Moving && !busy;
     // Keep every slot in diagnostics; the parent filters eligible IDs when
     // exporting click targets. Inactive slots also block controls underneath.
     for (idx, r) in slots.iter().copied().enumerate() {
@@ -538,45 +531,6 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
             MAGENTA
         },
     );
-    if ui.rules {
-        let panel = rect(
-            m + 8.0,
-            board_top + board_h * 0.13,
-            w - 16.0,
-            board_h * 0.74,
-        );
-        f.rounded_rect(panel, 8.0, Color::srgba(0.008, 0.016, 0.031, 0.96));
-        f.rounded_outline(panel.min, panel.size(), 8.0, 1.0, CYAN);
-        for (i, line) in [
-            "Race all 15 checkers off the board first.",
-            "Each die is one move; doubles give four.",
-            "Blots can be hit. Bar checkers re-enter first.",
-            "Bear off after reaching your home board.",
-            "Higher dice bear off if no farther checker remains.",
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            f.text(
-                panel.min + Vec2::new(12.0, 14.0 + i as f32 * if small { 23.0 } else { 31.0 }),
-                line,
-                if small { 9.0 } else { 12.0 },
-                INK,
-            );
-        }
-    }
-    if ui.rules {
-        l.hits.truncate(hit_start);
-        button(
-            f,
-            s,
-            l,
-            rect(m + w - 72.0, top, 68.0, control_h),
-            "Close",
-            Action::BackgammonRules,
-            true,
-        );
-    }
     let elapsed = format!(
         "{:02}:{:02}",
         game.elapsed_ms / 60_000,

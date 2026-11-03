@@ -198,19 +198,12 @@ test('Backgammon moves, lets the CPU answer, autosaves and reloads the exact boa
   }));
 });
 
-test('Backgammon rules pause the CPU and timer, while new-game confirmation can be canceled', async ({ page }) => {
+test('Backgammon new-game confirmation can be canceled', async ({ page }) => {
   test.setTimeout(60_000);
   await openBackgammon(page);
   const played = await playHumanTurn(page);
   expect(played.changed).toBe(true);
   await expect.poll(async () => (await view(page)).turn).toBe('black');
-  await clickAction(page, 'backgammonRules');
-  await expect.poll(async () => (await view(page)).rulesOpen).toBe(true);
-  const paused = await view(page);
-  await page.waitForTimeout(1000);
-  expect(await view(page)).toEqual(paused);
-  await clickAction(page, 'backgammonRules');
-  await expect.poll(async () => (await view(page)).rulesOpen).toBe(false);
   await expect.poll(async () => {
     const current = await view(page);
     return current.turn === 'white' && current.phase === 'await_roll' && !current.animating;
@@ -260,7 +253,7 @@ test.describe('Backgammon phone touch controls', () => {
       bounds: JSON.parse(el.dataset.actionBounds || '{}'),
     }));
     expect(data.viewport).toEqual([390, 740]);
-    for (const key of ['backgammonRoll', 'backgammonNew', 'backgammonRules', 'backgammonDifficulty']) {
+    for (const key of ['backgammonRoll', 'backgammonNew', 'backgammonDifficulty']) {
       expect(data.bounds[key], `${key} hit bound`).toHaveLength(4);
     }
     await touchAction(page, 'backgammonRoll');

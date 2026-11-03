@@ -12,13 +12,12 @@ pub(crate) struct HeartsUi {
     pub card_positions: Vec<Vec2>,
     pub message: String,
     pub age: f32,
-    pub rules: bool,
     pub feedback: TableFeedback,
 }
 
 impl Arcade {
     pub(crate) fn hearts_card(&mut self, index: usize) {
-        if self.screen != Screen::Hearts || self.hearts_ui.rules || self.hearts_ui.motion.busy() {
+        if self.screen != Screen::Hearts || self.hearts_ui.motion.busy() {
             return;
         }
         if self.save.hearts.phase == Phase::Passing {
@@ -47,7 +46,7 @@ impl Arcade {
         }
     }
     pub(crate) fn hearts_pass(&mut self) {
-        if self.screen != Screen::Hearts || self.hearts_ui.motion.busy() || self.hearts_ui.rules {
+        if self.screen != Screen::Hearts || self.hearts_ui.motion.busy() {
             return;
         }
         let before = self.save.hearts.clone();
@@ -63,7 +62,7 @@ impl Arcade {
         }
     }
     pub(crate) fn hearts_continue(&mut self) {
-        if self.screen != Screen::Hearts || self.hearts_ui.motion.busy() || self.hearts_ui.rules {
+        if self.screen != Screen::Hearts || self.hearts_ui.motion.busy() {
             return;
         }
         if self.save.hearts.phase == Phase::MatchComplete {
@@ -121,9 +120,6 @@ impl Arcade {
             return;
         }
         self.hearts_ui.feedback.tick(delta);
-        if self.hearts_ui.rules {
-            return;
-        }
         self.hearts_ui.age += delta;
         if self.save.settings.reduced_motion {
             self.hearts_ui.motion.clear();
@@ -206,7 +202,7 @@ mod tests {
         assert_eq!(s.save.minesweeper, before.minesweeper);
     }
     #[test]
-    fn paced_cpu_and_visible_tricks_pause_for_rules() {
+    fn paced_cpu_and_visible_tricks() {
         let mut s = crate::tests::test_arcade();
         s.screen = Screen::Hearts;
         s.save.hearts.pass(&[0, 1, 2]);
@@ -217,10 +213,6 @@ mod tests {
                 s.hearts_card(index);
             } else {
                 let before = s.save.hearts.clone();
-                s.hearts_ui.rules = true;
-                s.hearts_tick(10.0);
-                assert_eq!(s.save.hearts, before);
-                s.hearts_ui.rules = false;
                 s.hearts_tick(0.54);
                 assert_eq!(s.save.hearts, before);
                 s.hearts_tick(0.02);
@@ -277,11 +269,6 @@ mod tests {
                 .all(|f| f.to == Anchor::Hand(winner)
                     && before.trick.iter().any(|p| p.card == f.card))
         );
-        let elapsed = s.hearts_ui.motion.flights()[0].elapsed;
-        s.hearts_ui.rules = true;
-        s.hearts_tick(10.0);
-        assert_eq!(s.hearts_ui.motion.flights()[0].elapsed, elapsed);
-        s.hearts_ui.rules = false;
         s.open_modal(Pending::NewHearts);
         assert!(!s.hearts_ui.motion.busy());
         assert_eq!(Save::from_json(&s.save.to_json().unwrap()).unwrap(), s.save);
@@ -406,10 +393,7 @@ mod tests {
             let l = app.world().resource::<ViewLayout>();
             let mut count = 0;
             for h in &l.hits {
-                if matches!(
-                    h.action,
-                    Action::HeartsCard(_) | Action::HeartsNew | Action::HeartsRules
-                ) {
+                if matches!(h.action, Action::HeartsCard(_) | Action::HeartsNew) {
                     assert!(
                         h.rect.min.x >= 0.0 && h.rect.max.x <= width as f32,
                         "horizontal {width}x{height}"

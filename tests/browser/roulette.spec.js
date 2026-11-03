@@ -241,21 +241,6 @@ test('roulette settles one red wager once, even after reload', async ({ page }) 
   expect((await save(page)).roulette_balance).toBe(settled.bankroll);
 });
 
-test('roulette rules pause the result timer while open', async ({ page }) => {
-  test.setTimeout(20_000);
-  await openRoulette(page);
-  await clickAction(page, 'rouletteSpin');
-  await expect.poll(async () => (await view(page)).spinning).toBe(true);
-  await clickAction(page, 'rouletteRules');
-  await expect.poll(async () => (await view(page)).rulesOpen).toBe(true);
-  await page.waitForTimeout(2_900);
-  expect((await view(page)).spinning).toBe(true);
-  expect((await view(page)).result).toBeNull();
-  await clickAction(page, 'rouletteRules');
-  await expect.poll(async () => (await view(page)).rulesOpen).toBe(false);
-  await expect.poll(async () => (await view(page)).result, { timeout: 8_000 }).not.toBeNull();
-});
-
 test('roulette desktop table keeps the reference number, column, dozen, and outside-bet geometry', async ({ page }) => {
   await openRoulette(page, { width: 1280, height: 800 });
   const bounds = await actions(page);
@@ -332,9 +317,5 @@ test('roulette phone table pans horizontally for far and middle bets without sel
     await touchAction(page, 'rouletteBetRed');
     expect((await view(page)).bet).toBe('red');
     expect((await view(page)).bankroll).toBe(startingBalance);
-    await touchAction(page, 'rouletteRules');
-    await expect.poll(async () => (await view(page)).rulesOpen).toBe(true);
-    await touchAction(page, 'rouletteRules');
-    await expect.poll(async () => (await view(page)).rulesOpen).toBe(false);
   }
 });

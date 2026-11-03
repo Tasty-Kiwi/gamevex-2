@@ -14,7 +14,6 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     let compact = f.size.y < 650.0;
     let motion = !s.save.settings.reduced_motion;
     let busy = motion && s.cribbage_ui.age < 0.35;
-    let rules = s.cribbage_ui.rules;
     f.text(
         Vec2::new(m, 82.0),
         "Cribbage",
@@ -35,19 +34,10 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         f,
         s,
         l,
-        rect(m + w - 178.0, cy, 104.0, 40.0),
+        rect(m + w - 104.0, cy, 104.0, 40.0),
         "New match",
         Action::CribbageNew,
         false,
-    );
-    button(
-        f,
-        s,
-        l,
-        rect(m + w - 66.0, cy, 66.0, 40.0),
-        "Rules",
-        Action::CribbageRules,
-        rules,
     );
     let top = if small { 184.0 } else { 154.0 };
     let bottom = f.size.y - 52.0;
@@ -301,7 +291,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     let resting: Vec<_> = (0..n)
         .map(|i| rect(x + i as f32 * stride, hy, hw, hh))
         .collect();
-    s.cribbage_ui.hovered = if rules || busy {
+    s.cribbage_ui.hovered = if busy {
         None
     } else {
         s.cursor.and_then(|p| {
@@ -365,7 +355,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             visible,
             if selectable(i) || reveal { 1.0 } else { 0.28 },
         );
-        if !rules && !busy {
+        if !busy {
             l.hits.push(Hit {
                 rect: card_hit_bounds(r, resting[i]),
                 action: Action::CribbageCard(i),
@@ -402,7 +392,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         if small { 9.0 } else { 11.0 },
         GOLD,
     );
-    if !rules && !busy {
+    if !busy {
         let action = match g.phase {
             Phase::Discard if s.cribbage_ui.selected.len() == 2 => {
                 Some(("Discard two", Action::CribbageDiscard))
@@ -465,39 +455,6 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 );
             }
         }
-    }
-    if rules {
-        let r = rect(m + 8.0, top + 7.0, w - 16.0, bottom - top - 14.0);
-        f.rounded_rect(r, 12.0, PANEL);
-        f.rounded_outline(r.min, r.size(), 12.0, 1.5, CYAN);
-        f.text(r.min + Vec2::new(12.0, 14.0), "HOW TO PLAY", 18.0, CYAN);
-        let lines = [
-            "Discard two cards to the dealer's crib.",
-            "Non-dealer pegs first. Never exceed 31.",
-            "15 or 31: +2. Pairs: +2, +6, or +12.",
-            "Runs score their length. Go / last card: +1.",
-            "Hands: fifteens, pairs, runs and flushes.",
-            "Crib flush needs all five cards matching.",
-            "Nobs: jack matches cut suit, +1.",
-            "Jack cut: dealer +2. First to 121 wins.",
-        ];
-        for (i, line) in lines.iter().enumerate() {
-            f.text(
-                r.min + Vec2::new(12.0, 48.0 + i as f32 * if compact { 23.0 } else { 28.0 }),
-                *line,
-                if small { 9.0 } else { 13.0 },
-                INK,
-            );
-        }
-        button(
-            f,
-            s,
-            l,
-            rect(r.max.x - 84.0, r.max.y - 48.0, 72.0, 40.0),
-            "Close",
-            Action::CribbageRules,
-            true,
-        );
     }
 }
 fn centered(f: &mut Frame, p: Vec2, text: &str, size: f32, color: Color) {

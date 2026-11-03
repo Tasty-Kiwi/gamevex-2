@@ -7,7 +7,6 @@ pub(crate) const SPIN_DURATION: f32 = 2.6;
 pub(crate) struct RouletteUi {
     pub bet: Bet,
     pub stake: u64,
-    pub rules: bool,
     pub result: Option<Resolution>,
     pub age: f32,
     pub spinning: bool,
@@ -23,7 +22,6 @@ impl Default for RouletteUi {
         Self {
             bet: Bet::Red,
             stake: 25,
-            rules: false,
             result: None,
             age: SPIN_DURATION,
             spinning: false,
@@ -83,7 +81,7 @@ impl RouletteUi {
 }
 impl Arcade {
     fn roulette_ready(&self) -> bool {
-        self.screen == Screen::Roulette && !self.roulette_ui.rules && !self.roulette_ui.busy()
+        self.screen == Screen::Roulette && !self.roulette_ui.busy()
     }
     pub(crate) fn roulette_bet(&mut self, bet: Bet) {
         if self.roulette_ready() && bet.valid() {
@@ -145,7 +143,7 @@ impl Arcade {
         }
     }
     pub(crate) fn roulette_tick(&mut self, dt: f32) {
-        if !dt.is_finite() || dt <= 0.0 || self.roulette_ui.rules {
+        if !dt.is_finite() || dt <= 0.0 {
             return;
         }
         self.roulette_ui.feedback.tick(dt);
@@ -187,10 +185,6 @@ mod tests {
         s.open(Screen::Settings);
         s.open(Screen::Roulette);
         assert!(s.roulette_ui.busy());
-        s.roulette_ui.rules = true;
-        s.roulette_tick(9.0);
-        assert_eq!(s.roulette_ui.age, 0.0);
-        s.roulette_ui.rules = false;
         s.roulette_tick(3.0);
         assert_eq!(s.roulette_ui.history, vec![0]);
         s.roulette_tick(3.0);
@@ -234,16 +228,13 @@ mod tests {
         assert!(s.roulette_ui.feedback.take_sounds().is_empty());
     }
     #[test]
-    fn controls_fit_supported_sizes_and_rules_capture_input() {
+    fn controls_fit_supported_sizes() {
         for (width, height) in [(360, 560), (390, 740), (1280, 720), (1280, 800)] {
-            for mode in 0..4 {
+            for mode in [0, 1, 3] {
                 let mut s = crate::tests::test_arcade();
                 s.screen = Screen::Roulette;
                 if mode == 1 {
                     s.roulette_spin_number(7);
-                }
-                if mode == 2 {
-                    s.roulette_ui.rules = true;
                 }
                 if mode == 3 {
                     s.save.roulette_balance = 0;
@@ -305,14 +296,8 @@ mod tests {
                             );
                         }
                     }
-                } else if mode == 1 || mode == 2 {
+                } else if mode == 1 {
                     assert!(bets.is_empty());
-                }
-                if mode == 2 {
-                    assert!(
-                        hits.iter()
-                            .all(|h| matches!(h.action, Action::RouletteRules))
-                    );
                 }
                 if mode == 3 {
                     assert!(

@@ -30,10 +30,10 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
     );
 
     let controls_y = if small { 132.0 } else { 94.0 };
-    let controls_x = if small { m } else { m + w - 310.0 };
+    let controls_x = if small { m } else { m + w - 230.0 };
     let selected = s.hearts_ui.selected.len();
     let pass_rect = rect(controls_x, controls_y, 88.0, 30.0);
-    if g.phase == Phase::Passing && selected == 3 && !s.hearts_ui.rules && !busy {
+    if g.phase == Phase::Passing && selected == 3 && !busy {
         button(f, s, l, pass_rect, "Pass cards", Action::HeartsPass, true);
     } else {
         muted_button(f, pass_rect, &format!("Pass {selected}/3"));
@@ -42,17 +42,8 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         f,
         s,
         l,
-        rect(controls_x + 96.0, controls_y, 72.0, 30.0),
-        "Rules",
-        Action::HeartsRules,
-        s.hearts_ui.rules,
-    );
-    button(
-        f,
-        s,
-        l,
         rect(
-            controls_x + 176.0,
+            controls_x + 96.0,
             controls_y,
             if small { 100.0 } else { 134.0 },
             30.0,
@@ -335,7 +326,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
     let mut order: Vec<_> = (0..cards.len()).collect();
     // Card Lab paints selected cards last, and picking follows that same order.
     order.sort_by_key(|i| s.hearts_ui.selected.contains(i));
-    s.hearts_ui.hovered = if s.hearts_ui.rules || busy {
+    s.hearts_ui.hovered = if busy {
         None
     } else {
         s.cursor.and_then(|point| {
@@ -357,8 +348,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            let selectable = !s.hearts_ui.rules
-                && !busy
+            let selectable = !busy
                 && ((g.phase == Phase::Passing
                     && (s.hearts_ui.selected.len() < 3 || s.hearts_ui.selected.contains(&i)))
                     || legal.contains(&i));
@@ -386,8 +376,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
     for (stack, &index) in order.iter().enumerate() {
         let selected = s.hearts_ui.selected.contains(&index);
         let hovered = s.hearts_ui.hovered == Some(index);
-        let allowed = !s.hearts_ui.rules
-            && !busy
+        let allowed = !busy
             && ((g.phase == Phase::Passing && (s.hearts_ui.selected.len() < 3 || selected))
                 || legal.contains(&index));
         let r = drawn[index];
@@ -406,7 +395,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             rank_visible,
             if allowed { 1.0 } else { 0.28 },
         );
-        if !s.hearts_ui.rules && !busy {
+        if !busy {
             // Include disabled cards as blockers so clicks cannot pass through
             // their visible faces to a legal card underneath. The model rejects
             // illegal plays; diagnostics expose only enabled card actions.
@@ -514,8 +503,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         MUTED,
     );
 
-    if !busy && !s.hearts_ui.rules && matches!(g.phase, Phase::HandComplete | Phase::MatchComplete)
-    {
+    if !busy && matches!(g.phase, Phase::HandComplete | Phase::MatchComplete) {
         let label = if g.phase == Phase::MatchComplete {
             "New match"
         } else {
@@ -542,31 +530,6 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             Action::HeartsContinue,
             true,
         );
-    }
-    if s.hearts_ui.rules {
-        let rw = (w - 24.0).min(470.0);
-        let help = rect(m + (w - rw) * 0.5, top + 54.0, rw, 206.0);
-        rounded(f, help, 12.0, PANEL);
-        f.rounded_outline(help.min, help.size(), 12.0, 1.0, MUTED);
-        for (i, line) in [
-            "Hearts are 1 point. Q of spades is 13.",
-            "Follow the suit led whenever you can.",
-            "The first trick starts with 2 of clubs.",
-            "No point discards on trick 1 if avoidable.",
-            "Lead hearts after they break, or if all hearts.",
-            "Take all 26: each opponent gets 26 instead.",
-            "Lowest score wins when anyone reaches 100.",
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            f.text(
-                help.min + Vec2::new(12.0, 14.0 + i as f32 * 25.0),
-                line,
-                if small { 9.0 } else { 12.0 },
-                INK,
-            );
-        }
     }
 }
 

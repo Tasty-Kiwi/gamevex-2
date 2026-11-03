@@ -12,10 +12,9 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
     s.holdem_ui.hand_bounds.clear();
     let reduced = s.save.settings.reduced_motion;
     let busy = s.holdem_ui.busy(reduced);
-    let rules = s.holdem_ui.rules;
     let terminal = g.terminal();
     let idle = g.phase == Phase::Idle;
-    let ready = !busy && !rules;
+    let ready = !busy;
     let top = if small { 172.0 } else { 154.0 };
     let bottom = f.size.y - 52.0;
     let table = rect(m, top, w, bottom - top);
@@ -30,15 +29,6 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         format!("Bankroll ${} / Blinds $5/$10", s.save.holdem_balance),
         if small { 10.0 } else { 12.0 },
         CYAN,
-    );
-    button(
-        f,
-        s,
-        l,
-        rect(m + w - 70.0, if small { 127.0 } else { 88.0 }, 70.0, 40.0),
-        "Rules",
-        Action::HoldemRules,
-        rules,
     );
     if terminal && ready {
         let x = if small { m } else { m + w - 244.0 };
@@ -326,9 +316,8 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 .positions
                 .get(j)
                 .map_or(r, |p| rect(p.x, p.y, hw, hh));
-            if !rules
-                && s.cursor
-                    .is_some_and(|p| card_hit_bounds(shown, r).contains(p))
+            if s.cursor
+                .is_some_and(|p| card_hit_bounds(shown, r).contains(p))
             {
                 hovered = Some(j);
             }
@@ -495,43 +484,10 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             }
         }
     }
-    if rules {
-        let r = rect(m + 8.0, top + 7.0, w - 16.0, bottom - top - 14.0);
-        f.rounded_rect(r, 12.0, PANEL);
-        f.rounded_outline(r.min, r.size(), 12.0, 1.5, CYAN);
-        f.text(r.min + Vec2::new(12.0, 14.0), "TEXAS HOLD'EM", 18.0, CYAN);
-        let lines = [
-            "Make the best five-card hand from seven.",
-            "Two private cards, five community cards.",
-            "Blinds: $5 / $10. Bet, call, check or fold.",
-            "Raises must meet the last full raise size.",
-            "Short all-ins do not reopen closed raises.",
-            "Side pots and split pots settle automatically.",
-            "Only your bankroll saves between visits.",
-            "Leaving forfeits chips already in the pot.",
-        ];
-        for (i, line) in lines.iter().enumerate() {
-            f.text(
-                r.min + Vec2::new(12.0, 46.0 + i as f32 * if compact { 23.0 } else { 28.0 }),
-                *line,
-                if small { 9.0 } else { 13.0 },
-                INK,
-            );
-        }
-        button(
-            f,
-            s,
-            l,
-            rect(r.max.x - 84.0, r.max.y - 48.0, 72.0, 40.0),
-            "Close",
-            Action::HoldemRules,
-            true,
-        );
-    }
 }
 fn setup(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, bottom: f32) {
     let compact = f.size.y < 650.0;
-    let ready = !s.holdem_ui.rules && !s.holdem_ui.busy(s.save.settings.reduced_motion);
+    let ready = !s.holdem_ui.busy(s.save.settings.reduced_motion);
     if !ready {
         return;
     }

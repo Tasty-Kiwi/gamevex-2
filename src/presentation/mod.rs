@@ -19,6 +19,7 @@ pub const RED: Color = Color::srgb(1.0, 0.2, 0.4);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Lobby,
+    Manual,
     Mines,
     Cards,
     Settings,
@@ -38,6 +39,7 @@ pub enum Screen {
 #[derive(Clone, Copy)]
 pub enum Action {
     LobbyCategory(Option<LobbyCategory>),
+    ManualTopic(Option<usize>),
     Open(Screen),
     Back,
     New(Difficulty, bool),
@@ -84,13 +86,11 @@ pub enum Action {
     BackgammonRoll,
     BackgammonNew,
     BackgammonDifficulty,
-    BackgammonRules,
     RouletteBet(gamevex_core::roulette::Bet),
     RouletteStake(i64),
     RouletteStakeMin,
     RouletteStakeMax,
     RouletteSpin,
-    RouletteRules,
     RouletteRestart,
     HoldemStart,
     HoldemPlay(gamevex_core::holdem::Action),
@@ -101,7 +101,6 @@ pub enum Action {
     HoldemRaise(i32),
     HoldemRaiseMin,
     HoldemRaisePot,
-    HoldemRules,
     HoldemRestart,
     HoldemSkip,
     CribbageCard(usize),
@@ -109,12 +108,10 @@ pub enum Action {
     CribbageGo,
     CribbageContinue,
     CribbageNew,
-    CribbageRules,
     HeartsCard(usize),
     HeartsPass,
     HeartsContinue,
     HeartsNew,
-    HeartsRules,
     PatiencePick(gamevex_core::patience::Pile, usize),
     PatienceTarget(gamevex_core::patience::Pile),
     PatienceDeal,
@@ -163,6 +160,7 @@ pub struct ViewLayout {
     pub settings_clip: Option<Rect>,
     pub lobby_clip: Option<Rect>,
     pub(crate) lobby_category: Option<LobbyCategory>,
+    pub(crate) manual_topic: Option<usize>,
     pub lobby_max_scroll: f32,
     pub sudoku: Option<BoardLayout>,
     pub sudoku_max_pan: Vec2,
@@ -213,6 +211,7 @@ pub fn paint(
     layout.settings_clip = None;
     layout.lobby_clip = None;
     layout.lobby_category = state.lobby_category;
+    layout.manual_topic = state.manual_topic;
     layout.lobby_max_scroll = 0.0;
     options.scale_factor = metrics.map(|[_, _, d]| d).unwrap_or(window.scale_factor());
     options.pixel = state.save.settings.display_preset == DisplayPreset::PixelCrt;
@@ -258,6 +257,7 @@ pub fn paint(
     }
     header(&mut frame, &state, &mut layout, margin);
     match state.screen {
+        Screen::Manual => manual::manual(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Lobby => lobby(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Mines => mines(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Cards => draw_cards(
@@ -348,6 +348,7 @@ mod cribbage;
 mod hearts;
 mod holdem;
 mod mahjong;
+pub(crate) mod manual;
 mod patience;
 mod roulette;
 mod screens;
@@ -465,6 +466,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "categories": categories,
             "categoriesBack": categories_back,
             "lobbyCategory": state.lobby_category.map(LobbyCategory::key),
+            "manual": action_bounds(Screen::Manual),
             "cards": action_bounds(Screen::Cards),
             "mines": action_bounds(Screen::Mines),
             "blackjack": action_bounds(Screen::Blackjack),
@@ -487,6 +489,36 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             platform::diagnostics_attribute("data-action-bounds", &json);
         }
     }
+    if state.screen == Screen::Manual {
+        let mut topics = serde_json::Map::new();
+        let mut contents = None;
+        let mut lobby = None;
+        for hit in &layout.hits {
+            let bounds = [
+                hit.rect.min.x,
+                hit.rect.min.y,
+                hit.rect.width(),
+                hit.rect.height(),
+            ];
+            match hit.action {
+                Action::ManualTopic(Some(i)) => {
+                    topics.insert(manual::TOPICS[i].0.into(), serde_json::json!(bounds));
+                }
+                Action::ManualTopic(None) => contents = Some(bounds),
+                Action::Open(Screen::Lobby) => lobby = Some(bounds),
+                _ => {}
+            }
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::json!({
+                "manualTopics": topics, "manualContents": contents, "lobby": lobby,
+                "manualTopic": state.manual_topic.map(|i| manual::TOPICS[i].0),
+                "manualScroll": state.lobby_scroll, "manualMaxScroll": layout.lobby_max_scroll
+            })
+            .to_string(),
+        );
+    }
     if state.screen == Screen::Backgammon {
         let mut bounds = serde_json::Map::new();
         let ui = &state.backgammon_ui;
@@ -504,7 +536,6 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 }
                 Action::BackgammonPoint(_) => continue,
                 Action::BackgammonRoll => "backgammonRoll".into(),
-                Action::BackgammonRules => "backgammonRules".into(),
                 Action::BackgammonNew => "backgammonNew".into(),
                 Action::BackgammonDifficulty => "backgammonDifficulty".into(),
                 Action::Cancel => "cancel".into(),
@@ -527,7 +558,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "data-action-bounds",
             &serde_json::Value::Object(bounds).to_string(),
         );
-        platform::diagnostics_attribute("data-backgammon-view",&serde_json::json!({"turn":g.turn,"phase":g.phase,"board":g.board,"dice":g.dice,"rolled":g.rolled,"legal":ui.legal,"selected":ui.selected,"rulesOpen":ui.rules,"animating":ui.busy(state.save.settings.reduced_motion),"wins":state.save.backgammon_wins,"elapsedMs":g.elapsed_ms,"difficulty":g.difficulty}).to_string());
+        platform::diagnostics_attribute("data-backgammon-view",&serde_json::json!({"turn":g.turn,"phase":g.phase,"board":g.board,"dice":g.dice,"rolled":g.rolled,"legal":ui.legal,"selected":ui.selected,"animating":ui.busy(state.save.settings.reduced_motion),"wins":state.save.backgammon_wins,"elapsedMs":g.elapsed_ms,"difficulty":g.difficulty}).to_string());
     }
     if state.screen == Screen::Roulette {
         let mut bounds = serde_json::Map::new();
@@ -549,7 +580,6 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 Action::RouletteStakeMin => "rouletteStakeMin".into(),
                 Action::RouletteStakeMax => "rouletteStakeMax".into(),
                 Action::RouletteSpin => "rouletteSpin".into(),
-                Action::RouletteRules => "rouletteRules".into(),
                 Action::RouletteRestart => "rouletteRestart".into(),
                 Action::Open(Screen::Lobby) | Action::Back => "lobby".into(),
                 Action::Open(Screen::Settings) => "settings".into(),
@@ -572,7 +602,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         let ui = &state.roulette_ui;
         platform::diagnostics_attribute("data-roulette-view", &serde_json::json!({
             "bankroll":state.save.roulette_balance,"displayBalance":ui.display_balance(state.save.roulette_balance),
-            "stake":ui.stake,"bet":ui.bet,"spinning":ui.busy(),"rulesOpen":ui.rules,
+            "stake":ui.stake,"bet":ui.bet,"spinning":ui.busy(),
             "result":if ui.busy() { None } else { ui.result },"history":ui.history,
             "tablePan":ui.table_pan,"maxPan":layout.roulette_max_pan,"tableClip":layout.roulette_clip.map(|r|[r.min.x,r.min.y,r.width(),r.height()]),
             "stripPosition":ui.strip_position(),"stripTarget":ui.strip_to
@@ -614,7 +644,6 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 .into(),
                 Action::HoldemRaiseMin => "holdemRaiseMin".into(),
                 Action::HoldemRaisePot => "holdemRaisePot".into(),
-                Action::HoldemRules => "holdemRules".into(),
                 Action::HoldemRestart => "holdemRestart".into(),
                 Action::HoldemSkip => "holdemSkip".into(),
                 Action::Cancel => "cancel".into(),
@@ -641,7 +670,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         platform::diagnostics_attribute("data-holdem-view",&serde_json::json!({
             "phase":g.phase,"turn":g.turn,"board":g.board,"bankroll":state.save.holdem_balance,
             "buyIn":state.holdem_ui.buy_in,"opponents":g.seats.len()-1,"raiseTarget":state.holdem_ui.raise_target,
-            "animating":state.holdem_ui.busy(state.save.settings.reduced_motion),"rulesOpen":state.holdem_ui.rules,
+            "animating":state.holdem_ui.busy(state.save.settings.reduced_motion),
             "handNumber":g.hand_number,"dealer":g.dealer,"pot":g.pot(),"payouts":g.payouts,
             "legal":g.legal_actions(0).iter().map(|a|match a{P::Fold=>"fold",P::Check=>"check",P::Call=>"call",P::Bet(_)=>"bet",P::Raise(_)=>"raise",P::AllIn=>"all_in"}).collect::<Vec<_>>(),
             "seats":g.seats.iter().enumerate().map(|(i,s)|serde_json::json!({"stack":s.stack,"folded":s.folded,"committed":s.committed,"hole":if i==0||(g.phase==Phase::Showdown&&!s.folded){Some(&s.hole)}else{None}})).collect::<Vec<_>>()
@@ -663,7 +692,6 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 Action::CribbageGo => "cribbageGo".into(),
                 Action::CribbageContinue => "cribbageContinue".into(),
                 Action::CribbageNew => "cribbageNew".into(),
-                Action::CribbageRules => "cribbageRules".into(),
                 Action::Cancel => "cancel".into(),
                 Action::Confirm => "confirm".into(),
                 Action::Open(Screen::Lobby) | Action::Back => "lobby".into(),
@@ -686,7 +714,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         );
         let g = &state.save.cribbage;
         platform::diagnostics_attribute("data-cribbage-view", &serde_json::json!({
-            "phase":g.phase,"turn":g.turn,"selected":state.cribbage_ui.selected,"rulesOpen":state.cribbage_ui.rules,
+            "phase":g.phase,"turn":g.turn,"selected":state.cribbage_ui.selected,
             "legal":g.legal_indices(0),"round":g.round,"count":g.count,"dealer":g.dealer,"scores":g.scores,"show_step":g.show_step,
             "hovered":state.cribbage_ui.hovered,"wins":state.save.cribbage_wins,
         }).to_string());
@@ -707,7 +735,6 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 Action::HeartsPass => "heartsPass".into(),
                 Action::HeartsContinue => "heartsContinue".into(),
                 Action::HeartsNew => "heartsNew".into(),
-                Action::HeartsRules => "heartsRules".into(),
                 Action::Cancel => "cancel".into(),
                 Action::Confirm => "confirm".into(),
                 Action::Open(Screen::Lobby) | Action::Back => "lobby".into(),
@@ -730,7 +757,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         );
         let g = &state.save.hearts;
         platform::diagnostics_attribute("data-hearts-view", &serde_json::json!({
-            "phase":g.phase,"turn":g.turn,"selected":state.hearts_ui.selected,"rulesOpen":state.hearts_ui.rules,
+            "phase":g.phase,"turn":g.turn,"selected":state.hearts_ui.selected,
             "legal":g.legal_indices(0),"handNumber":g.hand_number,"heartsBroken":g.hearts_broken,
             "animating":state.hearts_ui.motion.busy(),"motion":state.hearts_ui.motion.kind().map(|k|format!("{k:?}")),"motionCards":state.hearts_ui.motion.flights().len(),"motionTime":state.hearts_ui.motion.flights().first().map(|f|f.elapsed),
             "hovered":state.hearts_ui.hovered,"handPositions":state.hearts_ui.card_positions.iter().map(|p|[p.x,p.y]).collect::<Vec<_>>(),
@@ -988,6 +1015,17 @@ fn header(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             false,
         );
         x -= 12.0;
+    }
+    if s.screen == Screen::Lobby {
+        button(
+            f,
+            s,
+            l,
+            rect(x - 88.0, 24.0, 88.0, 34.0),
+            "Manual",
+            Action::Open(Screen::Manual),
+            false,
+        );
     }
     if s.screen != Screen::Lobby {
         x -= 84.0;

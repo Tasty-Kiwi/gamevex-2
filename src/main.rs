@@ -53,6 +53,7 @@ pub(crate) struct Arcade {
     pub settings_scroll: f32,
     pub lobby_scroll: f32,
     pub(crate) lobby_category: Option<LobbyCategory>,
+    pub(crate) manual_topic: Option<usize>,
     pub cursor: Option<Vec2>,
     pub card_positions: [Vec2; 5],
     pub drag_offset: Vec2,
@@ -136,6 +137,7 @@ impl Arcade {
             settings_scroll: 0.0,
             lobby_scroll: 0.0,
             lobby_category: None,
+            manual_topic: None,
             cursor: None,
             card_positions: [Vec2::splat(-1000.0); 5],
             drag_offset: Vec2::ZERO,
@@ -256,6 +258,10 @@ impl Arcade {
         self.patience_ui.feedback.clear();
         if screen == Screen::Lobby && self.screen != Screen::Settings {
             self.lobby_category = None;
+            self.lobby_scroll = 0.0;
+        }
+        if screen == Screen::Manual && self.screen != Screen::Settings {
+            self.manual_topic = None;
             self.lobby_scroll = 0.0;
         }
         self.screen = screen;
@@ -400,15 +406,29 @@ impl Arcade {
         };
         match action {
             Action::Open(screen) => self.open(screen),
+            Action::ManualTopic(topic) => {
+                if self.screen == Screen::Manual
+                    && topic.is_none_or(|i| i < presentation::manual::TOPICS.len())
+                {
+                    let previous = self.manual_topic;
+                    self.manual_topic = topic;
+                    self.lobby_scroll = 0.0;
+                    self.focus = 3 + if topic.is_none() {
+                        previous.unwrap_or(0)
+                    } else {
+                        0
+                    };
+                }
+            }
             Action::LobbyCategory(category) => {
                 if self.screen == Screen::Lobby {
                     let previous = self.lobby_category;
                     self.lobby_category = category;
                     self.lobby_scroll = 0.0;
                     self.focus = if category.is_some() {
-                        3
+                        4
                     } else {
-                        2 + previous
+                        3 + previous
                             .and_then(|c| LobbyCategory::ALL.iter().position(|entry| *entry == c))
                             .unwrap_or(0)
                     };
@@ -464,13 +484,11 @@ impl Arcade {
             Action::BackgammonRoll => self.backgammon_roll(),
             Action::BackgammonNew => self.backgammon_new(false),
             Action::BackgammonDifficulty => self.backgammon_new(true),
-            Action::BackgammonRules => self.backgammon_ui.rules = !self.backgammon_ui.rules,
             Action::RouletteBet(bet) => self.roulette_bet(bet),
             Action::RouletteStake(delta) => self.roulette_stake(delta),
             Action::RouletteStakeMin => self.roulette_stake_limit(false),
             Action::RouletteStakeMax => self.roulette_stake_limit(true),
             Action::RouletteSpin => self.roulette_spin(),
-            Action::RouletteRules => self.roulette_ui.rules = !self.roulette_ui.rules,
             Action::RouletteRestart => self.roulette_restart(),
             Action::HoldemStart => self.holdem_start(),
             Action::HoldemPlay(action) => self.holdem_play(action),
@@ -481,7 +499,6 @@ impl Arcade {
             Action::HoldemRaise(delta) => self.holdem_raise(delta),
             Action::HoldemRaiseMin => self.holdem_raise_min(),
             Action::HoldemRaisePot => self.holdem_raise_pot(),
-            Action::HoldemRules => self.holdem_ui.rules = !self.holdem_ui.rules,
             Action::HoldemRestart => self.holdem_restart(),
             Action::HoldemSkip => self.holdem_skip(),
             Action::CribbageCard(index) => self.cribbage_card(index),
@@ -489,12 +506,10 @@ impl Arcade {
             Action::CribbageGo => self.cribbage_go(),
             Action::CribbageContinue => self.cribbage_continue(),
             Action::CribbageNew => self.open_modal(Pending::NewCribbage),
-            Action::CribbageRules => self.cribbage_ui.rules = !self.cribbage_ui.rules,
             Action::HeartsCard(index) => self.hearts_card(index),
             Action::HeartsPass => self.hearts_pass(),
             Action::HeartsContinue => self.hearts_continue(),
             Action::HeartsNew => self.request_hearts(),
-            Action::HeartsRules => self.hearts_ui.rules = !self.hearts_ui.rules,
             Action::Blackjack(command) => {
                 if self.blackjack_motion.busy() && !self.save.settings.reduced_motion {
                     return;
@@ -1139,6 +1154,7 @@ fn handle_pointer_input(
                 )
             && layout.surface == Some(state.screen)
             && layout.lobby_category == state.lobby_category
+            && layout.manual_topic == state.manual_topic
             && layout.modal == state.modal.is_some();
         if let WindowEvent::TouchInput(event) = event {
             touch.handle(
@@ -1327,6 +1343,7 @@ fn handle_input(
     if layout.surface != Some(state.screen)
         || layout.modal != state.modal.is_some()
         || layout.lobby_category != state.lobby_category
+        || layout.manual_topic != state.manual_topic
     {
         wheel.clear();
         return;
@@ -1355,16 +1372,6 @@ fn handle_input(
     if keys.just_pressed(KeyCode::Escape) {
         if state.modal.is_some() {
             state.act(Action::Cancel);
-        } else if state.screen == Screen::Backgammon && state.backgammon_ui.rules {
-            state.backgammon_ui.rules = false;
-        } else if state.screen == Screen::Roulette && state.roulette_ui.rules {
-            state.roulette_ui.rules = false;
-        } else if state.screen == Screen::Holdem && state.holdem_ui.rules {
-            state.holdem_ui.rules = false;
-        } else if state.screen == Screen::Cribbage && state.cribbage_ui.rules {
-            state.cribbage_ui.rules = false;
-        } else if state.screen == Screen::Hearts && state.hearts_ui.rules {
-            state.hearts_ui.rules = false;
         } else if state.patience_ui.drag.is_some() {
             state.patience_ui.drag = None;
             state.patience_ui.motion.clear();
@@ -1372,6 +1379,8 @@ fn handle_input(
             state.lab.cancel_drag();
             state.patience_ui.drag = None;
             state.patience_ui.motion.clear();
+        } else if state.screen == Screen::Manual && state.manual_topic.is_some() {
+            state.act(Action::ManualTopic(None));
         } else if state.screen == Screen::Lobby && state.lobby_category.is_some() {
             state.act(Action::LobbyCategory(None));
         } else if state.screen != Screen::Lobby {
@@ -1549,7 +1558,7 @@ fn handle_input(
             state.settings_scroll -= 180.0;
         }
     }
-    if state.screen == Screen::Lobby && state.modal.is_none() {
+    if matches!(state.screen, Screen::Lobby | Screen::Manual) && state.modal.is_none() {
         let step = if keys.just_pressed(KeyCode::PageDown) {
             240.0
         } else if keys.just_pressed(KeyCode::PageUp) {
@@ -1564,7 +1573,7 @@ fn handle_input(
     }
     for event in wheel.read() {
         state.keyboard = false;
-        if state.screen == Screen::Lobby && state.modal.is_none() {
+        if matches!(state.screen, Screen::Lobby | Screen::Manual) && state.modal.is_none() {
             let scale = if event.unit == MouseScrollUnit::Line {
                 36.0
             } else {
@@ -1896,6 +1905,7 @@ mod tests {
             settings_scroll: 0.0,
             lobby_scroll: 0.0,
             lobby_category: None,
+            manual_topic: None,
             cursor: None,
             card_positions: [Vec2::ZERO; 5],
             drag_offset: Vec2::ZERO,
@@ -3598,7 +3608,7 @@ mod tests {
                 let mut last = 0;
                 for (i, hit) in layout.hits.iter().enumerate() {
                     if let Action::Open(screen) = hit.action
-                        && !matches!(screen, Screen::Settings | Screen::Lobby)
+                        && !matches!(screen, Screen::Settings | Screen::Lobby | Screen::Manual)
                     {
                         assert!(!games.contains(&screen));
                         games.push(screen);
@@ -3650,6 +3660,7 @@ fn capture_tools(
             let mut commands = _commands;
             let name = match state.screen {
                 Screen::Lobby => "lobby",
+                Screen::Manual => "manual",
                 Screen::Mines => "minesweeper",
                 Screen::Cards => "card-lab",
                 Screen::Settings => "settings",

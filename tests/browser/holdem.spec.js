@@ -148,7 +148,6 @@ test('Holdem starts with the exact blind, hides CPU cards, and saves only its ba
   expect((await save(page)).version).toBe(12);
   expect(Object.fromEntries(Object.entries(stable(await save(page))).filter(([key]) => key !== 'holdem_balance')))
     .toEqual(Object.fromEntries(Object.entries(before).filter(([key]) => key !== 'holdem_balance')));
-  expect((await actions(page)).holdemRules).toHaveLength(4);
 });
 
 test('Holdem can skip the remaining CPU play after folding', async ({ page }) => {
@@ -250,7 +249,7 @@ test('reload returns an active Holdem table to the lobby with its bankroll prese
 test.describe('Holdem phone controls', () => {
   test.use({ viewport: { width: 390, height: 740 }, hasTouch: true });
 
-  test('touch setup changes opponents, starts a hand, and rules pause play', async ({ page }) => {
+  test('touch setup changes opponents, starts a hand', async ({ page }) => {
     test.setTimeout(45_000);
     await openHoldem(page);
     const { viewport } = await page.locator(canvas).evaluate((el) => ({
@@ -260,17 +259,10 @@ test.describe('Holdem phone controls', () => {
     await expect.poll(async () => (await actions(page)).holdemOpponentsUp).toHaveLength(4);
     await touchAction(page, 'holdemOpponentsUp');
     await expect.poll(async () => (await view(page)).opponents).toBe(2);
-    await expect.poll(async () => (await actions(page)).holdemRules).toHaveLength(4);
-    await touchAction(page, 'holdemRules');
-    await expect.poll(async () => (await view(page)).rulesOpen).toBe(true);
-    expect(Object.keys(await actions(page)).filter((key) => key.startsWith('holdem') && key !== 'holdemRules'))
-      .toHaveLength(0);
-    await touchAction(page, 'holdemRules');
-    await expect.poll(async () => (await view(page)).rulesOpen).toBe(false);
     await touchAction(page, 'holdemStart');
     await expect.poll(async () => phaseName((await view(page)).phase)).toBe('preflop');
     await expect.poll(async () => (await actions(page)).holdemFold).toHaveLength(4);
-    for (const key of ['holdemFold', 'holdemRules', 'lobby']) {
+    for (const key of ['holdemFold', 'lobby']) {
       const bounds = (await actions(page))[key];
       expect(bounds, `${key} has a visible phone hit bound`).toHaveLength(4);
       expect(bounds[0]).toBeGreaterThanOrEqual(0);

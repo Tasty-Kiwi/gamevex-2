@@ -202,7 +202,7 @@ fn paint_bet(
     let (full, bet, label) = entry;
     let r = intersection(*full, clip);
     let selected = s.roulette_ui.bet == *bet;
-    let enabled = !s.roulette_ui.busy() && !s.roulette_ui.rules;
+    let enabled = !s.roulette_ui.busy();
     if enabled {
         l.hits.push(Hit {
             rect: r,
@@ -301,15 +301,6 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         if small { 12.0 } else { 14.0 },
         CYAN,
     );
-    button(
-        f,
-        s,
-        l,
-        rect(m + w - 82.0, title_y, 82.0, 30.0),
-        "Rules",
-        Action::RouletteRules,
-        s.roulette_ui.rules,
-    );
     let strip_r = rect(m, title_y + 64.0, w, if short { 46.0 } else { 66.0 });
     strip(f, s, strip_r);
     let info_y = strip_r.max.y + 12.0;
@@ -345,7 +336,6 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     let unshifted = bet_rects(rect(clip.min.x, clip.min.y, content_w, clip.height()));
     if s.keyboard
         && !busy
-        && !s.roulette_ui.rules
         && let Some(index) = s.focus.checked_sub(l.hits.len())
         && let Some((r, _, _)) = unshifted.get(index)
     {
@@ -413,7 +403,7 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     let mut x = m;
     for i in 0..5 {
         let r = rect(x, controls_y, widths[i], controls_h);
-        if !busy && !s.roulette_ui.rules {
+        if !busy {
             button(f, s, l, r, labels[i], actions[i], i == 4);
         } else {
             f.rect(r.min, r.size(), PANEL);
@@ -434,45 +424,6 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             ),
             if short { 10.0 } else { 12.0 },
             if result.won { GOLD } else { RED },
-        );
-    }
-    if s.roulette_ui.rules {
-        l.hits.clear();
-        l.roulette_clip = None;
-        l.roulette_max_pan = 0.0;
-        let r = rect(
-            m + w * 0.06,
-            title_y + 20.0,
-            w * 0.88,
-            (f.size.y - title_y - 44.0).max(180.0),
-        );
-        f.rect(r.min, r.size(), BG);
-        f.outline(r.min, r.size(), 2.0, MAGENTA);
-        f.text(r.min + Vec2::new(14.0, 16.0), "TABLE RULES", 20.0, GOLD);
-        let lines = [
-            "European single-zero roulette",
-            "Number 35:1; dozen 2:1.",
-            "Red, black, odd, even: 1:1.",
-            "Low/high 1:1; columns 2:1.",
-            "Choose stake and one bet, then spin.",
-            "A zero loses every outside bet.",
-        ];
-        for (i, line) in lines.iter().enumerate() {
-            f.text(
-                r.min + Vec2::new(14.0, 54.0 + i as f32 * 25.0),
-                *line,
-                if small { 12.0 } else { 15.0 },
-                INK,
-            );
-        }
-        button(
-            f,
-            s,
-            l,
-            rect(r.max.x - 94.0, r.max.y - 44.0, 78.0, 30.0),
-            "CLOSE",
-            Action::RouletteRules,
-            true,
         );
     }
 }

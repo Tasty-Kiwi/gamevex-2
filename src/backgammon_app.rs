@@ -12,7 +12,6 @@ pub(crate) struct BackgammonMotion {
 }
 pub(crate) struct BackgammonUi {
     pub selected: Option<u8>,
-    pub rules: bool,
     pub age: f32,
     pub duration: f32,
     pub motion: Option<BackgammonMotion>,
@@ -28,7 +27,6 @@ impl Default for BackgammonUi {
     fn default() -> Self {
         Self {
             selected: None,
-            rules: false,
             age: 1.0,
             duration: 0.0,
             motion: None,
@@ -66,7 +64,6 @@ impl BackgammonUi {
 impl Arcade {
     fn backgammon_ready(&self) -> bool {
         self.screen == Screen::Backgammon
-            && !self.backgammon_ui.rules
             && !self.backgammon_ui.busy(self.save.settings.reduced_motion)
     }
     pub(crate) fn backgammon_point(&mut self, point: u8) {
@@ -169,11 +166,7 @@ impl Arcade {
         self.persist();
     }
     pub(crate) fn backgammon_tick(&mut self, dt: f32) {
-        if self.screen != Screen::Backgammon
-            || self.modal.is_some()
-            || !dt.is_finite()
-            || dt <= 0.0
-            || self.backgammon_ui.rules
+        if self.screen != Screen::Backgammon || self.modal.is_some() || !dt.is_finite() || dt <= 0.0
         {
             return;
         }
@@ -228,7 +221,7 @@ impl Arcade {
         }
     }
     pub(crate) fn backgammon_new(&mut self, toggle_difficulty: bool) {
-        if self.screen != Screen::Backgammon || self.backgammon_ui.rules {
+        if self.screen != Screen::Backgammon {
             return;
         }
         let current = self.save.backgammon.difficulty;
@@ -281,7 +274,7 @@ mod tests {
         game
     }
     #[test]
-    fn human_cpu_transitions_save_only_this_game_and_pause_for_rules_settings_and_dialogs() {
+    fn human_cpu_transitions_save_only_this_game_and_pause_for_settings_and_dialogs() {
         let mut s = crate::tests::test_arcade();
         s.screen = Screen::Backgammon;
         let original = s.save.clone();
@@ -299,10 +292,6 @@ mod tests {
             assert!(s.save.validate().is_ok());
         }
         let cpu = s.save.backgammon.clone();
-        s.backgammon_ui.rules = true;
-        s.backgammon_tick(20.0);
-        assert_eq!(s.save.backgammon, cpu);
-        s.backgammon_ui.rules = false;
         s.open(Screen::Settings);
         s.backgammon_tick(20.0);
         assert_eq!(s.save.backgammon, cpu);
@@ -363,14 +352,11 @@ mod tests {
     #[test]
     fn board_controls_and_all_point_slots_fit_compact_phone_and_desktop() {
         for (width, height) in [(360, 560), (390, 740), (1280, 720), (1280, 800)] {
-            for mode in 0..5 {
+            for mode in [0, 1, 3, 4] {
                 let mut s = crate::tests::test_arcade();
                 s.screen = Screen::Backgammon;
                 if mode == 1 {
                     s.save.backgammon.roll();
-                }
-                if mode == 2 {
-                    s.backgammon_ui.rules = true;
                 }
                 if mode == 3 {
                     s.save.backgammon.turn = Side::Black;
@@ -432,15 +418,6 @@ mod tests {
                         "bad control {width}x{height}: {:?}",
                         hit.rect
                     );
-                }
-                if mode == 2 {
-                    assert!(hits.iter().all(|h| !matches!(
-                        h.action,
-                        Action::BackgammonPoint(_)
-                            | Action::BackgammonRoll
-                            | Action::BackgammonNew
-                            | Action::BackgammonDifficulty
-                    )));
                 }
                 if mode == 3 || mode == 4 {
                     assert!(

@@ -7,7 +7,6 @@ pub(crate) struct HoldemUi {
     pub game: Game,
     pub buy_in: u32,
     pub raise_target: u32,
-    pub rules: bool,
     pub age: f32,
     pub duration: f32,
     pub board_from: usize,
@@ -25,7 +24,6 @@ impl Default for HoldemUi {
             game: Game::idle(1),
             buy_in: 100,
             raise_target: 0,
-            rules: false,
             age: 1.0,
             duration: 0.0,
             board_from: 0,
@@ -58,9 +56,7 @@ impl Arcade {
         (max.min(20), max)
     }
     fn holdem_ready(&self) -> bool {
-        self.screen == Screen::Holdem
-            && !self.holdem_ui.rules
-            && !self.holdem_ui.busy(self.save.settings.reduced_motion)
+        self.screen == Screen::Holdem && !self.holdem_ui.busy(self.save.settings.reduced_motion)
     }
     pub(crate) fn holdem_stake(&mut self, delta: i32) {
         if !self.holdem_ready() || !self.holdem_ui.game.terminal() {
@@ -212,7 +208,7 @@ impl Arcade {
         self.persist();
     }
     pub(crate) fn holdem_tick(&mut self, dt: f32) {
-        if !dt.is_finite() || dt <= 0.0 || self.holdem_ui.rules {
+        if !dt.is_finite() || dt <= 0.0 {
             return;
         }
         self.holdem_ui.feedback.tick(dt);
@@ -234,7 +230,6 @@ impl Arcade {
     }
     pub(crate) fn holdem_abandon(&mut self) {
         self.holdem_ui.game = Game::idle(self.holdem_ui.game.seats.len() - 1);
-        self.holdem_ui.rules = false;
         self.holdem_ui.positions.clear();
         self.holdem_ui.settle_motion();
     }
@@ -297,7 +292,7 @@ mod tests {
         }
     }
     #[test]
-    fn settings_rules_and_leave_confirmation_preserve_unspent_chips() {
+    fn settings_and_leave_confirmation_preserve_unspent_chips() {
         let mut s = crate::tests::test_arcade();
         s.screen = Screen::Holdem;
         s.save.settings.reduced_motion = true;
@@ -307,10 +302,6 @@ mod tests {
         s.open(Screen::Settings);
         s.open(Screen::Holdem);
         assert_eq!(s.holdem_ui.game, hand);
-        s.holdem_ui.rules = true;
-        s.holdem_tick(20.0);
-        assert_eq!(s.holdem_ui.game, hand);
-        s.holdem_ui.rules = false;
         s.open(Screen::Lobby);
         assert!(matches!(s.modal, Some(Pending::LeaveHoldem(Screen::Lobby))));
         s.act(Action::Cancel);
