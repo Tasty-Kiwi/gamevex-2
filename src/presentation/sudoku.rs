@@ -239,9 +239,11 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             }
         }
     }
-    // Grid lines have clipped endpoints; box boundaries read stronger than cell lines.
+    // Keep cell dividers at least one logical pixel wide: Vector CRT uses
+    // single-sample rasterization, so subpixel strokes can miss pixel centers
+    // entirely. Box boundaries remain stronger, with clipped endpoints.
     for i in 0..=n {
-        let weight = if i % box_cols == 0 { 2.0 } else { 0.7 };
+        let weight = if i % box_cols == 0 { 2.0 } else { 1.0 };
         let color = if i % box_cols == 0 { CYAN } else { EDGE };
         let x = origin.x + i as f32 * cell;
         if x >= clip.min.x && x <= clip.max.x {
@@ -252,7 +254,7 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 color,
             );
         }
-        let weight = if i % box_rows == 0 { 2.0 } else { 0.7 };
+        let weight = if i % box_rows == 0 { 2.0 } else { 1.0 };
         let color = if i % box_rows == 0 { CYAN } else { EDGE };
         let y = origin.y + i as f32 * cell;
         if y >= clip.min.y && y <= clip.max.y {
