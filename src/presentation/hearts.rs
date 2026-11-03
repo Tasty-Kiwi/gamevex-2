@@ -677,7 +677,6 @@ mod tests {
             ColorScheme::Amber,
             ColorScheme::Emerald,
             ColorScheme::Violet,
-            ColorScheme::Ice,
             ColorScheme::Paper,
         ] {
             let active_bg = crate::presentation::game_palette::table(scheme)

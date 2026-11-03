@@ -6,7 +6,6 @@
 //! - Amber (warm phosphor charcoal/cream/amber/coral)
 //! - Emerald (forest/mint/emerald/coral)
 //! - Violet (plum/lavender/violet/turquoise)
-//! - Ice (navy/silver/pale-blue/rose)
 //! - Paper (light ivory/charcoal/burgundy/forest-green)
 
 use bevy::prelude::Color;
@@ -83,19 +82,6 @@ impl CardPalette {
         card_dim: Color::srgba(0.025, 0.010, 0.030, 0.60),
     };
 
-    pub const ICE: Self = Self {
-        face_bg: Color::srgb(0.016, 0.030, 0.052),
-        shared_face_bg: Color::srgb(0.016, 0.030, 0.052),
-        back_bg: Color::srgb(0.028, 0.052, 0.088),
-        shadow: Color::srgb(0.004, 0.008, 0.018),
-        border_normal: Color::srgb(0.45, 0.80, 1.0),
-        border_selected: Color::srgb(0.85, 0.94, 1.0),
-        border_legal: Color::srgb(0.30, 0.95, 0.85),
-        red_suit: Color::srgb(0.96, 0.38, 0.50),
-        black_suit: Color::srgb(0.90, 0.95, 1.0),
-        card_dim: Color::srgba(0.010, 0.018, 0.035, 0.60),
-    };
-
     pub const PAPER: Self = Self {
         face_bg: Color::srgb(0.96, 0.95, 0.91),
         shared_face_bg: Color::srgb(0.96, 0.95, 0.91),
@@ -116,7 +102,6 @@ impl CardPalette {
             ColorScheme::Amber => &Self::AMBER,
             ColorScheme::Emerald => &Self::EMERALD,
             ColorScheme::Violet => &Self::VIOLET,
-            ColorScheme::Ice => &Self::ICE,
             ColorScheme::Paper => &Self::PAPER,
         }
     }
@@ -174,14 +159,6 @@ impl TablePalette {
         seat_active_bg: Color::srgba(0.72, 0.35, 0.98, 0.16),
     };
 
-    pub const ICE: Self = Self {
-        casino_felt: Color::srgb(0.010, 0.024, 0.048),
-        patience_felt: Color::srgb(0.014, 0.028, 0.058),
-        round_surface: Color::srgb(0.008, 0.016, 0.036),
-        round_inset: Color::srgb(0.012, 0.022, 0.046),
-        seat_active_bg: Color::srgba(0.45, 0.80, 1.0, 0.16),
-    };
-
     pub const PAPER: Self = Self {
         casino_felt: Color::srgb(0.91, 0.89, 0.83),
         patience_felt: Color::srgb(0.93, 0.91, 0.86),
@@ -197,7 +174,6 @@ impl TablePalette {
             ColorScheme::Amber => &Self::AMBER,
             ColorScheme::Emerald => &Self::EMERALD,
             ColorScheme::Violet => &Self::VIOLET,
-            ColorScheme::Ice => &Self::ICE,
             ColorScheme::Paper => &Self::PAPER,
         }
     }
@@ -256,16 +232,6 @@ impl RoulettePalette {
         selection_fill: Color::srgb(0.18, 0.08, 0.24),
     };
 
-    pub const ICE: Self = Self {
-        red_pocket: Color::srgb(0.96, 0.38, 0.50),
-        black_pocket: Color::srgb(0.10, 0.20, 0.32),
-        green_pocket: Color::srgb(0.28, 0.95, 0.82),
-        zero_fill: Color::srgb(0.03, 0.16, 0.18),
-        red_strip_fill: Color::srgb(0.20, 0.04, 0.08),
-        black_strip_fill: Color::srgb(0.03, 0.06, 0.10),
-        selection_fill: Color::srgb(0.06, 0.16, 0.26),
-    };
-
     pub const PAPER: Self = Self {
         red_pocket: Color::srgb(0.72, 0.12, 0.20),
         black_pocket: Color::srgb(0.15, 0.15, 0.18),
@@ -283,7 +249,6 @@ impl RoulettePalette {
             ColorScheme::Amber => &Self::AMBER,
             ColorScheme::Emerald => &Self::EMERALD,
             ColorScheme::Violet => &Self::VIOLET,
-            ColorScheme::Ice => &Self::ICE,
             ColorScheme::Paper => &Self::PAPER,
         }
     }
@@ -401,26 +366,6 @@ impl CasinoFxPalette {
         win_sparkle: Color::srgb(0.92, 0.85, 1.0),
     };
 
-    pub const ICE: Self = Self {
-        win: Color::srgb(0.28, 0.95, 0.82),
-        natural_or_big_win: Color::srgb(1.0, 0.84, 0.40),
-        push: Color::srgb(0.55, 0.85, 1.0),
-        loss: Color::srgb(0.96, 0.38, 0.50),
-        game_over: Color::srgb(0.74, 0.18, 0.28),
-        banner_bg_default: Color::srgba(0.018, 0.045, 0.080, 0.94),
-        banner_bg_loss: Color::srgba(0.12, 0.03, 0.05, 0.94),
-        banner_bg_game_over: Color::srgba(0.14, 0.03, 0.05, 0.96),
-        badge_bg: Color::srgba(0.015, 0.035, 0.06, 0.92),
-        badge_text: Color::srgb(0.92, 0.96, 1.0),
-        title_text: Color::srgb(0.95, 0.98, 1.0),
-        detail_text: Color::srgb(0.75, 0.88, 0.96),
-        chip_bg: Color::srgba(0.015, 0.035, 0.06, 0.94),
-        chip_text: Color::srgb(0.92, 0.96, 1.0),
-        win_base_premium: Color::srgb(1.0, 0.84, 0.40),
-        win_base_regular: Color::srgb(0.30, 0.95, 0.85),
-        win_sparkle: Color::srgb(0.85, 0.95, 1.0),
-    };
-
     pub const PAPER: Self = Self {
         win: Color::srgb(0.12, 0.52, 0.24),
         natural_or_big_win: Color::srgb(0.72, 0.48, 0.10),
@@ -448,7 +393,6 @@ impl CasinoFxPalette {
             ColorScheme::Amber => &Self::AMBER,
             ColorScheme::Emerald => &Self::EMERALD,
             ColorScheme::Violet => &Self::VIOLET,
-            ColorScheme::Ice => &Self::ICE,
             ColorScheme::Paper => &Self::PAPER,
         }
     }
@@ -507,16 +451,6 @@ impl TableFxPalette {
         caption_bg: Color::srgba(0.045, 0.02, 0.06, 0.95),
     };
 
-    pub const ICE: Self = Self {
-        invalid: [0.96, 0.38, 0.50],
-        win: [1.0, 0.84, 0.40],
-        move_color: [0.28, 0.95, 0.82],
-        undo: [0.50, 0.80, 1.0],
-        default: [0.45, 0.80, 1.0],
-        fountain_tint: Color::srgb(0.96, 0.38, 0.50),
-        caption_bg: Color::srgba(0.015, 0.035, 0.065, 0.95),
-    };
-
     pub const PAPER: Self = Self {
         invalid: [0.72, 0.12, 0.20],
         win: [0.72, 0.48, 0.10],
@@ -534,7 +468,6 @@ impl TableFxPalette {
             ColorScheme::Amber => &Self::AMBER,
             ColorScheme::Emerald => &Self::EMERALD,
             ColorScheme::Violet => &Self::VIOLET,
-            ColorScheme::Ice => &Self::ICE,
             ColorScheme::Paper => &Self::PAPER,
         }
     }
@@ -582,12 +515,11 @@ pub fn table_fx(scheme: ColorScheme) -> &'static TableFxPalette {
 mod tests {
     use super::*;
 
-    const ALL_SCHEMES: [ColorScheme; 6] = [
+    const ALL_SCHEMES: [ColorScheme; 5] = [
         ColorScheme::Cyan,
         ColorScheme::Amber,
         ColorScheme::Emerald,
         ColorScheme::Violet,
-        ColorScheme::Ice,
         ColorScheme::Paper,
     ];
 

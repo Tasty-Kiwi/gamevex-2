@@ -76,20 +76,7 @@ impl SudokuPalette {
                 btn_disabled_edge: Color::srgb(0.09, 0.06, 0.12),
                 btn_normal_text: Color::srgb(0.82, 0.74, 0.92),
             },
-            gamevex_core::ColorScheme::Ice => Self {
-                board_bg: Color::srgb(0.016, 0.030, 0.055),
-                clue: Color::srgb(0.86, 0.93, 1.0),
-                entry: Color::srgb(0.40, 0.82, 1.0),
-                peer: Color::srgb(0.04, 0.075, 0.135),
-                same: Color::srgb(0.08, 0.15, 0.24),
-                error_bg: Color::srgb(0.30, 0.05, 0.12),
-                error_text: Color::srgb(1.0, 0.44, 0.58),
-                selected_bg: Color::srgb(0.10, 0.19, 0.30),
-                btn_disabled_bg: Color::srgb(0.02, 0.038, 0.065),
-                btn_hover_bg: Color::srgb(0.07, 0.13, 0.22),
-                btn_disabled_edge: Color::srgb(0.06, 0.10, 0.16),
-                btn_normal_text: Color::srgb(0.72, 0.84, 0.94),
-            },
+
             gamevex_core::ColorScheme::Paper => Self {
                 board_bg: Color::srgb(0.93, 0.91, 0.86),
                 clue: Color::srgb(0.10, 0.11, 0.13),
@@ -1127,7 +1114,6 @@ mod tests {
             ColorScheme::Amber,
             ColorScheme::Emerald,
             ColorScheme::Violet,
-            ColorScheme::Ice,
             ColorScheme::Paper,
         ] {
             let pal = super::SudokuPalette::for_scheme(scheme);

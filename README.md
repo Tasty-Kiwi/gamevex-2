@@ -120,7 +120,7 @@ Phone touch uses the same curved-screen picking as the mouse. Tap buttons and ce
 
 ## Saves and recovery
 
-Settings offers six authored color themes: Cyan, Amber, Emerald, Violet, Ice, and Paper. Choose a theme directly from the preview grid; the selected theme is saved with the session. Paper uses light ivory surfaces and dark markings. All themes share the bundled medium-weight interface font and preserve the two card suit color groups. The picker uses three columns on desktop and two on narrow windows, with scrolling for the remaining settings.
+Settings offers five authored color themes: Cyan, Amber, Emerald, Violet, and Paper. Choose a theme directly from the preview grid; the selected theme is saved with the session. Paper uses light ivory surfaces and dark markings. All themes share the bundled medium-weight interface font and preserve the two card suit color groups. The picker uses three columns on desktop and two on narrow windows, with scrolling for the remaining settings.
 
 Native saves are atomically replaced at `~/Library/Application Support/GameVex Rust Demo/session-v1.json`. A temporary file is written and synced before rename; the parent directory is synced too. Set `GAMEVEX_SAVE_DIR` to isolate native test sessions. Browser saves use `gamevex.rust-demo.v1` in localStorage. Neither target reads or migrates the original GameVex saves.
 

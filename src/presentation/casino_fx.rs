@@ -479,7 +479,6 @@ mod tests {
             ColorScheme::Amber,
             ColorScheme::Emerald,
             ColorScheme::Violet,
-            ColorScheme::Ice,
             ColorScheme::Paper,
         ] {
             for kind in [

@@ -18,7 +18,6 @@ pub enum ColorScheme {
     Amber,
     Emerald,
     Violet,
-    Ice,
     Paper,
 }
 
@@ -500,7 +499,6 @@ mod tests {
             ColorScheme::Amber,
             ColorScheme::Emerald,
             ColorScheme::Violet,
-            ColorScheme::Ice,
             ColorScheme::Paper,
         ] {
             let mut save = original.clone();

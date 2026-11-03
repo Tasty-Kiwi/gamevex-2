@@ -116,21 +116,6 @@ pub const VIOLET_THEME: Theme = Theme {
     danger: Color::srgb(1.0, 0.28, 0.44),
 };
 
-pub const ICE_THEME: Theme = Theme {
-    bg: Color::srgb(0.010, 0.018, 0.036),
-    panel: Color::srgb(0.028, 0.050, 0.092),
-    panel_hover: Color::srgb(0.065, 0.115, 0.20),
-    accent: Color::srgb(0.42, 0.82, 1.0),
-    secondary: Color::srgb(0.78, 0.86, 0.95),
-    gold: Color::srgb(0.98, 0.82, 0.38),
-    ink: Color::srgb(0.90, 0.96, 1.0),
-    muted: Color::srgb(0.44, 0.58, 0.72),
-    control_text: Color::srgb(0.68, 0.80, 0.92),
-    edge: Color::srgb(0.12, 0.22, 0.36),
-    success: Color::srgb(0.24, 0.94, 0.80),
-    danger: Color::srgb(1.0, 0.36, 0.48),
-};
-
 pub const PAPER_THEME: Theme = Theme {
     bg: Color::srgb(0.95, 0.93, 0.88),
     panel: Color::srgb(0.89, 0.86, 0.80),
@@ -155,7 +140,6 @@ impl Theme {
             ColorScheme::Amber => &AMBER_THEME,
             ColorScheme::Emerald => &EMERALD_THEME,
             ColorScheme::Violet => &VIOLET_THEME,
-            ColorScheme::Ice => &ICE_THEME,
             ColorScheme::Paper => &PAPER_THEME,
         }
     }
@@ -190,11 +174,6 @@ pub const THEME_REGISTRY: &[ThemeMeta] = &[
         scheme: ColorScheme::Violet,
         name: "Violet",
         description: "Dark plum arcade with electric violet, lavender, and turquoise",
-    },
-    ThemeMeta {
-        scheme: ColorScheme::Ice,
-        name: "Ice",
-        description: "Crisp navy and silver cabinet with pale blue and rose highlights",
     },
     ThemeMeta {
         scheme: ColorScheme::Paper,
@@ -278,11 +257,6 @@ mod tests {
         let vi_acc = violet.accent.to_srgba();
         assert!(vi_acc.blue > 0.9 && vi_acc.red > 0.6);
 
-        // Ice
-        let ice = &ICE_THEME;
-        let ice_acc = ice.accent.to_srgba();
-        assert!(ice_acc.blue > 0.9 && ice_acc.red < 0.5);
-
         // Paper: light background, dark ink and control text for high contrast
         let paper = &PAPER_THEME;
         let paper_bg = paper.bg.to_srgba();
@@ -294,13 +268,12 @@ mod tests {
     }
 
     #[test]
-    fn scheme_name_matches_registry_for_all_six_themes() {
+    fn scheme_name_matches_registry_for_all_five_themes() {
         assert_eq!(scheme_name(ColorScheme::Cyan), "Cyan");
         assert_eq!(scheme_name(ColorScheme::Amber), "Amber");
         assert_eq!(scheme_name(ColorScheme::Emerald), "Emerald");
         assert_eq!(scheme_name(ColorScheme::Violet), "Violet");
-        assert_eq!(scheme_name(ColorScheme::Ice), "Ice");
         assert_eq!(scheme_name(ColorScheme::Paper), "Paper");
-        assert_eq!(THEME_REGISTRY.len(), 6);
+        assert_eq!(THEME_REGISTRY.len(), 5);
     }
 }

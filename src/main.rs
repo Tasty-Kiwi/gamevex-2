@@ -2696,7 +2696,7 @@ mod tests {
             ));
             app.update();
 
-            // Verify all 6 themes have direct selection hits
+            // Verify all 5 themes have direct selection hits
             for meta in theme::THEME_REGISTRY {
                 let hit_exists = app.world().resource::<ViewLayout>().hits.iter().any(
                     |h| matches!(h.action, Action::SelectTheme(scheme) if scheme == meta.scheme),
@@ -2728,7 +2728,7 @@ mod tests {
 
     #[test]
     fn theme_picker_responsive_grid_layout_desktop_and_mobile() {
-        // Desktop: 1280x720 -> 3 columns x 2 rows
+        // Desktop: 1280x720 -> 3 columns, 2 rows
         {
             let mut app = App::new();
             let mut state = test_arcade();
@@ -2754,12 +2754,12 @@ mod tests {
                 .iter()
                 .filter(|h| matches!(h.action, Action::SelectTheme(_)))
                 .collect();
-            assert_eq!(theme_hits.len(), 6);
+            assert_eq!(theme_hits.len(), 5);
 
             let mut y_coords: Vec<f32> = theme_hits.iter().map(|h| h.rect.min.y).collect();
             y_coords.sort_by(|a, b| a.partial_cmp(b).unwrap());
             y_coords.dedup_by(|a, b| (*a - *b).abs() < 1.0);
-            assert_eq!(y_coords.len(), 2, "Desktop must lay out 6 tiles in 2 rows");
+            assert_eq!(y_coords.len(), 2, "Desktop must lay out 5 tiles in 2 rows");
 
             for h in &theme_hits {
                 assert!(
@@ -2771,7 +2771,7 @@ mod tests {
             }
         }
 
-        // Mobile: 360x740 -> 2 columns x 3 rows
+        // Mobile: 360x740 -> 2 columns, 3 rows
         {
             let mut app = App::new();
             let mut state = test_arcade();
@@ -2797,12 +2797,12 @@ mod tests {
                 .iter()
                 .filter(|h| matches!(h.action, Action::SelectTheme(_)))
                 .collect();
-            assert_eq!(theme_hits.len(), 6);
+            assert_eq!(theme_hits.len(), 5);
 
             let mut y_coords: Vec<f32> = theme_hits.iter().map(|h| h.rect.min.y).collect();
             y_coords.sort_by(|a, b| a.partial_cmp(b).unwrap());
             y_coords.dedup_by(|a, b| (*a - *b).abs() < 1.0);
-            assert_eq!(y_coords.len(), 3, "Mobile must lay out 6 tiles in 3 rows");
+            assert_eq!(y_coords.len(), 3, "Mobile must lay out 5 tiles in 3 rows");
 
             for h in &theme_hits {
                 assert!(
@@ -2902,7 +2902,7 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(theme_indices.len(), 6);
+        assert_eq!(theme_indices.len(), 5);
         // Verify contiguous indices matching THEME_REGISTRY
         for (i, &(idx, scheme)) in theme_indices.iter().enumerate() {
             assert_eq!(scheme, theme::THEME_REGISTRY[i].scheme);
@@ -2932,7 +2932,7 @@ mod tests {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .reset_all();
-        app.world_mut().resource_mut::<Arcade>().focus = theme_indices[5].0;
+        app.world_mut().resource_mut::<Arcade>().focus = theme_indices[4].0;
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Space);

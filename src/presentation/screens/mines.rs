@@ -95,24 +95,7 @@ impl MinesPalette {
                 num4: Color::srgb(0.92, 0.88, 0.98),
                 num5: Color::srgb(1.0, 0.30, 0.55),
             },
-            gamevex_core::ColorScheme::Ice => Self {
-                board_bg: Color::srgb(0.015, 0.028, 0.052),
-                cell_unrevealed: Color::srgb(0.045, 0.075, 0.125),
-                cell_hovered: Color::srgb(0.08, 0.13, 0.20),
-                cell_revealed: Color::srgb(0.028, 0.048, 0.080),
-                cell_exploded: Color::srgb(0.30, 0.05, 0.12),
-                cell_unrevealed_line: Color::srgb(0.20, 0.35, 0.52),
-                cell_revealed_outline: Color::srgb(0.06, 0.10, 0.16),
-                mine_normal: Color::srgb(1.0, 0.45, 0.62),
-                mine_exploded: Color::srgb(1.0, 0.25, 0.35),
-                flag: Color::srgb(0.40, 0.85, 1.0),
-                wrong_flag: Color::srgb(1.0, 0.30, 0.45),
-                num1: Color::srgb(0.40, 0.82, 1.0),
-                num2: Color::srgb(0.45, 0.92, 0.80),
-                num3: Color::srgb(1.0, 0.48, 0.62),
-                num4: Color::srgb(0.90, 0.95, 1.0),
-                num5: Color::srgb(1.0, 0.30, 0.45),
-            },
+
             gamevex_core::ColorScheme::Paper => Self {
                 board_bg: Color::srgb(0.93, 0.91, 0.86),
                 cell_unrevealed: Color::srgb(0.90, 0.88, 0.83),
@@ -430,7 +413,6 @@ mod tests {
             ColorScheme::Amber,
             ColorScheme::Emerald,
             ColorScheme::Violet,
-            ColorScheme::Ice,
             ColorScheme::Paper,
         ] {
             let pal = MinesPalette::for_scheme(scheme);

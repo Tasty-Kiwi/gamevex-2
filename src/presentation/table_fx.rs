@@ -215,7 +215,6 @@ mod tests {
             ColorScheme::Amber,
             ColorScheme::Emerald,
             ColorScheme::Violet,
-            ColorScheme::Ice,
             ColorScheme::Paper,
         ] {
             let pal = crate::presentation::game_palette::table_fx(scheme);

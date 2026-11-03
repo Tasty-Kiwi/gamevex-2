@@ -77,20 +77,7 @@ impl BackgammonPalette {
                 shadow: Color::srgb(0.012, 0.006, 0.016),
                 dialog_panel: Color::srgba(0.032, 0.018, 0.044, 0.94),
             },
-            gamevex_core::ColorScheme::Ice => Self {
-                felt: Color::srgb(0.016, 0.032, 0.060),
-                wood: Color::srgb(0.038, 0.065, 0.105),
-                bar: Color::srgb(0.024, 0.045, 0.078),
-                tray: Color::srgb(0.012, 0.024, 0.045),
-                point_a: Color::srgb(0.06, 0.13, 0.22),
-                point_b: Color::srgb(0.14, 0.08, 0.12),
-                white_team: Color::srgb(0.50, 0.88, 1.0),
-                black_team: Color::srgb(1.0, 0.45, 0.62),
-                white_body: Color::srgb(0.06, 0.18, 0.32),
-                black_body: Color::srgb(0.26, 0.06, 0.14),
-                shadow: Color::srgb(0.004, 0.008, 0.016),
-                dialog_panel: Color::srgba(0.014, 0.026, 0.048, 0.94),
-            },
+
             gamevex_core::ColorScheme::Paper => Self {
                 felt: Color::srgb(0.93, 0.91, 0.86),
                 wood: Color::srgb(0.85, 0.82, 0.76),
@@ -891,7 +878,6 @@ mod tests {
             ColorScheme::Amber,
             ColorScheme::Emerald,
             ColorScheme::Violet,
-            ColorScheme::Ice,
             ColorScheme::Paper,
         ] {
             let pal = BackgammonPalette::for_scheme(scheme);
