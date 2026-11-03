@@ -109,7 +109,7 @@ async function start() {
   const { default: initialize } = await import("./pkg/gamevex_app.js");
   canvas.dataset.saveWriter = String(await acquireSaveWriter());
   await initialize();
-  status.textContent = "GameVex Rust Demo · WebGPU";
+  status.textContent = "GameVex · WebGPU";
   canvas.focus({ preventScroll: true });
 }
 

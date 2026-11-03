@@ -48,12 +48,8 @@ pub(crate) fn button(
         f.rect(r.min, Vec2::new(3.0, r.height()), CYAN);
     }
     let font = if r.width() < 150.0 { 13.0 } else { 14.0 };
-    let tx = r.min.x + (r.width() - label.chars().count() as f32 * font * 0.6) * 0.5;
-    f.text(
-        Vec2::new(
-            tx.max(r.min.x + 5.0),
-            r.min.y + (r.height() - font * 1.2) * 0.5,
-        ),
+    f.centered_text(
+        Vec2::new(r.center().x, r.min.y + (r.height() - font * 1.2) * 0.5),
         label,
         font,
         if active || focused {

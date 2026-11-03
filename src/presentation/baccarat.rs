@@ -49,20 +49,16 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         if small { 13.0 } else { 15.0 },
         CYAN,
     );
-    if !short {
+    if !short && game.phase != Phase::Betting {
         f.text(
             Vec2::new(m, info_y + 18.0),
-            if game.phase == Phase::Betting {
-                "Choose one wager."
-            } else {
-                match game.selected {
-                    Some(BetSide::Player) => "BET ON PLAYER",
-                    Some(BetSide::Banker) => "BET ON BANKER",
-                    Some(BetSide::Tie) => "BET ON TIE",
-                    Some(BetSide::PlayerPair) => "BET ON PLAYER PAIR",
-                    Some(BetSide::BankerPair) => "BET ON BANKER PAIR",
-                    None => "PLAYER / BANKER",
-                }
+            match game.selected {
+                Some(BetSide::Player) => "BET ON PLAYER",
+                Some(BetSide::Banker) => "BET ON BANKER",
+                Some(BetSide::Tie) => "BET ON TIE",
+                Some(BetSide::PlayerPair) => "BET ON PLAYER PAIR",
+                Some(BetSide::BankerPair) => "BET ON BANKER PAIR",
+                None => "PLAYER / BANKER",
             },
             11.0,
             MUTED,

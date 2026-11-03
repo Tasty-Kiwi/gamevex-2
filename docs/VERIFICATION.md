@@ -1,4 +1,4 @@
-# GameVex Rust demo verification
+# GameVex verification
 
 ## Backgammon port — 3 November 2026
 
@@ -327,7 +327,7 @@ The updated suite has 151 Rust tests and 31 browser cases. Browser additions exe
 
 ## Solitaire family first pass — 30 October 2026
 
-Klondike Draw 1/3, standard FreeCell, and Spider 1/2/4 suits share a table view with independent saved deals, bounded undo, hints, first-action foreground timers, per-mode unassisted best times, mode/redeal confirmation, and mouse drag or touch selection. Tables pan in both axes and preserve readable 48-pixel minimum card widths. Exposed cards display rank and suit without leaking covered central artwork through the separate text layer. Empty piles identify stock, waste, free cells, and Ace foundations. Save version 6 migrates existing Rust-demo games without replacing them.
+Klondike Draw 1/3, standard FreeCell, and Spider 1/2/4 suits share a table view with independent saved deals, bounded undo, hints, first-action foreground timers, per-mode unassisted best times, mode/redeal confirmation, and mouse drag or touch selection. Tables pan in both axes and preserve readable 48-pixel minimum card widths. Exposed cards display rank and suit without leaking covered central artwork through the separate text layer. Empty piles identify stock, waste, free cells, and Ace foundations. Save version 6 migrates existing saved games without replacing them.
 
 TypeScript oracle fixtures cover stock/waste recycling, foundation return, FreeCell supermove capacity and empty-target exclusion, Spider mixed-suit placement versus suited-run movement, stock-deal ordering, empty-column rejection, and automatic completed-run extraction. The parity check found and corrected reversed Spider stock-row order. Every mode also has a complete save/load round-trip regression; validation accepts both Klondike draw modes and all three Spider suit counts. Each saved history snapshot is validated. A save containing sixteen history snapshots in each of the three new games measured 178,146 bytes, below the 256 KiB limit. Assistance remains set after Undo.
 
@@ -444,7 +444,7 @@ Earlier Sudoku port capture:
 
 ![Card interaction repairs](screenshots/card-interaction-fixes.png)
 
-Earlier captures follow. The first shows chromatic aberration at its default 35%; the next two show the earlier monitor update, followed by the initial demo:
+Earlier captures follow. The first shows chromatic aberration at its default 35%; the next two show the earlier monitor update, followed by the initial build:
 
 ![Chromatic aberration settings](screenshots/chromatic-settings.png)
 

@@ -26,16 +26,14 @@ pub(crate) fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     ];
     l.settings_max_scroll = (labels.len() as f32 * row_h + 30.0 - (bottom - top)).max(0.0);
     s.settings_scroll = s.settings_scroll.clamp(0.0, l.settings_max_scroll);
-    f.text(
-        Vec2::new(m, 154.0),
-        if l.settings_max_scroll > 0.0 {
-            "Scroll or PgUp/PgDn for more settings."
-        } else {
-            "Settings save automatically on this device."
-        },
-        if w < 400.0 { 11.0 } else { 13.0 },
-        MUTED,
-    );
+    if l.settings_max_scroll > 0.0 {
+        f.text(
+            Vec2::new(m, 154.0),
+            "Scroll or PgUp/PgDn for more settings.",
+            if w < 400.0 { 11.0 } else { 13.0 },
+            MUTED,
+        );
+    }
     let label_width = if w < 600.0 { w * 0.43 } else { 230.0 };
     let right = m + label_width;
     let usable = (w - label_width).min(440.0);

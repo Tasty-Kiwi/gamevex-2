@@ -36,6 +36,7 @@ struct TextCommand {
     text: String,
     font_size: f32,
     color: Color,
+    centered: bool,
 }
 
 impl Frame {
@@ -185,7 +186,19 @@ impl Frame {
             text: text.into(),
             font_size: font_size.max(1.0),
             color: palette_color(color, self.palette),
+            centered: false,
         });
+    }
+
+    pub fn centered_text(
+        &mut self,
+        pos: Vec2,
+        text: impl Into<String>,
+        font_size: f32,
+        color: Color,
+    ) {
+        self.text(pos, text, font_size, color);
+        self.text.last_mut().unwrap().centered = true;
     }
 
     fn push_quad(&mut self, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color) {
@@ -461,6 +474,7 @@ fn render_frame(
         &mut Text2d,
         &mut TextFont,
         &mut TextColor,
+        &mut Anchor,
         &mut Transform,
         &mut Visibility,
     )>,
@@ -607,7 +621,9 @@ fn render_frame(
         state.text_entities.push(entity);
     }
 
-    for (index, mut text, mut font, mut color, mut transform, mut visibility) in &mut text_query {
+    for (index, mut text, mut font, mut color, mut anchor, mut transform, mut visibility) in
+        &mut text_query
+    {
         let Some(command) = frame.text.get(index.0) else {
             *visibility = Visibility::Hidden;
             continue;
@@ -621,6 +637,11 @@ fn render_frame(
         if color.0 != command.color {
             color.0 = command.color;
         }
+        *anchor = if command.centered {
+            Anchor::TOP_CENTER
+        } else {
+            Anchor::TOP_LEFT
+        };
         transform.translation = Vec3::new(
             command.pos.x - frame.size.x * 0.5,
             frame.size.y * 0.5 - command.pos.y,

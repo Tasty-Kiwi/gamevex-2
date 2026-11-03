@@ -323,19 +323,16 @@ pub fn paint(
                 .map(|r| [r.min.x, r.min.y, r.width(), r.height()]),
         ));
     }
-    let status = if state.protected_save || state.persistence.starts_with("Playing") {
-        GOLD
-    } else {
-        MUTED
-    };
-    let footer = compact(&state.persistence, ((size.x - 2.0 * margin) / 7.5) as usize);
-    frame.line(
-        Vec2::new(margin, size.y - 33.0),
-        Vec2::new(size.x - margin, size.y - 33.0),
-        1.0,
-        EDGE,
-    );
-    frame.text(Vec2::new(margin, size.y - 25.0), footer, 12.0, status);
+    if state.protected_save || state.persistence.starts_with("Playing") {
+        let footer = compact(&state.persistence, ((size.x - 2.0 * margin) / 7.5) as usize);
+        frame.line(
+            Vec2::new(margin, size.y - 33.0),
+            Vec2::new(size.x - margin, size.y - 33.0),
+            1.0,
+            EDGE,
+        );
+        frame.text(Vec2::new(margin, size.y - 25.0), footer, 12.0, GOLD);
+    }
     if let Some(board) = &layout.board {
         platform::publish_board(Some([
             board.clip.min.x,
@@ -1004,14 +1001,6 @@ fn header(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
         action: Action::Open(Screen::Lobby),
     });
     let width = f.size.x;
-    if width > 720.0 {
-        f.text(
-            Vec2::new(m + 166.0, 32.0),
-            "LOCAL ARCADE / RUST DEMO",
-            12.0,
-            MUTED,
-        );
-    }
     let mut x = width - m;
     if s.screen != Screen::Settings {
         x -= 100.0;

@@ -8,14 +8,6 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         if narrow { 31.0 } else { 42.0 },
         INK,
     );
-    if !narrow {
-        f.text(
-            Vec2::new(m + w - 280.0, 119.0),
-            "Clear the field. Leave no doubt.",
-            14.0,
-            MUTED,
-        );
-    }
     let y = 158.0;
     let difficulty = s.save.minesweeper.game.difficulty;
     for (i, d) in Difficulty::ALL.into_iter().enumerate() {

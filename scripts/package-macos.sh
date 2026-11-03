@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 cd "$WORKSPACE_DIR"
 if [[ "$(uname -s)" != Darwin ]]; then
-  echo "The native demo targets macOS / Metal." >&2
+  echo "The native application targets macOS / Metal." >&2
   exit 1
 fi
 cargo build --locked -p gamevex-app --release
