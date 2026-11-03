@@ -1,14 +1,108 @@
 use super::*;
 use gamevex_core::mahjong::Layout;
 
-const FELT: Color = Color::srgb(0.027, 0.035, 0.055);
-const FACE: Color = Color::srgb(0.086, 0.102, 0.133);
-const NEON_CYAN: Color = Color::srgb(0.0, 1.0, 1.0);
-const NEON_PINK: Color = Color::srgb(1.0, 0.0, 0.60);
-const NEON_GREEN: Color = Color::srgb(0.0, 1.0, 0.60);
-const NEON_GOLD: Color = Color::srgb(1.0, 0.77, 0.0);
+#[derive(Clone, Copy)]
+pub struct MahjongPalette {
+    pub felt: Color,
+    pub face_selectable: Color,
+    pub face_blocked: Color,
+    pub shadow: Color,
+    pub side_right: Color,
+    pub side_bottom: Color,
+    pub rim_selected: Color,
+    pub rim_hinted: Color,
+    pub rim_selectable: Color,
+    pub rim_blocked: Color,
+    pub inner_rim: Color,
+    pub dim_overlay: Color,
+    pub stalk_bg: Color,
+    pub bamboo_center_bg: Color,
+    pub dots: Color,
+    pub bamboo: Color,
+    pub characters: Color,
+    pub winds: Color,
+    pub dragon_red: Color,
+    pub dragon_green: Color,
+    pub dragon_white: Color,
+    pub flowers: Color,
+    pub seasons: Color,
+    pub focused_outline: Color,
+    pub status_tag: Color,
+    pub header_accent: Color,
+    pub header_gold: Color,
+    pub match_banner: Color,
+}
+
+impl MahjongPalette {
+    pub fn for_scheme(scheme: gamevex_core::ColorScheme) -> Self {
+        match scheme {
+            gamevex_core::ColorScheme::Cyan => Self {
+                felt: Color::srgb(0.027, 0.035, 0.055),
+                face_selectable: Color::srgb(0.086, 0.102, 0.133),
+                face_blocked: Color::srgb(0.063, 0.071, 0.090),
+                shadow: Color::srgba(0.0, 0.0, 0.0, 0.62),
+                side_right: Color::srgb(0.09, 0.11, 0.15),
+                side_bottom: Color::srgb(0.10, 0.12, 0.16),
+                rim_selected: Color::srgb(1.0, 0.0, 0.60),
+                rim_hinted: Color::srgb(1.0, 0.77, 0.0),
+                rim_selectable: Color::srgb(0.28, 0.49, 0.56),
+                rim_blocked: Color::srgb(0.31, 0.35, 0.39),
+                inner_rim: Color::srgba(0.72, 0.82, 0.91, 0.20),
+                dim_overlay: Color::srgba(0.02, 0.03, 0.04, 0.28),
+                stalk_bg: Color::srgb(0.035, 0.10, 0.10),
+                bamboo_center_bg: Color::srgb(0.055, 0.071, 0.09),
+                dots: Color::srgb(0.0, 1.0, 1.0),
+                bamboo: Color::srgb(0.0, 1.0, 0.60),
+                characters: Color::srgb(1.0, 0.0, 0.60),
+                winds: Color::srgb(1.0, 0.77, 0.0),
+                dragon_red: Color::srgb(1.0, 0.18, 0.24),
+                dragon_green: Color::srgb(0.0, 1.0, 0.60),
+                dragon_white: Color::srgb(0.85, 0.91, 0.94),
+                flowers: Color::srgb(1.0, 0.0, 0.60),
+                seasons: Color::srgb(0.0, 1.0, 1.0),
+                focused_outline: Color::srgb(1.0, 0.77, 0.0),
+                status_tag: Color::srgb(0.0, 1.0, 1.0),
+                header_accent: Color::srgb(0.0, 1.0, 1.0),
+                header_gold: Color::srgb(1.0, 0.77, 0.0),
+                match_banner: Color::srgb(0.0, 1.0, 1.0),
+            },
+            gamevex_core::ColorScheme::Amber => Self {
+                felt: Color::srgb(0.045, 0.032, 0.018),
+                face_selectable: Color::srgb(0.12, 0.09, 0.06),
+                face_blocked: Color::srgb(0.07, 0.05, 0.035),
+                shadow: Color::srgba(0.0, 0.0, 0.0, 0.65),
+                side_right: Color::srgb(0.13, 0.10, 0.07),
+                side_bottom: Color::srgb(0.15, 0.11, 0.08),
+                rim_selected: Color::srgb(1.0, 0.40, 0.25),
+                rim_hinted: Color::srgb(1.0, 0.88, 0.45),
+                rim_selectable: Color::srgb(0.48, 0.38, 0.24),
+                rim_blocked: Color::srgb(0.26, 0.20, 0.14),
+                inner_rim: Color::srgba(0.92, 0.84, 0.70, 0.18),
+                dim_overlay: Color::srgba(0.04, 0.03, 0.02, 0.32),
+                stalk_bg: Color::srgb(0.08, 0.06, 0.035),
+                bamboo_center_bg: Color::srgb(0.09, 0.07, 0.045),
+                dots: Color::srgb(1.0, 0.76, 0.20),
+                bamboo: Color::srgb(0.28, 0.88, 0.58),
+                characters: Color::srgb(1.0, 0.38, 0.28),
+                winds: Color::srgb(0.96, 0.92, 0.82),
+                dragon_red: Color::srgb(1.0, 0.30, 0.24),
+                dragon_green: Color::srgb(0.28, 0.88, 0.58),
+                dragon_white: Color::srgb(0.96, 0.92, 0.82),
+                flowers: Color::srgb(1.0, 0.50, 0.35),
+                seasons: Color::srgb(1.0, 0.76, 0.20),
+                focused_outline: Color::srgb(1.0, 0.88, 0.45),
+                status_tag: Color::srgb(1.0, 0.76, 0.20),
+                header_accent: Color::srgb(1.0, 0.76, 0.20),
+                header_gold: Color::srgb(1.0, 0.78, 0.28),
+                match_banner: Color::srgb(1.0, 0.76, 0.20),
+            },
+        }
+    }
+}
 
 pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let palette = MahjongPalette::for_scheme(f.palette);
+    let theme = f.theme();
     let game = &s.save.mahjong;
     let small = w < 620.0;
     let top = 96.0;
@@ -16,13 +110,13 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
         Vec2::new(m, top),
         "MAHJONG SOLITAIRE",
         if small { 24.0 } else { 31.0 },
-        INK,
+        theme.ink,
     );
     f.text(
         Vec2::new(m, top + 31.0),
         format!("{}  /  {} tiles", game.layout.label(), game.remaining()),
         12.0,
-        NEON_CYAN,
+        palette.header_accent,
     );
     f.text(
         Vec2::new(m + if small { 190.0 } else { 240.0 }, top + 31.0),
@@ -32,7 +126,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
             format_time(game.elapsed_ms)
         },
         12.0,
-        NEON_GOLD,
+        palette.header_gold,
     );
     let status = if game.won() {
         "SOLVED"
@@ -46,11 +140,11 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
         status,
         10.0,
         if game.won() {
-            GREEN
+            theme.success
         } else if game.stuck() {
-            GOLD
+            theme.gold
         } else {
-            MUTED
+            theme.muted
         },
     );
     let layout_index = Layout::ALL
@@ -65,14 +159,14 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
             Vec2::new(m + if small { 150.0 } else { 210.0 }, top + 51.0),
             format!("BEST {best}"),
             10.0,
-            MUTED,
+            theme.muted,
         );
     } else {
         f.text(
             Vec2::new(m + if small { 150.0 } else { 210.0 }, top + 51.0),
             "ZEN / AUTO-SHUFFLE",
             10.0,
-            NEON_CYAN,
+            palette.status_tag,
         );
     }
 
@@ -99,8 +193,8 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
         if enabled {
             button(f, s, l, r, labels[i], actions[i], false);
         } else {
-            f.rect(r.min, r.size(), PANEL);
-            f.outline(r.min, r.size(), 1.0, EDGE);
+            f.rect(r.min, r.size(), theme.panel);
+            f.outline(r.min, r.size(), 1.0, theme.edge);
             let fs = if r.width() < 150.0 { 13.0 } else { 14.0 };
             f.text(
                 r.min
@@ -110,7 +204,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
                     ),
                 labels[i],
                 fs,
-                MUTED,
+                theme.muted,
             );
         }
     }
@@ -247,7 +341,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
     let pan = s.mahjong_ui.pan.clamp(Vec2::ZERO, l.mahjong_max_pan);
     s.mahjong_ui.pan = pan;
     let origin = clip.min - pan;
-    f.rect(clip.min, clip.size(), FELT);
+    f.rect(clip.min, clip.size(), palette.felt);
 
     let mut order: Vec<usize> = (0..game.tiles.len())
         .filter(|&i| !game.tiles[i].removed)
@@ -277,7 +371,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
                 r.size() - Vec2::splat(4.0),
                 5.0,
                 2.0,
-                NEON_PINK,
+                palette.rim_selected,
                 clip,
             );
         }
@@ -288,7 +382,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
                 r.size() - Vec2::splat(8.0),
                 4.0,
                 2.0,
-                NEON_GOLD,
+                palette.rim_hinted,
                 clip,
             );
         }
@@ -316,7 +410,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
     // Text is a separate layer in Frame. Suppress it only when a later tile face
     // or its protruding bevel actually covers the text's drawn bounds.
     for (at, &(_, face, r, focused)) in drawn.iter().enumerate() {
-        let label = face_label(r, face, cell_w);
+        let label = face_label(r, face, cell_w, &palette);
         let covered = drawn[at + 1..].iter().any(|(_, _, later, _)| {
             let bevel = cell_w * (6.0 / 60.0);
             label_overlaps_tile(label.bounds, *later, bevel)
@@ -325,7 +419,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
             draw_face_labels(f, label, clip);
         }
         if focused {
-            rounded_outline_clipped(f, r.min, r.size(), 6.0, 2.0, NEON_GOLD, clip);
+            rounded_outline_clipped(f, r.min, r.size(), 6.0, 2.0, palette.focused_outline, clip);
         }
     }
     super::table_fx::draw(
@@ -349,8 +443,8 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
             (clip.width() - 20.0).min(380.0),
             104.0,
         );
-        f.rect(panel.min, panel.size(), PANEL);
-        f.outline(panel.min, panel.size(), 2.0, GREEN);
+        f.rect(panel.min, panel.size(), theme.panel);
+        f.outline(panel.min, panel.size(), 2.0, theme.success);
         if !s.save.settings.reduced_motion
             && let Some(age) = s.mahjong_ui.completion_age.filter(|a| *a < 1.2)
         {
@@ -359,14 +453,14 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
                 panel.min - Vec2::splat(spread),
                 panel.size() + Vec2::splat(spread * 2.0),
                 1.0,
-                GREEN.with_alpha(1.0 - age / 1.2),
+                theme.success.with_alpha(1.0 - age / 1.2),
             );
         }
         f.text(
             panel.min + Vec2::new(14.0, 14.0),
             "BOARD CLEARED",
             24.0,
-            GREEN,
+            theme.success,
         );
         f.text(
             panel.min + Vec2::new(14.0, 50.0),
@@ -376,7 +470,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
                 format!("{} / {}", game.layout.label(), format_time(game.elapsed_ms))
             },
             14.0,
-            INK,
+            theme.ink,
         );
         f.text(
             panel.min + Vec2::new(14.0, 77.0),
@@ -386,7 +480,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
                 "UNASSISTED RUN"
             },
             11.0,
-            GOLD,
+            theme.gold,
         );
     }
     if game.zen {
@@ -394,25 +488,30 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
             Vec2::new(m, footer - 43.0),
             "ZEN / AUTO-SHUFFLE",
             10.0,
-            NEON_CYAN,
+            palette.match_banner,
         );
     } else if game.assisted {
         f.text(
             Vec2::new(m, footer - 43.0),
             "ASSISTED / NO BEST",
             10.0,
-            GOLD,
+            theme.gold,
         );
     }
     if !game.zen && game.shuffles > 0 {
-        f.text(Vec2::new(m + 150.0, footer - 43.0), "SHUFFLED", 10.0, MUTED);
+        f.text(
+            Vec2::new(m + 150.0, footer - 43.0),
+            "SHUFFLED",
+            10.0,
+            theme.muted,
+        );
     }
     if !s.mahjong_ui.message.is_empty() {
         f.text(
             Vec2::new(m, footer - 20.0),
             compact(&s.mahjong_ui.message, (w / 6.6) as usize),
             11.0,
-            INK,
+            theme.ink,
         );
     } else {
         f.text(
@@ -423,7 +522,7 @@ pub(super) fn mahjong(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32,
                 "Match free ends. H hint / U undo / S shuffle / R restart / Arrows pan"
             },
             if small { 9.0 } else { 11.0 },
-            MUTED,
+            theme.muted,
         );
     }
 }
@@ -582,36 +681,37 @@ fn draw_tile(
     selected: bool,
     hinted: bool,
 ) {
+    let palette = MahjongPalette::for_scheme(f.palette);
     let scale = cell / 60.0;
     let bevel = 6.0 * scale;
     let rim = if selected {
-        NEON_PINK
+        palette.rim_selected
     } else if hinted {
-        NEON_GOLD
+        palette.rim_hinted
     } else if selectable {
-        Color::srgb(0.28, 0.49, 0.56)
+        palette.rim_selectable
     } else {
-        Color::srgb(0.31, 0.35, 0.39)
+        palette.rim_blocked
     };
     clipped_rect(
         f,
         r.min + Vec2::new(3.0 * scale, 4.0 * scale),
         r.size() + Vec2::splat(bevel),
-        Color::srgba(0.0, 0.0, 0.0, 0.62),
+        palette.shadow,
         clip,
     );
     clipped_rect(
         f,
         r.min + Vec2::new(cell, 4.0 * scale),
         Vec2::new(bevel, cell - 2.0 * scale),
-        Color::srgb(0.09, 0.11, 0.15),
+        palette.side_right,
         clip,
     );
     clipped_rect(
         f,
         r.min + Vec2::new(4.0 * scale, cell - 2.0 * scale),
         Vec2::new(cell - 4.0 * scale, bevel + 2.0 * scale),
-        Color::srgb(0.10, 0.12, 0.16),
+        palette.side_bottom,
         clip,
     );
     rounded_fill_clipped(
@@ -620,9 +720,9 @@ fn draw_tile(
         r.size(),
         7.0 * scale,
         if selectable {
-            FACE
+            palette.face_selectable
         } else {
-            Color::srgb(0.063, 0.071, 0.090)
+            palette.face_blocked
         },
         clip,
     );
@@ -633,7 +733,7 @@ fn draw_tile(
         r.size() - Vec2::splat(8.0 * scale),
         4.0 * scale,
         0.8 * scale,
-        Color::srgba(0.72, 0.82, 0.91, 0.20),
+        palette.inner_rim,
         clip,
     );
     if !selectable {
@@ -641,13 +741,14 @@ fn draw_tile(
             f,
             r.min,
             Vec2::new(cell, 2.0 * scale),
-            Color::srgba(0.02, 0.03, 0.04, 0.28),
+            palette.dim_overlay,
             clip,
         );
     }
 }
 
 fn draw_face_art(f: &mut Frame, r: Rect, clip: Rect, face: u8, cell: f32, selectable: bool) {
+    let palette = MahjongPalette::for_scheme(f.palette);
     let family = if face < 9 {
         0
     } else if face < 18 {
@@ -671,18 +772,18 @@ fn draw_face_art(f: &mut Frame, r: Rect, clip: Rect, face: u8, cell: f32, select
         _ => face - 37,
     };
     let color = match family {
-        0 => NEON_CYAN,
-        1 => NEON_GREEN,
-        2 => NEON_PINK,
-        3 => NEON_GOLD,
+        0 => palette.dots,
+        1 => palette.bamboo,
+        2 => palette.characters,
+        3 => palette.winds,
         4 => match rank {
-            1 => Color::srgb(1.0, 0.18, 0.24),
-            2 => NEON_GREEN,
-            _ => Color::srgb(0.85, 0.91, 0.94),
+            1 => palette.dragon_red,
+            2 => palette.dragon_green,
+            _ => palette.dragon_white,
         },
-        5 => NEON_PINK,
-        6 => NEON_CYAN,
-        _ => INK,
+        5 => palette.flowers,
+        6 => palette.seasons,
+        _ => f.theme().ink,
     };
     let alpha = if selectable { 1.0 } else { 0.52 };
     let color = color.with_alpha(alpha);
@@ -702,13 +803,7 @@ fn draw_face_art(f: &mut Frame, r: Rect, clip: Rect, face: u8, cell: f32, select
                     cell * 0.11,
                     cell * 0.5,
                 );
-                clipped_rect(
-                    f,
-                    stalk.min,
-                    stalk.size(),
-                    Color::srgb(0.035, 0.10, 0.10),
-                    clip,
-                );
+                clipped_rect(f, stalk.min, stalk.size(), palette.stalk_bg, clip);
                 rounded_outline_clipped(f, stalk.min, stalk.size(), 2.0 * unit, sw, color, clip);
                 for dy in [-0.16, 0.0, 0.16] {
                     clipped_line(
@@ -725,7 +820,7 @@ fn draw_face_art(f: &mut Frame, r: Rect, clip: Rect, face: u8, cell: f32, select
                 f,
                 center - Vec2::new(cell * 0.11, cell * 0.16),
                 Vec2::new(cell * 0.22, cell * 0.32),
-                Color::srgb(0.055, 0.071, 0.09),
+                palette.bamboo_center_bg,
                 clip,
             );
         }
@@ -993,7 +1088,7 @@ struct FaceLabel {
     bounds: Rect,
 }
 
-fn face_label(r: Rect, face: u8, cell: f32) -> FaceLabel {
+fn face_label(r: Rect, face: u8, cell: f32, palette: &MahjongPalette) -> FaceLabel {
     let family = if face < 9 {
         0
     } else if face < 18 {
@@ -1017,17 +1112,17 @@ fn face_label(r: Rect, face: u8, cell: f32) -> FaceLabel {
         _ => face - 37,
     };
     let color = match family {
-        0 => NEON_CYAN,
-        1 => NEON_GREEN,
-        2 => NEON_PINK,
-        3 => NEON_GOLD,
+        0 => palette.dots,
+        1 => palette.bamboo,
+        2 => palette.characters,
+        3 => palette.winds,
         4 => match rank {
-            1 => Color::srgb(1.0, 0.18, 0.24),
-            2 => NEON_GREEN,
-            _ => Color::srgb(0.85, 0.91, 0.94),
+            1 => palette.dragon_red,
+            2 => palette.dragon_green,
+            _ => palette.dragon_white,
         },
-        5 => NEON_PINK,
-        _ => NEON_CYAN,
+        5 => palette.flowers,
+        _ => palette.seasons,
     };
     let label = match family {
         0..=2 => format!("{rank}"),
@@ -1080,16 +1175,18 @@ mod tests {
 
     #[test]
     fn center_wind_label_survives_unrelated_corner_occlusion() {
+        let palette = MahjongPalette::for_scheme(gamevex_core::ColorScheme::Cyan);
         let face = rect(0.0, 0.0, 60.0, 60.0);
-        let label = face_label(face, 27, 60.0);
+        let label = face_label(face, 27, 60.0, &palette);
         let corner_tile = rect(0.0, 0.0, 15.0, 15.0);
         assert!(!label_overlaps_tile(label.bounds, corner_tile, 6.0));
     }
 
     #[test]
     fn label_is_suppressed_when_later_tile_covers_its_text_bounds() {
+        let palette = MahjongPalette::for_scheme(gamevex_core::ColorScheme::Cyan);
         let face = rect(0.0, 0.0, 60.0, 60.0);
-        let label = face_label(face, 27, 60.0);
+        let label = face_label(face, 27, 60.0, &palette);
         let covering_tile = rect(24.0, 18.0, 20.0, 28.0);
         assert!(label_overlaps_tile(label.bounds, covering_tile, 6.0));
     }

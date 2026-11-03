@@ -31,13 +31,20 @@ impl From<crate::casino_feedback::RoundKind> for ResultKind {
 }
 
 /// Main tint for an outcome and its associated emphasis effects.
-pub fn kind_color(kind: ResultKind) -> Color {
-    match kind {
-        ResultKind::Win => Color::srgb(0.28, 1.0, 0.62),
-        ResultKind::Natural | ResultKind::BigWin => Color::srgb(1.0, 0.79, 0.25),
-        ResultKind::Push => Color::srgb(0.18, 0.86, 1.0),
-        ResultKind::Loss => Color::srgb(1.0, 0.31, 0.38),
-        ResultKind::GameOver => Color::srgb(0.72, 0.16, 0.25),
+pub fn kind_color(kind: ResultKind, palette: gamevex_core::ColorScheme) -> Color {
+    match (palette, kind) {
+        (gamevex_core::ColorScheme::Amber, ResultKind::Win) => Color::srgb(0.22, 0.82, 0.52),
+        (gamevex_core::ColorScheme::Amber, ResultKind::Natural | ResultKind::BigWin) => {
+            Color::srgb(1.0, 0.80, 0.26)
+        }
+        (gamevex_core::ColorScheme::Amber, ResultKind::Push) => Color::srgb(0.96, 0.78, 0.40),
+        (gamevex_core::ColorScheme::Amber, ResultKind::Loss) => Color::srgb(0.94, 0.32, 0.22),
+        (gamevex_core::ColorScheme::Amber, ResultKind::GameOver) => Color::srgb(0.76, 0.18, 0.20),
+        (_, ResultKind::Win) => Color::srgb(0.28, 1.0, 0.62),
+        (_, ResultKind::Natural | ResultKind::BigWin) => Color::srgb(1.0, 0.79, 0.25),
+        (_, ResultKind::Push) => Color::srgb(0.18, 0.86, 1.0),
+        (_, ResultKind::Loss) => Color::srgb(1.0, 0.31, 0.38),
+        (_, ResultKind::GameOver) => Color::srgb(0.72, 0.16, 0.25),
     }
 }
 
@@ -53,15 +60,22 @@ pub fn banner(
     reduced: bool,
 ) {
     let Some(r) = clipped_rect(f, r) else { return };
-    let tint = kind_color(kind);
+    let tint = kind_color(kind, f.palette);
     let active = !reduced && age.is_some_and(|t| t.is_finite() && (0.0..2.0).contains(&t));
     let t = age.filter(|t| t.is_finite()).unwrap_or(2.0).clamp(0.0, 2.0);
 
     // A restrained inset panel keeps the outcome readable over cards and table art.
-    let bg = match kind {
-        ResultKind::GameOver => Color::srgba(0.12, 0.025, 0.045, 0.96),
-        ResultKind::Loss => Color::srgba(0.10, 0.025, 0.04, 0.94),
-        _ => Color::srgba(0.025, 0.07, 0.075, 0.94),
+    let bg = match (f.palette, kind) {
+        (gamevex_core::ColorScheme::Amber, ResultKind::GameOver) => {
+            Color::srgba(0.15, 0.035, 0.04, 0.96)
+        }
+        (gamevex_core::ColorScheme::Amber, ResultKind::Loss) => {
+            Color::srgba(0.13, 0.035, 0.03, 0.94)
+        }
+        (gamevex_core::ColorScheme::Amber, _) => Color::srgba(0.065, 0.05, 0.035, 0.94),
+        (_, ResultKind::GameOver) => Color::srgba(0.12, 0.025, 0.045, 0.96),
+        (_, ResultKind::Loss) => Color::srgba(0.10, 0.025, 0.04, 0.94),
+        (_, _) => Color::srgba(0.025, 0.07, 0.075, 0.94),
     };
     f.rect(r.min, r.size(), bg);
     f.rect(r.min, Vec2::new(r.width(), 2.0_f32.min(r.height())), tint);
@@ -93,13 +107,19 @@ pub fn banner(
         badge_min + Vec2::new(badge_w, (r.height() - 14.0).max(1.0)),
     );
     if badge_r.max.x < r.max.x - 5.0 {
-        f.rect(
-            badge_r.min,
-            badge_r.size(),
-            Color::srgba(0.02, 0.035, 0.045, 0.92),
-        );
+        let badge_bg = if f.palette == gamevex_core::ColorScheme::Amber {
+            Color::srgba(0.05, 0.038, 0.025, 0.92)
+        } else {
+            Color::srgba(0.02, 0.035, 0.045, 0.92)
+        };
+        f.rect(badge_r.min, badge_r.size(), badge_bg);
         f.outline(badge_r.min, badge_r.size(), 1.2, tint);
         let glyph_size = (badge_r.height() * 0.40).clamp(10.0, 16.0);
+        let badge_color = if f.palette == gamevex_core::ColorScheme::Amber {
+            Color::srgb(0.96, 0.92, 0.84)
+        } else {
+            Color::srgb(0.96, 0.99, 1.0)
+        };
         f.text(
             Vec2::new(
                 badge_r.min.x + (badge_r.width() - badge.len() as f32 * glyph_size * 0.61) * 0.5,
@@ -107,7 +127,7 @@ pub fn banner(
             ),
             badge,
             glyph_size,
-            Color::srgb(0.96, 0.99, 1.0),
+            badge_color,
         );
     }
 
@@ -129,11 +149,16 @@ pub fn banner(
     } else {
         r.min.y + 9.0
     };
+    let title_color = if f.palette == gamevex_core::ColorScheme::Amber {
+        Color::srgb(0.98, 0.95, 0.90)
+    } else {
+        Color::srgb(0.98, 1.0, 1.0)
+    };
     f.text(
         Vec2::new(text_left, y_title),
         title,
         title_size,
-        Color::srgb(0.98, 1.0, 1.0),
+        title_color,
     );
     if !detail.is_empty() && r.height() >= 38.0 {
         let detail_y = if compact {
@@ -141,11 +166,16 @@ pub fn banner(
         } else {
             r.min.y + 35.0
         };
+        let detail_color = if f.palette == gamevex_core::ColorScheme::Amber {
+            Color::srgb(0.88, 0.82, 0.70)
+        } else {
+            Color::srgb(0.81, 0.91, 0.94)
+        };
         f.text(
             Vec2::new(text_left, detail_y.min(r.max.y - detail_size - 4.0)),
             detail,
             detail_size,
-            Color::srgb(0.81, 0.91, 0.94),
+            detail_color,
         );
     }
 }
@@ -153,7 +183,7 @@ pub fn banner(
 /// Add a small outline and corner marks around a hand, lane, or result area.
 pub fn highlight(f: &mut Frame, r: Rect, kind: ResultKind, age: Option<f32>, reduced: bool) {
     let Some(r) = clipped_rect(f, r) else { return };
-    let tint = kind_color(kind);
+    let tint = kind_color(kind, f.palette);
     let pulse = if reduced {
         0.0
     } else {
@@ -211,11 +241,12 @@ pub fn action(f: &mut Frame, center: Vec2, label: &str, age: f32, reduced: bool,
         return;
     }
     let tint = with_alpha(color, alpha);
-    f.rect(
-        pos,
-        Vec2::new(width, height),
-        Color::srgba(0.015, 0.035, 0.045, 0.94 * alpha),
-    );
+    let chip_bg = if f.palette == gamevex_core::ColorScheme::Amber {
+        Color::srgba(0.05, 0.038, 0.025, 0.94 * alpha)
+    } else {
+        Color::srgba(0.015, 0.035, 0.045, 0.94 * alpha)
+    };
+    f.rect(pos, Vec2::new(width, height), chip_bg);
     f.outline(pos, Vec2::new(width, height), 1.4, tint);
     if !reduced {
         let pulse = (1.0 - progress).max(0.0) * 1.8;
@@ -233,11 +264,16 @@ pub fn action(f: &mut Frame, center: Vec2, label: &str, age: f32, reduced: bool,
     f.line(c + Vec2::new(d, 0.0), c + Vec2::new(0.0, d), 1.4, tint);
     f.line(c + Vec2::new(0.0, d), c + Vec2::new(-d, 0.0), 1.4, tint);
     f.line(c + Vec2::new(-d, 0.0), c + Vec2::new(0.0, -d), 1.4, tint);
+    let chip_text_color = if f.palette == gamevex_core::ColorScheme::Amber {
+        Color::srgb(0.96, 0.92, 0.84)
+    } else {
+        Color::srgb(0.96, 0.99, 1.0)
+    };
     f.text(
         Vec2::new(pos.x + 22.0, pos.y + 6.0),
         label,
         12.0,
-        Color::srgb(0.96, 0.99, 1.0),
+        chip_text_color,
     );
 }
 
@@ -245,9 +281,17 @@ fn winning_fx(f: &mut Frame, r: Rect, t: f32, premium: bool) {
     let phase = (t / 2.0).clamp(0.0, 1.0);
     let center = r.center();
     let base = if premium {
-        Color::srgb(1.0, 0.78, 0.22)
+        if f.palette == gamevex_core::ColorScheme::Amber {
+            Color::srgb(1.0, 0.80, 0.26)
+        } else {
+            Color::srgb(1.0, 0.78, 0.22)
+        }
     } else {
-        Color::srgb(0.43, 1.0, 0.64)
+        if f.palette == gamevex_core::ColorScheme::Amber {
+            Color::srgb(0.22, 0.82, 0.52)
+        } else {
+            Color::srgb(0.43, 1.0, 0.64)
+        }
     };
     let rings = if premium { 3 } else { 2 };
     for i in 0..rings {
@@ -273,7 +317,11 @@ fn winning_fx(f: &mut Frame, r: Rect, t: f32, premium: bool) {
             .clamp(r.min.x + 3.0, (r.max.x - 9.0).max(r.min.x + 3.0));
         let y = (y0 - speed * phase).clamp(r.min.y + 3.0, r.max.y - 3.0);
         let particle_color = if premium && i % 3 == 0 {
-            Color::srgb(1.0, 0.95, 0.62)
+            if f.palette == gamevex_core::ColorScheme::Amber {
+                Color::srgb(1.0, 0.90, 0.70)
+            } else {
+                Color::srgb(1.0, 0.95, 0.62)
+            }
         } else {
             base
         };
@@ -309,7 +357,7 @@ fn push_fx(f: &mut Frame, r: Rect, t: f32) {
     let alpha = 0.32 * (1.0 - (t / 2.0).clamp(0.0, 1.0));
     let center = r.center();
     let size = 9.0 + t * 5.0;
-    let c = kind_color(ResultKind::Push);
+    let c = kind_color(ResultKind::Push, f.palette);
     f.line(
         center + Vec2::new(0.0, -size),
         center + Vec2::new(size, 0.0),
@@ -344,7 +392,7 @@ fn push_fx(f: &mut Frame, r: Rect, t: f32) {
 }
 
 fn loss_fx(f: &mut Frame, r: Rect, t: f32) {
-    let color = kind_color(ResultKind::Loss);
+    let color = kind_color(ResultKind::Loss, f.palette);
     let pulse = (t * 5.0).sin().abs();
     f.rect(
         r.min,

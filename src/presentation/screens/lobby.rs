@@ -34,12 +34,12 @@ impl LobbyCategory {
         }
     }
 
-    fn accent(self) -> Color {
+    pub(crate) fn accent_for(self, theme: &crate::theme::Theme) -> Color {
         match self {
-            Self::Puzzle => CYAN,
-            Self::HighLimit => GOLD,
-            Self::Solitaire => MAGENTA,
-            Self::CardAndBoard => GREEN,
+            Self::Puzzle => theme.accent,
+            Self::HighLimit => theme.gold,
+            Self::Solitaire => theme.secondary,
+            Self::CardAndBoard => theme.success,
         }
     }
 
@@ -62,103 +62,124 @@ impl LobbyCategory {
     }
 }
 
-const ENTRIES: [(&str, &str, &str, Color, Screen); 14] = [
+#[derive(Clone, Copy)]
+enum EntryRole {
+    Accent,
+    Secondary,
+    Gold,
+    Success,
+    Danger,
+}
+
+impl EntryRole {
+    fn color(self, theme: &crate::theme::Theme) -> Color {
+        match self {
+            Self::Accent => theme.accent,
+            Self::Secondary => theme.secondary,
+            Self::Gold => theme.gold,
+            Self::Success => theme.success,
+            Self::Danger => theme.danger,
+        }
+    }
+}
+
+const ENTRIES: [(&str, &str, &str, EntryRole, Screen); 14] = [
     (
         "MINESWEEPER",
         "Read the field. Trust the numbers.",
         "PLAY",
-        CYAN,
+        EntryRole::Accent,
         Screen::Mines,
     ),
     (
         "CARD LAB",
         "Deal, flip, drag. An interaction sandbox.",
         "OPEN",
-        MAGENTA,
+        EntryRole::Secondary,
         Screen::Cards,
     ),
     (
         "BLACKJACK",
         "Five hands. One shoe. Your call.",
         "DEAL",
-        GOLD,
+        EntryRole::Gold,
         Screen::Blackjack,
     ),
     (
         "BACCARAT",
         "Player. Banker. Closest to nine.",
         "DEAL",
-        GREEN,
+        EntryRole::Success,
         Screen::Baccarat,
     ),
     (
         "SUDOKU",
         "Every row. Every column. Every box.",
         "PLAY",
-        CYAN,
+        EntryRole::Accent,
         Screen::Sudoku,
     ),
     (
         "MAHJONG",
         "Match free tiles. Clear the stack.",
         "PLAY",
-        GREEN,
+        EntryRole::Success,
         Screen::Mahjong,
     ),
     (
         "SOLITAIRE",
         "Build down in alternating colors.",
         "PLAY",
-        GOLD,
+        EntryRole::Gold,
         Screen::Solitaire,
     ),
     (
         "FREECELL",
         "Four free cells. Plan every move.",
         "PLAY",
-        CYAN,
+        EntryRole::Accent,
         Screen::FreeCell,
     ),
     (
         "SPIDER",
         "Build suited sequences. Clear the tableau.",
         "PLAY",
-        MAGENTA,
+        EntryRole::Secondary,
         Screen::Spider,
     ),
     (
         "HEARTS",
         "Pass the danger. Keep your score low.",
         "PLAY",
-        RED,
+        EntryRole::Danger,
         Screen::Hearts,
     ),
     (
         "CRIBBAGE",
         "Make fifteen. Race to 121.",
         "PLAY",
-        CYAN,
+        EntryRole::Accent,
         Screen::Cribbage,
     ),
     (
         "TEXAS HOLD'EM",
         "Read the table. Make your move.",
         "DEAL",
-        GOLD,
+        EntryRole::Gold,
         Screen::Holdem,
     ),
     (
         "ROULETTE",
         "One wheel. Pick your pocket.",
         "SPIN",
-        CYAN,
+        EntryRole::Accent,
         Screen::Roulette,
     ),
     (
         "BACKGAMMON",
         "Roll the dice. Race your checkers home.",
         "PLAY",
-        MAGENTA,
+        EntryRole::Secondary,
         Screen::Backgammon,
     ),
 ];
@@ -168,6 +189,7 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         category_grid(f, s, l, m, w);
         return;
     }
+    let t = f.theme();
     let category = s.lobby_category.unwrap();
     let entries: Vec<_> = ENTRIES
         .into_iter()
@@ -178,7 +200,7 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         Vec2::new(m, 105.0),
         category.label(),
         if small { 27.0 } else { 44.0 },
-        category.accent(),
+        category.accent_for(t),
     );
     super::button(
         f,
@@ -198,7 +220,7 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         Vec2::new(m, 164.0),
         format!("{} games", entries.len()),
         13.0,
-        MUTED,
+        t.muted,
     );
     let clip = rect(m, 210.0, w, (f.size.y - 250.0).max(1.0));
     const ROW_H: f32 = 76.0;
@@ -219,7 +241,7 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
     }
     s.lobby_scroll = s.lobby_scroll.clamp(0.0, l.lobby_max_scroll);
     let scroll = s.lobby_scroll;
-    for (i, (title, desc, verb, color, screen)) in entries.into_iter().enumerate() {
+    for (i, (title, desc, verb, role, screen)) in entries.into_iter().enumerate() {
         let row = rect(m, clip.min.y + i as f32 * (ROW_H + GAP) - scroll, w, ROW_H);
         cabinet(
             f,
@@ -230,7 +252,7 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             title,
             desc,
             verb,
-            color,
+            role.color(t),
             Action::Open(screen),
         );
     }
@@ -241,7 +263,7 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             3.0,
             (clip.height() - 4.0).max(1.0),
         );
-        f.rect(track.min, track.size(), EDGE);
+        f.rect(track.min, track.size(), t.edge);
         let thumb_h = (track.height() * clip.height() / content_h)
             .max(22.0)
             .min(track.height());
@@ -249,18 +271,19 @@ pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         f.rect(
             Vec2::new(track.min.x, thumb_y),
             Vec2::new(track.width(), thumb_h),
-            CYAN,
+            t.accent,
         );
     }
 }
 
 fn category_grid(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let t = f.theme();
     let small = w < 600.0;
     f.text(
         Vec2::new(m, 104.0),
         "Choose a category",
         if small { 27.0 } else { 48.0 },
-        INK,
+        t.ink,
     );
     let top = if small { 163.0 } else { 196.0 };
     let gap = if small { 10.0 } else { 16.0 };
@@ -273,24 +296,17 @@ fn category_grid(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) 
             width,
             height,
         );
-        let accent = category.accent();
+        let accent = category.accent_for(t);
         let focused = s.keyboard && s.focus == l.hits.len();
         let hot = focused || s.cursor.is_some_and(|p| tile.contains(p));
-        f.rounded_rect(
-            tile,
-            8.0,
-            if hot {
-                Color::srgb(0.04, 0.1, 0.14)
-            } else {
-                PANEL
-            },
-        );
+        let hover_bg = t.panel_hover;
+        f.rounded_rect(tile, 8.0, if hot { hover_bg } else { t.panel });
         f.rounded_outline(
             tile.min,
             tile.size(),
             8.0,
             if hot { 2.0 } else { 1.0 },
-            if hot { accent } else { EDGE },
+            if hot { accent } else { t.edge },
         );
         let inset = if small { 13.0 } else { 24.0 };
         f.rect(
@@ -312,7 +328,7 @@ fn category_grid(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) 
             tile.min + Vec2::new(inset, if small { 29.0 } else { 43.0 }),
             category.label(),
             if small { 17.0 } else { 31.0 },
-            INK,
+            t.ink,
         );
         let count = ENTRIES
             .iter()
@@ -332,7 +348,7 @@ fn category_grid(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32, w: f32) 
 }
 
 fn category_mark(f: &mut Frame, category: LobbyCategory, p: Vec2, r: f32) {
-    let color = category.accent();
+    let color = category.accent_for(f.theme());
     match category {
         LobbyCategory::Puzzle => {
             for (x, y) in [(-1.0, -1.0), (0.15, -1.0), (-1.0, 0.15)] {
@@ -350,7 +366,7 @@ fn category_mark(f: &mut Frame, category: LobbyCategory, p: Vec2, r: f32) {
         LobbyCategory::Solitaire => {
             for x in [-1.0, -0.38, 0.24] {
                 let card = rect(p.x + x * r, p.y - r, r * 0.82, r * 1.85);
-                f.rect(card.min, card.size(), PANEL);
+                f.rect(card.min, card.size(), f.theme().panel);
                 f.rounded_outline(card.min, card.size(), 2.0, 1.4, color);
             }
         }
@@ -388,21 +404,19 @@ fn cabinet(
     color: Color,
     action: Action,
 ) {
+    let t = f.theme();
     let visible = intersect(r, clip);
     let index = l.hits.len();
     let hot = s.cursor.is_some_and(|p| r.contains(p) && clip.contains(p))
         || (s.keyboard && s.focus == index);
+    let hover_bg = t.panel_hover;
     f.rect(
         visible.min,
         visible.size(),
-        if hot {
-            Color::srgb(0.04, 0.1, 0.14)
-        } else {
-            PANEL
-        },
+        if hot { hover_bg } else { t.panel },
     );
     // Draw only clipped border segments so scrolling rows cannot paint into the page chrome.
-    let edge = if hot { color } else { EDGE };
+    let edge = if hot { color } else { t.edge };
     clipped_line(
         f,
         Vec2::new(r.min.x, r.min.y),
@@ -442,12 +456,12 @@ fn cabinet(
     let desc_pos = r.min + Vec2::new(24.0, 48.0);
     let verb_pos = Vec2::new(verb_x, r.min.y + 26.0);
     if title_pos.y >= clip.min.y && title_pos.y + title_size <= clip.max.y {
-        f.text(title_pos, title, title_size, INK);
+        f.text(title_pos, title, title_size, t.ink);
     }
     if desc_pos.y >= clip.min.y && desc_pos.y + desc_size <= clip.max.y {
         let available = (verb_x - desc_pos.x - 8.0).max(0.0);
         let desc = compact(desc, (available / (desc_size * 0.58)).floor() as usize);
-        f.text(desc_pos, desc, desc_size, MUTED);
+        f.text(desc_pos, desc, desc_size, t.muted);
     }
     if verb_pos.y >= clip.min.y && verb_pos.y + verb_size <= clip.max.y {
         f.text(verb_pos, verb, verb_size, color);

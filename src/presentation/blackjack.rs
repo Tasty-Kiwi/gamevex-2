@@ -5,6 +5,7 @@ use super::*;
 use gamevex_core::blackjack::{Command, HandOutcome, MAX_BET, Phase, hand_value};
 
 pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let theme = *f.theme();
     let reduced = s.save.settings.reduced_motion;
     let view = s.blackjack_motion.sample(&s.save.blackjack, reduced);
     let game = &view;
@@ -22,7 +23,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
         } else {
             42.0
         },
-        INK,
+        theme.ink,
     );
     let info_y = if short {
         if small { 119.0 } else { 130.0 }
@@ -35,13 +36,13 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
         Vec2::new(m, info_y),
         format!("CREDITS  {}", game.balance),
         15.0,
-        GOLD,
+        theme.gold,
     );
     f.text(
         Vec2::new(m + w * 0.47, info_y),
         format!("BET  {} / HAND", game.bet),
         14.0,
-        CYAN,
+        theme.accent,
     );
     let wager_hands = if game.balance == 0 {
         game.hand_count.clamp(1, 5)
@@ -68,7 +69,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
         Vec2::new(m, info_y + 28.0),
         format!("HANDS  {}", game.hand_count),
         12.0,
-        MUTED,
+        theme.muted,
     );
     f.text(
         Vec2::new(m + w * 0.47, info_y + 28.0),
@@ -82,7 +83,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             round_total
         ),
         12.0,
-        MUTED,
+        theme.muted,
     );
 
     let control_y = if short {
@@ -125,12 +126,17 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
         Command::SetHandCount((game.hand_count + 1).min(5)),
     );
     if !short {
-        f.text(Vec2::new(m, control_y + 34.0), "BET / HAND", 10.0, MUTED);
+        f.text(
+            Vec2::new(m, control_y + 34.0),
+            "BET / HAND",
+            10.0,
+            theme.muted,
+        );
         f.text(
             Vec2::new(m + 88.0, control_y + 34.0),
             "NUMBER OF HANDS",
             10.0,
-            MUTED,
+            theme.muted,
         );
     }
 
@@ -159,20 +165,20 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
     f.rect(
         table_rect.min,
         table_rect.size(),
-        Color::srgb(0.008, 0.045, 0.041),
+        super::game_palette::table(f.palette).casino_felt,
     );
-    f.outline(table_rect.min, table_rect.size(), 1.0, EDGE);
+    f.outline(table_rect.min, table_rect.size(), 1.0, theme.edge);
     f.line(
         table_rect.min + Vec2::new(8.0, 6.0),
         Vec2::new(table_rect.max.x - 8.0, table_rect.min.y + 6.0),
         1.5,
-        CYAN,
+        theme.accent,
     );
     f.line(
         Vec2::new(table_rect.min.x + 8.0, table_rect.max.y - 6.0),
         table_rect.max - Vec2::new(8.0, 6.0),
         1.5,
-        GOLD,
+        theme.gold,
     );
     let hidden = s.blackjack_motion.dealer_hidden(&s.save.blackjack, reduced);
     if platform::diagnostics_enabled() {
@@ -208,7 +214,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             if hidden { " + ?" } else { "" }
         ),
         12.0,
-        GOLD,
+        theme.gold,
     );
     let dealer_step = (card_w * 0.64)
         .min((w - card_w - 46.0).max(0.0) / game.dealer.len().saturating_sub(1).max(1) as f32);
@@ -234,7 +240,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
         } else {
             card_h + 54.0
         };
-    f.text(Vec2::new(m + 14.0, hands_y), "PLAYER", 12.0, MUTED);
+    f.text(Vec2::new(m + 14.0, hands_y), "PLAYER", 12.0, theme.muted);
     let narrow_live = compact_view && game.phase == Phase::PlayerTurn;
     if narrow_live {
         if short {
@@ -258,7 +264,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 Vec2::new(m + 78.0, hands_y),
                 compact(&summary, (w / 5.0) as usize),
                 11.0,
-                MUTED,
+                theme.muted,
             );
         }
         for (i, hand) in game.hands.iter().enumerate() {
@@ -275,7 +281,11 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                     Vec2::new(m + 14.0, hands_y + 20.0 + i as f32 * 18.0),
                     compact(&label, (w / 6.0) as usize),
                     11.0,
-                    if i == game.active_hand { GOLD } else { MUTED },
+                    if i == game.active_hand {
+                        theme.gold
+                    } else {
+                        theme.muted
+                    },
                 );
             }
         }
@@ -300,7 +310,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 Vec2::new(m + 14.0, cards_y - 16.0),
                 "ACTIVE HAND",
                 12.0,
-                GOLD,
+                theme.gold,
             );
             for (i, card) in hand.cards.iter().enumerate() {
                 let card_rect = rect(
@@ -322,7 +332,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 Vec2::new(m, cards_y + active_card_h + 5.0),
                 format!("VALUE  {}   BET  {}", hand_value(&hand.cards), hand.bet),
                 14.0,
-                GOLD,
+                theme.gold,
             );
         }
     } else if compact_view {
@@ -334,7 +344,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                     f.rect(
                         Vec2::new(m + 8.0, hands_y + 20.0 + i as f32 * 18.0),
                         Vec2::new(2.0, 15.0),
-                        casino_fx::kind_color(kind),
+                        casino_fx::kind_color(kind, f.palette),
                     );
                 } else {
                     casino_fx::highlight(
@@ -364,7 +374,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 ),
                 compact(&label, (w / 6.0) as usize),
                 if short { 13.0 } else { 14.0 },
-                outcome_color(hand.outcome),
+                outcome_color(hand.outcome, &theme),
             );
         }
         if game.hands.is_empty() {
@@ -372,7 +382,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 Vec2::new(m, hands_y + 26.0),
                 "Choose a wager, then deal.",
                 12.0,
-                MUTED,
+                theme.muted,
             );
         }
     } else {
@@ -414,7 +424,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 Vec2::new(hand_x, hands_y + 18.0),
                 format!("HAND {} / BET {}", i + 1, hand.bet),
                 11.0,
-                if active { GOLD } else { MUTED },
+                if active { theme.gold } else { theme.muted },
             );
             let card_rects = hand
                 .cards
@@ -443,7 +453,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
                 Vec2::new(hand_x, y + hand_card_h + 5.0),
                 format!("{}  {}", hand_value(&hand.cards), result),
                 14.0,
-                outcome_color(hand.outcome),
+                outcome_color(hand.outcome, &theme),
             );
         }
     }
@@ -461,7 +471,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             Vec2::new(m + 14.0, message_y),
             compact(message, ((w - 28.0) / 8.1) as usize),
             13.0,
-            CYAN,
+            theme.accent,
         );
     }
 
@@ -500,7 +510,11 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             label,
             s.casino_feedback.action_age,
             reduced,
-            if label == "BUST" { RED } else { GOLD },
+            if label == "BUST" {
+                theme.danger
+            } else {
+                theme.gold
+            },
         );
     }
 
@@ -509,7 +523,7 @@ pub(super) fn blackjack(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f3
             Vec2::new(table_rect.center().x - 57.0, table_rect.center().y + 4.0),
             "PLACE YOUR BET",
             if compact_view { 13.0 } else { 17.0 },
-            CYAN,
+            theme.accent,
         );
     }
 
@@ -615,12 +629,12 @@ fn outcome_label(outcome: HandOutcome) -> &'static str {
     }
 }
 
-fn outcome_color(outcome: Option<HandOutcome>) -> Color {
+fn outcome_color(outcome: Option<HandOutcome>, theme: &crate::theme::Theme) -> Color {
     match outcome {
-        Some(HandOutcome::Blackjack | HandOutcome::Win) => GREEN,
-        Some(HandOutcome::Bust | HandOutcome::Loss | HandOutcome::Surrendered) => RED,
-        Some(HandOutcome::Push) => GOLD,
-        None => INK,
+        Some(HandOutcome::Blackjack | HandOutcome::Win) => theme.success,
+        Some(HandOutcome::Bust | HandOutcome::Loss | HandOutcome::Surrendered) => theme.danger,
+        Some(HandOutcome::Push) => theme.gold,
+        None => theme.ink,
     }
 }
 
@@ -629,14 +643,15 @@ fn control(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, r: Rect, label: &str, 
     {
         button(f, s, l, r, label, Action::Blackjack(cmd), false);
     } else {
-        f.rect(r.min, r.size(), PANEL);
-        f.outline(r.min, r.size(), 1.0, EDGE);
+        let theme = *f.theme();
+        f.rect(r.min, r.size(), theme.panel);
+        f.outline(r.min, r.size(), 1.0, theme.edge);
         let tx = r.min.x + (r.width() - label.chars().count() as f32 * 7.0) * 0.5;
         f.text(
             Vec2::new(tx.max(r.min.x + 4.0), r.min.y + 10.0),
             label,
             11.0,
-            MUTED,
+            theme.muted,
         );
     }
 }
@@ -658,11 +673,12 @@ fn turn_outline(f: &mut Frame, s: &Arcade, target: Rect) {
             .turn_progress(s.save.settings.reduced_motion);
     if pulse > 0.0 {
         let padding = Vec2::splat(3.0 + pulse * 4.0);
+        let theme = *f.theme();
         f.outline(
             target.min - padding,
             target.size() + padding * 2.0,
             1.0 + pulse * 2.0,
-            GOLD.with_alpha(pulse),
+            theme.gold.with_alpha(pulse),
         );
     }
 }

@@ -179,13 +179,23 @@ impl Frame {
         }
     }
 
+    /// Return the static semantic theme associated with this frame's color scheme.
+    pub fn theme(&self) -> &'static crate::theme::Theme {
+        crate::theme::Theme::for_scheme(self.color_scheme())
+    }
+
+    /// Return the active color scheme for this frame.
+    pub fn color_scheme(&self) -> gamevex_core::ColorScheme {
+        self.palette
+    }
+
     /// Add high-resolution text positioned by its top-left anchor.
     pub fn text(&mut self, pos: Vec2, text: impl Into<String>, font_size: f32, color: Color) {
         self.text.push(TextCommand {
             pos,
             text: text.into(),
             font_size: font_size.max(1.0),
-            color: palette_color(color, self.palette),
+            color,
             centered: false,
         });
     }
@@ -203,9 +213,7 @@ impl Frame {
 
     fn push_quad(&mut self, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color) {
         let base = self.vertices.len() as u32;
-        let color = palette_color(color, self.palette)
-            .to_linear()
-            .to_f32_array();
+        let color = color.to_linear().to_f32_array();
         for point in [a, b, c, d] {
             self.vertices.push([
                 point.x - self.size.x * 0.5,
@@ -689,29 +697,57 @@ pub fn screen_to_surface(point: Vec2, size: Vec2, curvature: f32) -> Option<Vec2
     (surface.cmpge(Vec2::ZERO).all() && surface.cmplt(size).all()).then_some(surface)
 }
 
-fn palette_color(color: Color, scheme: gamevex_core::ColorScheme) -> Color {
-    if scheme == gamevex_core::ColorScheme::Cyan {
-        return color;
-    }
-    let c = color.to_srgba();
-    let peak = c.red.max(c.green).max(c.blue);
-    let rgb = if c.red > 0.7 && c.green > 0.7 && c.blue > 0.7 {
-        [peak, peak * 0.92, peak * 0.72]
-    } else if c.red > 0.8 && c.green < 0.35 && c.blue < 0.5 {
-        [1.0, 0.33, 0.18] // Keep losses and wrong flags distinct from amber accents.
-    } else if c.red > 0.8 && c.green < 0.3 && c.blue > 0.5 {
-        [1.0, 0.53, 0.16]
-    } else if c.red > 0.8 && c.green > 0.5 && c.blue < 0.2 {
-        [1.0, 0.88, 0.56]
-    } else {
-        [peak, peak * 0.73, peak * 0.26]
-    };
-    Color::srgba(rgb[0], rgb[1], rgb[2], c.alpha)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frame_direct_rendering_preserves_explicit_reds_greens_and_alpha() {
+        for scheme in [
+            gamevex_core::ColorScheme::Cyan,
+            gamevex_core::ColorScheme::Amber,
+        ] {
+            let mut frame = Frame::default();
+            frame.clear(Vec2::new(300.0, 300.0));
+            frame.palette = scheme;
+
+            let explicit_red = Color::srgba(1.0, 0.05, 0.12, 0.75);
+            let explicit_green = Color::srgba(0.08, 0.95, 0.22, 0.50);
+            let explicit_semi_alpha = Color::srgba(0.3, 0.6, 0.9, 0.25);
+
+            frame.rect(Vec2::ZERO, Vec2::new(20.0, 20.0), explicit_red);
+            frame.rect(Vec2::new(30.0, 30.0), Vec2::new(20.0, 20.0), explicit_green);
+            frame.text(Vec2::new(10.0, 10.0), "Danger!", 14.0, explicit_red);
+            frame.text(Vec2::new(10.0, 30.0), "Alpha", 14.0, explicit_semi_alpha);
+
+            let expected_red_linear = explicit_red.to_linear().to_f32_array();
+            let expected_green_linear = explicit_green.to_linear().to_f32_array();
+
+            // Direct rendering ensures vertex quad colors match linear input directly
+            assert_eq!(frame.colors[0], expected_red_linear);
+            assert_eq!(frame.colors[4], expected_green_linear);
+
+            // Text commands retain the explicit Color with alpha intact
+            assert_eq!(frame.text[0].color, explicit_red);
+            assert_eq!(frame.text[1].color, explicit_semi_alpha);
+            assert_eq!(frame.text[1].color.to_srgba().alpha, 0.25);
+        }
+    }
+
+    #[test]
+    fn frame_theme_and_color_scheme_accessors() {
+        let mut frame = Frame {
+            palette: gamevex_core::ColorScheme::Cyan,
+            ..Default::default()
+        };
+        assert_eq!(frame.color_scheme(), gamevex_core::ColorScheme::Cyan);
+        assert_eq!(frame.theme(), &crate::theme::CYAN_THEME);
+
+        frame.palette = gamevex_core::ColorScheme::Amber;
+        assert_eq!(frame.color_scheme(), gamevex_core::ColorScheme::Amber);
+        assert_eq!(frame.theme(), &crate::theme::AMBER_THEME);
+    }
+
     #[test]
     fn monitor_picking_matches_shader_at_center_edges_and_resizes() {
         for size in [Vec2::new(1280.0, 800.0), Vec2::new(390.0, 844.0)] {

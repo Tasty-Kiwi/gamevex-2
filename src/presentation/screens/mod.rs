@@ -22,30 +22,28 @@ pub(crate) fn button(
     action: Action,
     active: bool,
 ) {
+    let t = f.theme();
     let idx = l.hits.len();
     let focused = s.keyboard && s.focus == idx;
     let hovered = s.cursor.is_some_and(|p| r.contains(p));
-    f.rect(
-        r.min,
-        r.size(),
-        if hovered || focused {
-            Color::srgb(0.055, 0.14, 0.18)
-        } else {
-            PANEL
-        },
-    );
-    let color = if focused {
-        GOLD
-    } else if active {
-        CYAN
-    } else if hovered {
-        INK
+    let fill = if hovered || focused {
+        t.panel_hover
     } else {
-        EDGE
+        t.panel
+    };
+    f.rect(r.min, r.size(), fill);
+    let color = if focused {
+        t.gold
+    } else if active {
+        t.accent
+    } else if hovered {
+        t.ink
+    } else {
+        t.edge
     };
     f.outline(r.min, r.size(), if focused { 2.0 } else { 1.0 }, color);
     if active {
-        f.rect(r.min, Vec2::new(3.0, r.height()), CYAN);
+        f.rect(r.min, Vec2::new(3.0, r.height()), t.accent);
     }
     let font = if r.width() < 150.0 { 13.0 } else { 14.0 };
     f.centered_text(
@@ -53,9 +51,9 @@ pub(crate) fn button(
         label,
         font,
         if active || focused {
-            INK
+            t.ink
         } else {
-            Color::srgb(0.6, 0.78, 0.85)
+            t.control_text
         },
     );
     l.hits.push(Hit { rect: r, action });
@@ -68,7 +66,7 @@ pub(crate) fn mine_symbol(f: &mut Frame, c: Vec2, r: f32, color: Color) {
         f.line(c + d * r * 0.42, c + d * r * 1.25, 1.8, color);
     }
     circle(f, c, r * 0.60, 1.5, color);
-    f.rect(c - Vec2::splat(2.0), Vec2::splat(4.0), INK);
+    f.rect(c - Vec2::splat(2.0), Vec2::splat(4.0), f.theme().ink);
 }
 pub(crate) fn flag(f: &mut Frame, c: Vec2, r: f32, color: Color) {
     let a = c + Vec2::new(-r * 0.45, -r);

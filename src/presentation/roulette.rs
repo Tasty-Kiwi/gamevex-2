@@ -2,13 +2,6 @@ use super::screens::button;
 use super::*;
 use gamevex_core::roulette::{Bet, PocketColor, WHEEL_ORDER};
 
-fn pocket_color(n: u8) -> Color {
-    match gamevex_core::roulette::color(n) {
-        PocketColor::Red => RED,
-        PocketColor::Black => Color::srgb(0.12, 0.38, 0.46),
-        PocketColor::Green => GREEN,
-    }
-}
 fn centered(f: &mut Frame, r: Rect, text: &str, size: f32, color: Color) {
     f.text(
         Vec2::new(
@@ -25,12 +18,14 @@ fn intersection(a: Rect, b: Rect) -> Rect {
     Rect::from_corners(min, a.max.min(b.max).max(min))
 }
 fn strip(f: &mut Frame, s: &Arcade, r: Rect) {
+    let theme = *f.theme();
+    let r_pal = super::game_palette::roulette(f.palette);
     let position = s.roulette_ui.strip_position();
     let pitch = if r.width() < 620.0 { 54.0 } else { 72.0 };
     let center = r.center().x;
     let first = position.floor() as i32 - (r.width() / pitch * 0.5).ceil() as i32 - 1;
     let count = (r.width() / pitch).ceil() as i32 + 4;
-    f.rect(r.min, r.size(), BG);
+    f.rect(r.min, r.size(), theme.bg);
     for index in first..first + count {
         let n = WHEEL_ORDER[index.rem_euclid(37) as usize];
         let full = rect(
@@ -43,32 +38,23 @@ fn strip(f: &mut Frame, s: &Arcade, r: Rect) {
         if cell.width() <= 0.0 {
             continue;
         }
-        let color = pocket_color(n);
-        let c = color.to_srgba();
-        let palette = f.palette;
-        if n == 0 {
-            f.palette = gamevex_core::ColorScheme::Cyan;
-        }
-        f.rect(
-            cell.min,
-            cell.size(),
-            if n == 0 {
-                Color::srgb(0.0, 0.23, 0.13)
-            } else if c.red > 0.5 {
-                Color::srgb(0.18, 0.018, 0.05)
-            } else {
-                PANEL
-            },
-        );
+        let color = r_pal.pocket(n);
+        let cell_bg = if n == 0 {
+            r_pal.zero_fill
+        } else if gamevex_core::roulette::color(n) == PocketColor::Red {
+            r_pal.red_strip_fill
+        } else {
+            r_pal.black_strip_fill
+        };
+        f.rect(cell.min, cell.size(), cell_bg);
         f.outline(cell.min, cell.size(), 1.5, color);
-        f.palette = palette;
         if full.min.x >= r.min.x && full.max.x <= r.max.x {
             centered(
                 f,
                 full,
                 &n.to_string(),
                 if r.height() < 55.0 { 23.0 } else { 30.0 },
-                INK,
+                theme.ink,
             );
         }
     }
@@ -78,14 +64,14 @@ fn strip(f: &mut Frame, s: &Arcade, r: Rect) {
         pitch + 1.0,
         r.height() + 4.0,
     );
-    f.outline(marker.min, marker.size(), 2.5, GOLD);
+    f.outline(marker.min, marker.size(), 2.5, theme.gold);
     f.polygon(
         &[
             Vec2::new(center - 7.0, r.min.y - 9.0),
             Vec2::new(center + 7.0, r.min.y - 9.0),
             Vec2::new(center, r.min.y - 2.0),
         ],
-        GOLD,
+        theme.gold,
     );
     if let Some(event) = s.roulette_ui.feedback.events.iter().find(|e| {
         matches!(
@@ -94,9 +80,9 @@ fn strip(f: &mut Frame, s: &Arcade, r: Rect) {
         )
     }) {
         let c = if event.kind == crate::table_feedback::EffectKind::Win {
-            GOLD
+            theme.gold
         } else {
-            RED
+            theme.danger
         }
         .to_srgba();
         f.outline(
@@ -212,38 +198,35 @@ fn paint_bet(
     if r.width() <= 0.0 || r.height() <= 0.0 {
         return;
     }
+    let theme = *f.theme();
+    let r_pal = super::game_palette::roulette(f.palette);
     let focused = s.keyboard && s.focus == l.hits.len().saturating_sub(1) && enabled;
     let hovered = s.cursor.is_some_and(|p| r.contains(p));
     let color = match bet {
-        Bet::Number(n) => pocket_color(*n),
-        Bet::Red => RED,
-        Bet::Black => MAGENTA,
-        _ => CYAN,
+        Bet::Number(n) => r_pal.pocket(*n),
+        Bet::Red => r_pal.red_pocket,
+        Bet::Black => r_pal.black_pocket,
+        _ => theme.accent,
     };
     let fill = if *bet == Bet::Number(0) {
-        Color::srgb(0.0, 0.23, 0.13)
+        r_pal.zero_fill
     } else if selected || hovered || focused {
-        Color::srgb(0.045, 0.12, 0.17)
+        r_pal.selection_fill
     } else {
-        PANEL
+        theme.panel
     };
-    let palette = f.palette;
-    if *bet == Bet::Number(0) {
-        f.palette = gamevex_core::ColorScheme::Cyan;
-    }
     f.rect(r.min, r.size(), fill);
     f.outline(
         r.min,
         r.size(),
         if selected || focused { 2.5 } else { 1.0 },
-        if focused { GOLD } else { color },
+        if focused { theme.gold } else { color },
     );
-    f.palette = palette;
     if selected {
-        f.rect(r.min, Vec2::new(3.0, r.height()), GOLD);
+        f.rect(r.min, Vec2::new(3.0, r.height()), theme.gold);
     }
     if full.min.x >= clip.min.x && full.max.x <= clip.max.x {
-        let text_color = if enabled { INK } else { MUTED };
+        let text_color = if enabled { theme.ink } else { theme.muted };
         if matches!(bet, Bet::Red | Bet::Black) {
             let center = full.center();
             let half = Vec2::new(11.0, 9.0);
@@ -253,7 +236,14 @@ fn paint_bet(
                 center + Vec2::new(half.x, 0.0),
                 center + Vec2::new(0.0, half.y),
             ];
-            f.polygon(&points, if *bet == Bet::Red { RED } else { BG });
+            f.polygon(
+                &points,
+                if *bet == Bet::Red {
+                    r_pal.red_pocket
+                } else {
+                    r_pal.black_pocket
+                },
+            );
             for i in 0..4 {
                 f.line(points[i], points[(i + 1) % 4], 1.0, text_color);
             }
@@ -274,6 +264,8 @@ fn paint_bet(
 }
 
 pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let theme = *f.theme();
+    let r_pal = super::game_palette::roulette(f.palette);
     let small = w < 620.0;
     let short = f.size.y < 640.0;
     let title_y = if short { 72.0 } else { 84.0 };
@@ -287,19 +279,19 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         Vec2::new(m, title_y),
         "ROULETTE",
         if small { 28.0 } else { 38.0 },
-        INK,
+        theme.ink,
     );
     f.text(
         Vec2::new(m, title_y + 36.0),
         format!("CREDITS ${balance}"),
         if small { 12.0 } else { 14.0 },
-        GOLD,
+        theme.gold,
     );
     f.text(
         Vec2::new(m + w * 0.53, title_y + 36.0),
         format!("STAKE ${}", s.roulette_ui.stake),
         if small { 12.0 } else { 14.0 },
-        CYAN,
+        theme.accent,
     );
     let strip_r = rect(m, title_y + 64.0, w, if short { 46.0 } else { 66.0 });
     strip(f, s, strip_r);
@@ -312,17 +304,22 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             s.roulette_ui.bet.multiplier()
         ),
         if small { 10.0 } else { 13.0 },
-        CYAN,
+        theme.accent,
     );
     if small {
-        f.text(Vec2::new(m + w - 92.0, info_y), "Swipe table", 10.0, MUTED);
+        f.text(
+            Vec2::new(m + w - 92.0, info_y),
+            "Swipe table",
+            10.0,
+            theme.muted,
+        );
     } else {
         for (i, n) in s.roulette_ui.history.iter().enumerate() {
             f.text(
                 Vec2::new(m + w - 260.0 + i as f32 * 25.0, info_y),
                 n.to_string(),
                 12.0,
-                if i == 0 { GOLD } else { pocket_color(*n) },
+                if i == 0 { theme.gold } else { r_pal.pocket(*n) },
             );
         }
     }
@@ -364,7 +361,7 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     }
     if l.roulette_max_pan > 0.0 {
         let y = clip.max.y + 6.0;
-        f.rect(Vec2::new(m, y), Vec2::new(w, 2.0), EDGE);
+        f.rect(Vec2::new(m, y), Vec2::new(w, 2.0), theme.edge);
         let thumb = w * w / content_w;
         f.rect(
             Vec2::new(
@@ -372,7 +369,7 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 y,
             ),
             Vec2::new(thumb, 2.0),
-            CYAN,
+            theme.accent,
         );
     }
     let widths = [54.0, 42.0, 42.0, 52.0, w - 210.0];
@@ -406,9 +403,9 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         if !busy {
             button(f, s, l, r, labels[i], actions[i], i == 4);
         } else {
-            f.rect(r.min, r.size(), PANEL);
-            f.outline(r.min, r.size(), 1.0, EDGE);
-            centered(f, r, labels[i], 12.0, MUTED);
+            f.rect(r.min, r.size(), theme.panel);
+            f.outline(r.min, r.size(), 1.0, theme.edge);
+            centered(f, r, labels[i], 12.0, theme.muted);
         }
         x += widths[i] + 5.0;
     }
@@ -423,7 +420,7 @@ pub(super) fn roulette(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 result.net.unsigned_abs()
             ),
             if short { 10.0 } else { 12.0 },
-            if result.won { GOLD } else { RED },
+            if result.won { theme.gold } else { theme.danger },
         );
     }
 }

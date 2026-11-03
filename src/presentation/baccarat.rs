@@ -4,6 +4,7 @@ use super::*;
 use gamevex_core::baccarat::{BetSide, Command, MAX_BET, Outcome, Phase, hand_value};
 
 pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let theme = *f.theme();
     let reduced = s.save.settings.reduced_motion;
     let busy = s.baccarat_motion.busy() && !reduced;
     let game = s.baccarat_motion.sample(&s.save.baccarat, reduced);
@@ -17,7 +18,7 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     } else {
         42.0
     };
-    f.text(Vec2::new(m, title_y), "BACCARAT", title_size, INK);
+    f.text(Vec2::new(m, title_y), "BACCARAT", title_size, theme.ink);
 
     let info_y = if short {
         122.0
@@ -30,7 +31,7 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         Vec2::new(m, info_y),
         format!("CREDITS  {}", game.balance),
         if small { 13.0 } else { 15.0 },
-        GOLD,
+        theme.gold,
     );
     f.text(
         Vec2::new(m + w * 0.46, info_y),
@@ -47,7 +48,7 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             game.bet
         ),
         if small { 13.0 } else { 15.0 },
-        CYAN,
+        theme.accent,
     );
     if !short && game.phase != Phase::Betting {
         f.text(
@@ -61,7 +62,7 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 None => "PLAYER / BANKER",
             },
             11.0,
-            MUTED,
+            theme.muted,
         );
     }
 
@@ -146,7 +147,7 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             Vec2::new(m + 208.0, bet_y + if short { 8.0 } else { 10.0 }),
             "BET",
             10.0,
-            MUTED,
+            theme.muted,
         );
     }
 
@@ -241,10 +242,10 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             fit_text(&line, (w / 6.8) as usize),
             if small { 10.0 } else { 12.0 },
             match game.outcome {
-                Some(Outcome::Win) => GREEN,
-                Some(Outcome::Push) => GOLD,
-                Some(Outcome::Loss) => RED,
-                None => MUTED,
+                Some(Outcome::Win) => theme.success,
+                Some(Outcome::Push) => theme.gold,
+                Some(Outcome::Loss) => theme.danger,
+                None => theme.muted,
             },
         );
     } else if let Some(label) = s.casino_feedback.action {
@@ -254,7 +255,7 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             label,
             s.casino_feedback.action_age,
             reduced,
-            GOLD,
+            theme.gold,
         );
     }
 
@@ -322,10 +323,15 @@ fn draw_lane(
     stacked: bool,
     state: &Arcade,
 ) {
-    let side_color = if player { CYAN } else { GOLD };
+    let theme = *f.theme();
+    let side_color = if player { theme.accent } else { theme.gold };
     let label = if player { "PLAYER" } else { "BANKER" };
-    f.rect(r.min, r.size(), Color::srgb(0.008, 0.045, 0.041));
-    f.outline(r.min, r.size(), 1.0, EDGE);
+    f.rect(
+        r.min,
+        r.size(),
+        super::game_palette::table(f.palette).casino_felt,
+    );
+    f.outline(r.min, r.size(), 1.0, theme.edge);
     f.line(
         r.min + Vec2::new(8.0, 5.0),
         Vec2::new(r.max.x - 8.0, r.min.y + 5.0),
@@ -348,7 +354,7 @@ fn draw_lane(
         ),
         total_label,
         size,
-        INK,
+        theme.ink,
     );
 
     if cards.is_empty() {
@@ -356,7 +362,7 @@ fn draw_lane(
             Vec2::new(r.min.x + 12.0, r.min.y + r.height() * 0.58),
             "AWAITING DEAL",
             10.0,
-            MUTED,
+            theme.muted,
         );
         return;
     }
@@ -389,16 +395,22 @@ fn draw_lane(
 }
 
 fn deal_help(f: &mut Frame, m: f32, w: f32, small: bool, action_y: f32, label: &str) {
+    let theme = *f.theme();
     if small {
         let width = label.chars().count() as f32 * 6.0;
         f.text(
             Vec2::new(m + (w - width).max(0.0) * 0.5, action_y - 25.0),
             label,
             10.0,
-            MUTED,
+            theme.muted,
         );
     } else {
-        f.text(Vec2::new(m + 168.0, action_y + 11.0), label, 10.0, MUTED);
+        f.text(
+            Vec2::new(m + 168.0, action_y + 11.0),
+            label,
+            10.0,
+            theme.muted,
+        );
     }
 }
 
@@ -445,12 +457,17 @@ fn fit_text(text: &str, max: usize) -> String {
 }
 
 fn disabled_button(f: &mut Frame, r: Rect, label: &str, active: bool) {
-    f.rect(r.min, r.size(), if active { PANEL } else { BG });
+    let theme = *f.theme();
+    f.rect(r.min, r.size(), if active { theme.panel } else { theme.bg });
     f.outline(
         r.min,
         r.size(),
         1.0,
-        if active { EDGE } else { EDGE.with_alpha(0.6) },
+        if active {
+            theme.edge
+        } else {
+            theme.edge.with_alpha(0.6)
+        },
     );
     let font = if r.width() < 150.0 { 11.0 } else { 13.0 };
     let tx = r.min.x + (r.width() - label.chars().count() as f32 * font * 0.58) * 0.5;
@@ -458,6 +475,6 @@ fn disabled_button(f: &mut Frame, r: Rect, label: &str, active: bool) {
         Vec2::new(tx.max(r.min.x + 4.0), r.min.y + (r.height() - font) * 0.5),
         label,
         font,
-        if active { MUTED } else { EDGE },
+        if active { theme.muted } else { theme.edge },
     );
 }

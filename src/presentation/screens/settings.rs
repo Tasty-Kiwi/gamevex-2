@@ -1,11 +1,12 @@
 use super::*;
 
 pub(crate) fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let t = f.theme();
     f.text(
         Vec2::new(m, 102.0),
         "Tune the cabinet",
         if w < 600.0 { 29.0 } else { 42.0 },
-        INK,
+        t.ink,
     );
     let top = 184.0;
     let bottom = f.size.y - 94.0;
@@ -31,7 +32,7 @@ pub(crate) fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             Vec2::new(m, 154.0),
             "Scroll or PgUp/PgDn for more settings.",
             if w < 400.0 { 11.0 } else { 13.0 },
-            MUTED,
+            t.muted,
         );
     }
     let label_width = if w < 600.0 { w * 0.43 } else { 230.0 };
@@ -50,13 +51,13 @@ pub(crate) fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             } else {
                 16.0
             },
-            INK,
+            t.ink,
         );
         f.line(
             Vec2::new(m, y + row_h - 5.0),
             Vec2::new(m + w, y + row_h - 5.0),
             0.75,
-            EDGE,
+            t.edge,
         );
         match i {
             0 => button(
@@ -77,11 +78,7 @@ pub(crate) fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 s,
                 l,
                 rect(right, y, usable, 31.0),
-                if s.save.settings.color_scheme == ColorScheme::Cyan {
-                    "Cyan"
-                } else {
-                    "Amber"
-                },
+                crate::theme::scheme_name(s.save.settings.color_scheme),
                 Action::Palette,
                 true,
             ),
@@ -192,7 +189,7 @@ pub(crate) fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         let track = bottom - top;
         let thumb = track * (track / (labels.len() as f32 * row_h + 30.0));
         let y = top + (track - thumb) * s.settings_scroll / l.settings_max_scroll;
-        f.rect(Vec2::new(m + w - 2.0, y), Vec2::new(2.0, thumb), CYAN);
+        f.rect(Vec2::new(m + w - 2.0, y), Vec2::new(2.0, thumb), t.accent);
     }
     let storage_y = top + labels.len() as f32 * row_h - s.settings_scroll;
     if storage_y >= top && storage_y + 22.0 <= bottom {
@@ -200,7 +197,7 @@ pub(crate) fn settings(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             Vec2::new(m, storage_y + 4.0),
             compact(&platform::description(), (w / 7.4) as usize),
             11.0,
-            MUTED,
+            t.muted,
         );
     }
     let y = f.size.y - 80.0;
@@ -242,7 +239,7 @@ fn stepper(
         Vec2::new(x + w * 0.5 - 20.0, y + 6.0),
         format!("{:.0}%", value * 100.0),
         15.0,
-        CYAN,
+        f.theme().accent,
     );
     button(f, s, l, rect(x + w - 34.0, y, 34.0, 31.0), "+", up, false);
 }

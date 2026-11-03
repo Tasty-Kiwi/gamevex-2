@@ -3,11 +3,11 @@ use super::*;
 use crate::hearts_motion::{Anchor, Kind};
 use gamevex_core::hearts::Phase;
 
-const TABLE_SURFACE: Color = Color::srgb(0.008, 0.018, 0.032);
-const TABLE_INSET: Color = Color::srgb(0.012, 0.028, 0.046);
 const SEATS: [&str; 4] = ["You", "Left", "Across", "Right"];
 
 pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: f32) {
+    let theme = *f.theme();
+    let table_pal = super::game_palette::table(f.palette);
     let g = s.save.hearts.clone();
     let busy = s.hearts_ui.motion.busy();
     let small = w < 620.0;
@@ -16,7 +16,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         Vec2::new(m, 82.0),
         "Hearts",
         if small { 26.0 } else { 36.0 },
-        INK,
+        theme.ink,
     );
     f.text(
         Vec2::new(m, if small { 114.0 } else { 126.0 }),
@@ -26,7 +26,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             g.pass_direction().label()
         ),
         if small { 9.0 } else { 12.0 },
-        MUTED,
+        theme.muted,
     );
 
     let controls_y = if small { 132.0 } else { 94.0 };
@@ -60,17 +60,17 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         f,
         rect(m - 5.0, top - 5.0, w + 10.0, table.height() + 10.0),
         24.0,
-        PANEL,
+        theme.panel,
     );
-    rounded(f, table, 20.0, TABLE_SURFACE);
+    rounded(f, table, 20.0, table_pal.round_surface);
     // Keep the table in the same dark, cool palette as the other cabinets.
     rounded(
         f,
         rect(m + 7.0, top + 7.0, w - 14.0, table.height() - 14.0),
         16.0,
-        TABLE_INSET,
+        table_pal.round_inset,
     );
-    f.rounded_outline(table.min, table.size(), 20.0, 1.5, EDGE);
+    f.rounded_outline(table.min, table.size(), 20.0, 1.5, theme.edge);
 
     let card_w = if small {
         if compact { 58.0 } else { 66.0 }
@@ -245,7 +245,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             Vec2::new(center.x, center.y - 14.0),
             prompt,
             if small { 12.0 } else { 18.0 },
-            INK,
+            theme.ink,
         );
         if g.phase == Phase::Passing {
             centered(
@@ -253,7 +253,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 Vec2::new(center.x, center.y + 10.0),
                 &format!("Passing {}", g.pass_direction().label()),
                 if small { 10.0 } else { 13.0 },
-                MUTED,
+                theme.muted,
             );
         }
     }
@@ -277,7 +277,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             Vec2::new(m + w - if small { 104.0 } else { 154.0 }, hand_top - 26.0),
             "Hearts broken",
             if small { 10.0 } else { 13.0 },
-            INK,
+            theme.ink,
         );
     }
     let legal = g.legal_indices(0);
@@ -500,7 +500,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         Vec2::new(m, f.size.y - 48.0),
         status,
         if small { 10.0 } else { 12.0 },
-        MUTED,
+        theme.muted,
     );
 
     if !busy && matches!(g.phase, Phase::HandComplete | Phase::MatchComplete) {
@@ -519,7 +519,7 @@ pub(super) fn hearts(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             Vec2::new(center.x, center.y + 12.0),
             &result,
             if small { 11.0 } else { 16.0 },
-            INK,
+            theme.ink,
         );
         button(
             f,
@@ -541,16 +541,22 @@ fn seat(
     small: bool,
     receiving: bool,
 ) {
+    let theme = *f.theme();
     let active = (g.phase == Phase::Playing && g.turn == seat) || receiving;
     if active {
-        rounded(f, r, 6.0, Color::srgb(0.035, 0.09, 0.13));
-        f.rounded_outline(r.min, r.size(), 6.0, 1.5, CYAN);
+        let active_bg = if f.palette == ColorScheme::Amber {
+            Color::srgba(0.85, 0.55, 0.15, 0.14)
+        } else {
+            Color::srgb(0.035, 0.09, 0.13)
+        };
+        rounded(f, r, 6.0, active_bg);
+        f.rounded_outline(r.min, r.size(), 6.0, 1.5, theme.accent);
     }
     f.text(
         r.min + Vec2::new(5.0, 2.0),
         format!("{}  {}", SEATS[seat], g.totals[seat]),
         if small { 11.0 } else { 16.0 },
-        if active { CYAN } else { INK },
+        if active { theme.accent } else { theme.ink },
     );
     if r.height() > 25.0 {
         f.text(
@@ -561,7 +567,7 @@ fn seat(
                 g.hands[seat].len()
             ),
             if small { 8.0 } else { 10.0 },
-            MUTED,
+            theme.muted,
         );
     }
 }
@@ -574,14 +580,15 @@ fn centered(f: &mut Frame, p: Vec2, text: &str, size: f32, color: Color) {
     );
 }
 fn muted_button(f: &mut Frame, r: Rect, label: &str) {
-    f.rect(r.min, r.size(), PANEL);
-    f.outline(r.min, r.size(), 1.0, EDGE);
+    let theme = *f.theme();
+    f.rect(r.min, r.size(), theme.panel);
+    f.outline(r.min, r.size(), 1.0, theme.edge);
     centered(
         f,
         Vec2::new(r.center().x, r.min.y + 7.0),
         label,
         12.0,
-        MUTED,
+        theme.muted,
     );
 }
 
@@ -589,7 +596,12 @@ fn muted_button(f: &mut Frame, r: Rect, label: &str) {
 fn face(f: &mut Frame, r: Rect, card: gamevex_core::cards::Card, selected: bool, dimmed: bool) {
     card_face(f, r, card, selected, true);
     if dimmed {
-        f.rect(r.min, r.size(), Color::srgba(0.008, 0.016, 0.031, 0.60));
+        let dim = if f.palette == ColorScheme::Amber {
+            Color::srgba(0.03, 0.02, 0.01, 0.60)
+        } else {
+            Color::srgba(0.008, 0.016, 0.031, 0.60)
+        };
+        f.rect(r.min, r.size(), dim);
     }
 }
 fn back(f: &mut Frame, r: Rect) {

@@ -1,14 +1,60 @@
 use super::*;
 use gamevex_core::sudoku::{Command, Difficulty};
 
-const BOARD_BG: Color = Color::srgb(0.012, 0.035, 0.052);
-const CLUE: Color = Color::srgb(0.35, 0.89, 1.0);
-const ENTRY: Color = Color::srgb(1.0, 0.74, 0.26);
-const PEER: Color = Color::srgb(0.035, 0.12, 0.16);
-const SAME: Color = Color::srgb(0.12, 0.22, 0.24);
-const ERROR_BG: Color = Color::srgb(0.32, 0.055, 0.12);
+#[derive(Clone, Copy)]
+pub struct SudokuPalette {
+    pub board_bg: Color,
+    pub clue: Color,
+    pub entry: Color,
+    pub peer: Color,
+    pub same: Color,
+    pub error_bg: Color,
+    pub error_text: Color,
+    pub selected_bg: Color,
+    pub btn_disabled_bg: Color,
+    pub btn_hover_bg: Color,
+    pub btn_disabled_edge: Color,
+    pub btn_normal_text: Color,
+}
+
+impl SudokuPalette {
+    pub fn for_scheme(scheme: gamevex_core::ColorScheme) -> Self {
+        match scheme {
+            gamevex_core::ColorScheme::Cyan => Self {
+                board_bg: Color::srgb(0.012, 0.035, 0.052),
+                clue: Color::srgb(0.35, 0.89, 1.0),
+                entry: Color::srgb(1.0, 0.74, 0.26),
+                peer: Color::srgb(0.035, 0.12, 0.16),
+                same: Color::srgb(0.12, 0.22, 0.24),
+                error_bg: Color::srgb(0.32, 0.055, 0.12),
+                error_text: Color::srgb(0.87, 0.94, 1.0),
+                selected_bg: Color::srgb(0.12, 0.16, 0.18),
+                btn_disabled_bg: Color::srgb(0.018, 0.035, 0.05),
+                btn_hover_bg: Color::srgb(0.055, 0.14, 0.18),
+                btn_disabled_edge: Color::srgb(0.045, 0.09, 0.12),
+                btn_normal_text: Color::srgb(0.6, 0.78, 0.85),
+            },
+            gamevex_core::ColorScheme::Amber => Self {
+                board_bg: Color::srgb(0.045, 0.032, 0.018),
+                clue: Color::srgb(1.0, 0.76, 0.22),
+                entry: Color::srgb(0.35, 0.88, 0.62),
+                peer: Color::srgb(0.095, 0.068, 0.035),
+                same: Color::srgb(0.18, 0.125, 0.05),
+                error_bg: Color::srgb(0.34, 0.06, 0.08),
+                error_text: Color::srgb(1.0, 0.40, 0.30),
+                selected_bg: Color::srgb(0.24, 0.16, 0.06),
+                btn_disabled_bg: Color::srgb(0.04, 0.028, 0.018),
+                btn_hover_bg: Color::srgb(0.16, 0.11, 0.04),
+                btn_disabled_edge: Color::srgb(0.12, 0.08, 0.04),
+                btn_normal_text: Color::srgb(0.85, 0.75, 0.58),
+            },
+        }
+    }
+}
 
 pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let palette = SudokuPalette::for_scheme(f.palette);
+    let theme = f.theme();
     let game = &s.save.sudoku.game;
     let n = usize::from(game.size);
     if n == 0 || game.board.len() != n * n {
@@ -26,20 +72,20 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         Vec2::new(m, top),
         "SUDOKU",
         if mobile { 26.0 } else { 33.0 },
-        INK,
+        theme.ink,
     );
     let info_y = top + if mobile { 28.0 } else { 34.0 };
     f.text(
         Vec2::new(m, info_y),
         format!("{} x {}   /   {}", n, n, game.difficulty.label()),
         12.0,
-        CYAN,
+        theme.accent,
     );
     f.text(
         Vec2::new(m + if mobile { 170.0 } else { 190.0 }, info_y),
         format_time(game.elapsed_ms),
         12.0,
-        GOLD,
+        theme.gold,
     );
     let best = s.save.sudoku.records.best(game.size, game.difficulty);
     f.text(
@@ -49,7 +95,7 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             best.map(format_time).unwrap_or_else(|| "--".into())
         ),
         10.0,
-        MUTED,
+        theme.muted,
     );
     f.text(
         Vec2::new(m + if mobile { 170.0 } else { 190.0 }, info_y + 18.0),
@@ -59,7 +105,11 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             "UNASSISTED"
         },
         10.0,
-        if game.assisted { GOLD } else { MUTED },
+        if game.assisted {
+            theme.gold
+        } else {
+            theme.muted
+        },
     );
 
     let board_top = info_y + 55.0;
@@ -152,7 +202,7 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         action: Action::SudokuCell,
     });
 
-    f.rect(clip.min, clip.size(), BOARD_BG);
+    f.rect(clip.min, clip.size(), palette.board_bg);
     // Draw only visible cell surfaces and marks. Text is placed only when the whole cell is visible.
     for row in 0..n {
         for col in 0..n {
@@ -178,18 +228,18 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 && index != selected;
             let fill =
                 if s.save.sudoku.highlight_errors && !given && value != 0 && game.conflict(index) {
-                    ERROR_BG
+                    palette.error_bg
                 } else if index == selected {
-                    Color::srgb(0.12, 0.16, 0.18)
+                    palette.selected_bg
                 } else if s.save.sudoku.highlight_same
                     && selected_value != 0
                     && value == selected_value
                 {
-                    SAME
+                    palette.same
                 } else if same_peer {
-                    PEER
+                    palette.peer
                 } else {
-                    BOARD_BG
+                    palette.board_bg
                 };
             let visible_min = cell_rect.min.max(clip.min);
             let visible_max = cell_rect.max.min(clip.max);
@@ -209,11 +259,11 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                         label,
                         fs,
                         if given {
-                            CLUE
+                            palette.clue
                         } else if s.save.sudoku.highlight_errors && game.conflict(index) {
-                            INK
+                            palette.error_text
                         } else {
-                            ENTRY
+                            palette.entry
                         },
                     );
                 }
@@ -234,7 +284,7 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                     let x = cell_rect.min.x + ((k % cols) as f32 + 0.5) * cell / cols as f32
                         - note_fs * 0.27;
                     let y = cell_rect.min.y + (k / cols) as f32 * (cell / cols as f32) + 1.0;
-                    f.text(Vec2::new(x, y), symbol(value as u8), note_fs, MUTED);
+                    f.text(Vec2::new(x, y), symbol(value as u8), note_fs, theme.muted);
                 }
             }
         }
@@ -244,7 +294,11 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
     // entirely. Box boundaries remain stronger, with clipped endpoints.
     for i in 0..=n {
         let weight = if i % box_cols == 0 { 2.0 } else { 1.0 };
-        let color = if i % box_cols == 0 { CYAN } else { EDGE };
+        let color = if i % box_cols == 0 {
+            theme.accent
+        } else {
+            theme.edge
+        };
         let x = origin.x + i as f32 * cell;
         if x >= clip.min.x && x <= clip.max.x {
             f.line(
@@ -255,7 +309,11 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             );
         }
         let weight = if i % box_rows == 0 { 2.0 } else { 1.0 };
-        let color = if i % box_rows == 0 { CYAN } else { EDGE };
+        let color = if i % box_rows == 0 {
+            theme.accent
+        } else {
+            theme.edge
+        };
         let y = origin.y + i as f32 * cell;
         if y >= clip.min.y && y <= clip.max.y {
             f.line(
@@ -279,7 +337,11 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         clip.min,
         clip.size(),
         2.0 + completion_pulse * 2.5,
-        if completion_pulse > 0.0 { GOLD } else { CYAN },
+        if completion_pulse > 0.0 {
+            theme.gold
+        } else {
+            theme.accent
+        },
     );
     let selected_rect = rect(
         origin.x + sc as f32 * cell,
@@ -292,7 +354,7 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         && selected_rect.min.y >= clip.min.y
         && selected_rect.max.y <= clip.max.y
     {
-        f.outline(selected_rect.min, selected_rect.size(), 2.5, GOLD);
+        f.outline(selected_rect.min, selected_rect.size(), 2.5, theme.gold);
     }
 
     let panel_x = m + board_w + panel_gap;
@@ -349,7 +411,7 @@ pub(super) fn sudoku(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 best.map(format_time).unwrap_or_else(|| "--".into())
             )
         };
-        f.text(Vec2::new(m, board_top - 16.0), result, 10.0, GREEN);
+        f.text(Vec2::new(m, board_top - 16.0), result, 10.0, theme.success);
     }
 }
 
@@ -425,6 +487,7 @@ fn draw_mobile(
 }
 
 fn bank_heading(f: &mut Frame, s: &Arcade, x: f32, y: f32, w: f32) {
+    let theme = f.theme();
     f.text(
         Vec2::new(x, y),
         if s.sudoku_ui.pencil {
@@ -433,9 +496,9 @@ fn bank_heading(f: &mut Frame, s: &Arcade, x: f32, y: f32, w: f32) {
             "ENTER VALUE"
         },
         10.0,
-        MUTED,
+        theme.muted,
     );
-    f.text(Vec2::new(x + w - 128.0, y), "REMAINING", 10.0, MUTED);
+    f.text(Vec2::new(x + w - 128.0, y), "REMAINING", 10.0, theme.muted);
     f.text(
         Vec2::new(x + w - 62.0, y),
         if s.sudoku_ui.pencil {
@@ -444,7 +507,11 @@ fn bank_heading(f: &mut Frame, s: &Arcade, x: f32, y: f32, w: f32) {
             "NOTES OFF"
         },
         8.5,
-        if s.sudoku_ui.pencil { GOLD } else { MUTED },
+        if s.sudoku_ui.pencil {
+            theme.gold
+        } else {
+            theme.muted
+        },
     );
 }
 
@@ -459,6 +526,7 @@ fn draw_editor_controls(
     dense: bool,
     mobile: bool,
 ) -> f32 {
+    let theme = f.theme();
     let game = &s.save.sudoku.game;
     let selected = s.sudoku_ui.selected.min(game.board.len().saturating_sub(1));
     let completed = game.complete;
@@ -519,7 +587,7 @@ fn draw_editor_controls(
             hint_reason(s)
         },
         9.0,
-        MUTED,
+        theme.muted,
     );
     cursor += 12.0;
     let disclosure_h = 32.0;
@@ -589,7 +657,7 @@ fn draw_editor_controls(
             "Difficulty sets clue density"
         },
         9.0,
-        MUTED,
+        theme.muted,
     );
     cursor += 12.0;
     f.text(
@@ -600,7 +668,7 @@ fn draw_editor_controls(
             "Arrows / 1-9 / P notes / U undo / H hint"
         },
         if mobile { 8.5 } else { 9.0 },
-        MUTED,
+        theme.muted,
     );
     cursor += 12.0;
     if given || (s.sudoku_ui.pencil && has_value) {
@@ -612,7 +680,7 @@ fn draw_editor_controls(
                 "Erase this value before adding notes."
             },
             9.0,
-            GOLD,
+            theme.gold,
         );
         cursor += 12.0;
     }
@@ -620,8 +688,9 @@ fn draw_editor_controls(
 }
 
 fn draw_message(f: &mut Frame, message: &str, x: f32, y: f32, width: usize) {
+    let gold = f.theme().gold;
     for (i, line) in wrap_lines(message, width, 2).iter().enumerate() {
-        f.text(Vec2::new(x, y + i as f32 * 13.0), line, 10.0, GOLD);
+        f.text(Vec2::new(x, y + i as f32 * 13.0), line, 10.0, gold);
     }
 }
 
@@ -633,6 +702,8 @@ fn number_button(
     value: u8,
     selected: usize,
 ) {
+    let palette = SudokuPalette::for_scheme(f.palette);
+    let theme = f.theme();
     let n = usize::from(s.save.sudoku.game.size);
     let game = &s.save.sudoku.game;
     let remaining = s
@@ -661,11 +732,11 @@ fn number_button(
         r.min,
         r.size(),
         if !enabled {
-            Color::srgb(0.018, 0.035, 0.05)
+            palette.btn_disabled_bg
         } else if focused || hovered {
-            Color::srgb(0.055, 0.14, 0.18)
+            palette.btn_hover_bg
         } else {
-            PANEL
+            theme.panel
         },
     );
     f.outline(
@@ -673,22 +744,26 @@ fn number_button(
         r.size(),
         if focused || selected_mark { 2.0 } else { 1.0 },
         if focused || selected_mark {
-            GOLD
+            theme.gold
         } else if enabled {
-            CYAN
+            theme.accent
         } else {
-            EDGE
+            theme.edge
         },
     );
     if selected_mark {
-        f.rect(r.min, Vec2::new(3.0, r.height()), GOLD);
+        f.rect(r.min, Vec2::new(3.0, r.height()), theme.gold);
     }
     let fs = if r.width() < 50.0 { 16.0 } else { 19.0 };
     f.text(
         Vec2::new(r.min.x + 6.0, r.min.y + (r.height() - fs) * 0.5),
         symbol(value),
         fs,
-        if !enabled || count == 0 { MUTED } else { INK },
+        if !enabled || count == 0 {
+            theme.muted
+        } else {
+            theme.ink
+        },
     );
     let count_font = if r.width() < 50.0 { 8.0 } else { 10.0 };
     let count_label = count.to_string();
@@ -699,7 +774,7 @@ fn number_button(
         ),
         count_label,
         count_font,
-        if enabled { MUTED } else { EDGE },
+        if enabled { theme.muted } else { theme.edge },
     );
     if enabled {
         l.hits.push(Hit {
@@ -714,6 +789,7 @@ fn number_button(
 }
 
 pub(super) fn setup_dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
+    let theme = f.theme();
     let width = (f.size.x - 2.0 * m).min(590.0);
     let height = (f.size.y - 32.0).min(500.0);
     let r = rect(
@@ -735,10 +811,10 @@ pub(super) fn setup_dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32
         r.min - Vec2::splat(6.0),
         r.size() + Vec2::splat(12.0),
         1.0,
-        EDGE,
+        theme.edge,
     );
-    f.rect(r.min, r.size(), PANEL);
-    f.rounded_outline(r.min, r.size(), 8.0, 2.0, GOLD);
+    f.rect(r.min, r.size(), theme.panel);
+    f.rounded_outline(r.min, r.size(), 8.0, 2.0, theme.gold);
     // Register Cancel first to make it the default modal keyboard focus.
     // Its footer region does not overlap the choices drawn afterward.
     control_button(
@@ -755,15 +831,20 @@ pub(super) fn setup_dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32
         r.min + Vec2::new(22.0, 22.0),
         "NEW SUDOKU PUZZLE",
         if width < 400.0 { 23.0 } else { 28.0 },
-        INK,
+        theme.ink,
     );
     f.text(
         r.min + Vec2::new(22.0, 56.0),
         "Choose a board size and clue density.",
         12.0,
-        MUTED,
+        theme.muted,
     );
-    f.text(r.min + Vec2::new(22.0, 87.0), "BOARD SIZE", 10.0, CYAN);
+    f.text(
+        r.min + Vec2::new(22.0, 87.0),
+        "BOARD SIZE",
+        10.0,
+        theme.accent,
+    );
     let size_w = (inner_w - gap) * 0.5;
     for (i, size) in [4u8, 6, 9, 16].into_iter().enumerate() {
         let row = i / 2;
@@ -790,7 +871,12 @@ pub(super) fn setup_dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32
             draft_size == size,
         );
     }
-    f.text(r.min + Vec2::new(22.0, 216.0), "DIFFICULTY", 10.0, CYAN);
+    f.text(
+        r.min + Vec2::new(22.0, 216.0),
+        "DIFFICULTY",
+        10.0,
+        theme.accent,
+    );
     for (i, difficulty) in Difficulty::ALL.into_iter().enumerate() {
         let row = i / 2;
         let col = i % 2;
@@ -819,7 +905,7 @@ pub(super) fn setup_dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32
             "Difficulty controls clue density."
         },
         10.0,
-        MUTED,
+        theme.muted,
     );
     control_button(
         f,
@@ -848,6 +934,8 @@ fn control_button(
     enabled: bool,
     active: bool,
 ) {
+    let palette = SudokuPalette::for_scheme(f.palette);
+    let theme = f.theme();
     let idx = l.hits.len();
     let focused = enabled && s.keyboard && s.focus == idx;
     let hovered = enabled && s.cursor.is_some_and(|p| r.contains(p));
@@ -855,25 +943,25 @@ fn control_button(
         r.min,
         r.size(),
         if !enabled {
-            Color::srgb(0.018, 0.035, 0.05)
+            palette.btn_disabled_bg
         } else if focused || hovered {
-            Color::srgb(0.055, 0.14, 0.18)
+            palette.btn_hover_bg
         } else {
-            PANEL
+            theme.panel
         },
     );
     let edge = if !enabled {
-        Color::srgb(0.045, 0.09, 0.12)
+        palette.btn_disabled_edge
     } else if focused {
-        GOLD
+        theme.gold
     } else if active {
-        CYAN
+        theme.accent
     } else {
-        EDGE
+        theme.edge
     };
     f.outline(r.min, r.size(), if focused { 2.0 } else { 1.0 }, edge);
     if active && enabled {
-        f.rect(r.min, Vec2::new(3.0, r.height()), CYAN);
+        f.rect(r.min, Vec2::new(3.0, r.height()), theme.accent);
     }
     let font: f32 = if r.width() < 62.0 {
         8.5
@@ -892,11 +980,11 @@ fn control_button(
         label,
         font,
         if !enabled {
-            EDGE
+            theme.edge
         } else if focused || active {
-            INK
+            theme.ink
         } else {
-            Color::srgb(0.6, 0.78, 0.85)
+            palette.btn_normal_text
         },
     );
     if enabled {

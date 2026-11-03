@@ -5,17 +5,6 @@ use crate::{
 use bevy::{prelude::*, window::PrimaryWindow};
 use gamevex_core::{blackjack::Command, cards::Suit, *};
 
-pub const BG: Color = Color::srgb(0.008, 0.016, 0.031);
-pub const PANEL: Color = Color::srgb(0.025, 0.055, 0.085);
-pub const CYAN: Color = Color::srgb(0.0, 0.83, 1.0);
-pub const MAGENTA: Color = Color::srgb(1.0, 0.0, 0.67);
-pub const GOLD: Color = Color::srgb(1.0, 0.67, 0.0);
-pub const INK: Color = Color::srgb(0.87, 0.94, 1.0);
-pub const MUTED: Color = Color::srgb(0.39, 0.58, 0.68);
-pub const EDGE: Color = Color::srgb(0.08, 0.22, 0.29);
-pub const GREEN: Color = Color::srgb(0.0, 1.0, 0.72);
-pub const RED: Color = Color::srgb(1.0, 0.2, 0.4);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Lobby,
@@ -228,16 +217,23 @@ pub fn paint(
     } else {
         0.0
     });
-    frame.rect(Vec2::ZERO, size, BG);
+    let t = frame.theme();
+    frame.rect(Vec2::ZERO, size, t.bg);
     let margin = (size.x * 0.04).clamp(16.0, 52.0);
     let w = size.x - 2.0 * margin;
     // A quiet cabinet grid surrounds the flat play surfaces.
+    let grid_color = Color::srgba(
+        t.edge.to_srgba().red,
+        t.edge.to_srgba().green,
+        t.edge.to_srgba().blue,
+        0.22,
+    );
     for x in (0..size.x as usize).step_by(64) {
         frame.line(
             Vec2::new(x as f32, 0.0),
             Vec2::new(x as f32, size.y),
             0.5,
-            Color::srgb(0.015, 0.045, 0.065),
+            grid_color,
         );
     }
     for y in (0..size.y as usize).step_by(64) {
@@ -245,7 +241,7 @@ pub fn paint(
             Vec2::new(0.0, y as f32),
             Vec2::new(size.x, y as f32),
             0.5,
-            Color::srgb(0.015, 0.045, 0.065),
+            grid_color,
         );
     }
     platform::publish_cards(None);
@@ -325,13 +321,16 @@ pub fn paint(
     }
     if state.protected_save || state.persistence.starts_with("Playing") {
         let footer = compact(&state.persistence, ((size.x - 2.0 * margin) / 7.5) as usize);
+        let t = frame.theme();
+        let edge = t.edge;
+        let gold = t.gold;
         frame.line(
             Vec2::new(margin, size.y - 33.0),
             Vec2::new(size.x - margin, size.y - 33.0),
             1.0,
-            EDGE,
+            edge,
         );
-        frame.text(Vec2::new(margin, size.y - 25.0), footer, 12.0, GOLD);
+        frame.text(Vec2::new(margin, size.y - 25.0), footer, 12.0, gold);
     }
     if let Some(board) = &layout.board {
         platform::publish_board(Some([
@@ -352,6 +351,7 @@ mod blackjack;
 pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
 mod cribbage;
+pub(crate) mod game_palette;
 mod hearts;
 mod holdem;
 mod mahjong;
@@ -986,16 +986,17 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
 fn header(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
     let logo = rect(m - 4.0, 20.0, 128.0, 42.0);
     let index = l.hits.len();
+    let t = f.theme();
     if (s.keyboard && s.focus == index) || s.cursor.is_some_and(|p| logo.contains(p)) {
         f.rounded_outline(
             logo.min,
             logo.size(),
             4.0,
             1.0,
-            if s.keyboard { GOLD } else { CYAN },
+            if s.keyboard { t.gold } else { t.accent },
         );
     }
-    f.text(Vec2::new(m, 24.0), "GAMEVEX", 25.0, CYAN);
+    f.text(Vec2::new(m, 24.0), "GAMEVEX", 25.0, t.accent);
     l.hits.push(Hit {
         rect: logo,
         action: Action::Open(Screen::Lobby),
@@ -1038,8 +1039,13 @@ fn header(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             false,
         );
     }
-    f.line(Vec2::new(m, 76.0), Vec2::new(width - m, 76.0), 1.0, CYAN);
-    f.rect(Vec2::new(m, 74.0), Vec2::new(78.0, 4.0), GOLD);
+    f.line(
+        Vec2::new(m, 76.0),
+        Vec2::new(width - m, 76.0),
+        1.0,
+        t.accent,
+    );
+    f.rect(Vec2::new(m, 74.0), Vec2::new(78.0, 4.0), t.gold);
 }
 
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {

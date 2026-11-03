@@ -2,12 +2,60 @@ use super::screens::{button, circle};
 use super::*;
 use gamevex_core::backgammon::{BAR, Color as Side, OFF, Phase};
 
-const FELT: Color = Color::srgb(0.018, 0.047, 0.067);
-const WOOD: Color = Color::srgb(0.042, 0.075, 0.09);
-const POINT_A: Color = Color::srgb(0.075, 0.15, 0.18);
-const POINT_B: Color = Color::srgb(0.13, 0.08, 0.17);
+#[derive(Clone, Copy)]
+pub struct BackgammonPalette {
+    pub felt: Color,
+    pub wood: Color,
+    pub bar: Color,
+    pub tray: Color,
+    pub point_a: Color,
+    pub point_b: Color,
+    pub white_team: Color,
+    pub black_team: Color,
+    pub white_body: Color,
+    pub black_body: Color,
+    pub shadow: Color,
+    pub dialog_panel: Color,
+}
+
+impl BackgammonPalette {
+    pub fn for_scheme(scheme: gamevex_core::ColorScheme) -> Self {
+        match scheme {
+            gamevex_core::ColorScheme::Cyan => Self {
+                felt: Color::srgb(0.018, 0.047, 0.067),
+                wood: Color::srgb(0.042, 0.075, 0.09),
+                bar: Color::srgb(0.023, 0.042, 0.06),
+                tray: Color::srgb(0.013, 0.031, 0.048),
+                point_a: Color::srgb(0.075, 0.15, 0.18),
+                point_b: Color::srgb(0.13, 0.08, 0.17),
+                white_team: Color::srgb(0.0, 0.83, 1.0),
+                black_team: Color::srgb(1.0, 0.0, 0.67),
+                white_body: Color::srgb(0.025, 0.21, 0.29),
+                black_body: Color::srgb(0.26, 0.015, 0.15),
+                shadow: Color::srgb(0.003, 0.008, 0.014),
+                dialog_panel: Color::srgba(0.008, 0.016, 0.031, 0.94),
+            },
+            gamevex_core::ColorScheme::Amber => Self {
+                felt: Color::srgb(0.05, 0.034, 0.020),
+                wood: Color::srgb(0.09, 0.06, 0.035),
+                bar: Color::srgb(0.065, 0.045, 0.025),
+                tray: Color::srgb(0.04, 0.027, 0.016),
+                point_a: Color::srgb(0.16, 0.11, 0.05),
+                point_b: Color::srgb(0.17, 0.07, 0.06),
+                white_team: Color::srgb(1.0, 0.76, 0.20),
+                black_team: Color::srgb(1.0, 0.36, 0.25),
+                white_body: Color::srgb(0.24, 0.15, 0.04),
+                black_body: Color::srgb(0.24, 0.06, 0.05),
+                shadow: Color::srgb(0.015, 0.010, 0.005),
+                dialog_panel: Color::srgba(0.04, 0.028, 0.016, 0.94),
+            },
+        }
+    }
+}
 
 pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let palette = BackgammonPalette::for_scheme(f.palette);
+    let theme = f.theme();
     let game = s.save.backgammon.clone();
     s.backgammon_ui.refresh(&game);
     let ui = &s.backgammon_ui;
@@ -41,7 +89,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         Vec2::new(m, 82.0),
         "Backgammon",
         if small { 25.0 } else { 34.0 },
-        INK,
+        theme.ink,
     );
     let top = if small { 126.0 } else { 94.0 };
     let control_h = if short { 29.0 } else { 34.0 };
@@ -74,14 +122,14 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         };
         let control_rect = rect(x, top, control_widths[i], control_h);
         if i == 0 && !enabled {
-            f.rect(control_rect.min, control_rect.size(), PANEL);
-            f.outline(control_rect.min, control_rect.size(), 1.0, EDGE);
+            f.rect(control_rect.min, control_rect.size(), theme.panel);
+            f.outline(control_rect.min, control_rect.size(), 1.0, theme.edge);
             centered(
                 f,
                 Vec2::new(control_rect.center().x, control_rect.min.y + 7.0),
                 label,
                 12.0,
-                MUTED,
+                theme.muted,
             );
         } else {
             button(f, s, l, control_rect, label, action, enabled);
@@ -99,7 +147,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
             game.board.off[0]
         ),
         stat_size,
-        CYAN,
+        palette.white_team,
     );
     let right_stat = format!(
         "CPU  {} pips  /  {} off",
@@ -113,7 +161,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         ),
         right_stat,
         stat_size,
-        MAGENTA,
+        palette.black_team,
     );
 
     let board_top = stat_y + stat_size + 6.0;
@@ -122,8 +170,8 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
     let board_x = m;
     let board_w = w;
     let table = rect(board_x, board_top, board_w, board_h);
-    f.rounded_rect(table, 9.0, WOOD);
-    f.rounded_outline(table.min, table.size(), 9.0, 1.0, EDGE);
+    f.rounded_rect(table, 9.0, palette.wood);
+    f.rounded_outline(table.min, table.size(), 9.0, 1.0, theme.edge);
     let pad = if small { 6.0 } else { 12.0 };
     let tray_w = if small { 24.0 } else { 37.0 };
     let bar_w = if small { 22.0 } else { 62.0 };
@@ -142,18 +190,18 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
     f.rounded_rect(
         rect(inner_x, board_top + 3.0, inner_w, board_h - 6.0),
         5.0,
-        FELT,
+        palette.felt,
     );
     f.rect(
         rect(bar_x, board_top + 4.0, bar_w, board_h - 8.0).min,
         Vec2::new(bar_w, board_h - 8.0),
-        Color::srgb(0.023, 0.042, 0.06),
+        palette.bar,
     );
     f.line(
         Vec2::new(bar_x + bar_w * 0.5, board_top + 5.0),
         Vec2::new(bar_x + bar_w * 0.5, board_bottom - 5.0),
         1.0,
-        EDGE,
+        theme.edge,
     );
     // The point sequence follows conventional numbering: 12..17 across the
     // upper left, 18..23 back toward the right; 11..6 then 0..5 below.
@@ -180,7 +228,11 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         let bottom_rect = rect(px, mid_y, col_w, board_bottom - mid_y - 2.0);
         slots[top_point] = top_rect;
         slots[bottom_point] = bottom_rect;
-        let c = if col % 2 == 0 { POINT_A } else { POINT_B };
+        let c = if col % 2 == 0 {
+            palette.point_a
+        } else {
+            palette.point_b
+        };
         f.polygon(
             &[
                 Vec2::new(px + col_w * 0.10, board_top + edge_y),
@@ -195,19 +247,23 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 Vec2::new(px + col_w * 0.90, board_bottom - edge_y),
                 Vec2::new(px + col_w * 0.5, board_bottom - tri_h),
             ],
-            if c == POINT_A { POINT_B } else { POINT_A },
+            if col % 2 == 0 {
+                palette.point_b
+            } else {
+                palette.point_a
+            },
         );
         f.text(
             Vec2::new(px + col_w * 0.5 - 4.0, board_top + 4.0),
             format!("{}", top_point + 1),
             if small { 7.0 } else { 9.0 },
-            MUTED,
+            theme.muted,
         );
         f.text(
             Vec2::new(px + col_w * 0.5 - 4.0, board_bottom - 14.0),
             format!("{}", bottom_point + 1),
             if small { 7.0 } else { 9.0 },
-            MUTED,
+            theme.muted,
         );
     }
     slots[BAR as usize] = rect(bar_x, mid_y, bar_w, board_bottom - mid_y);
@@ -215,13 +271,13 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
     f.rounded_rect(
         rect(tray_x, board_top + 4.0, tray_w - 2.0, board_h - 8.0),
         4.0,
-        Color::srgb(0.013, 0.031, 0.048),
+        palette.tray,
     );
     f.line(
         Vec2::new(tray_x + 2.0, mid_y),
         Vec2::new(tray_x + tray_w - 4.0, mid_y),
         1.0,
-        EDGE,
+        theme.edge,
     );
     let legal = if game.turn == Side::White && game.phase == Phase::Moving {
         ui.legal.clone()
@@ -242,7 +298,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         let focused = moves_available && s.keyboard && s.focus == l.hits.len();
         let hovered = moves_available && s.cursor.is_some_and(|point| r.contains(point));
         if moves_available && legal.iter().any(|mv| mv.from == idx as u8) {
-            f.rounded_outline(r.min, r.size(), 4.0, 2.0, CYAN);
+            f.rounded_outline(r.min, r.size(), 4.0, 2.0, theme.accent);
         }
         if source == Some(idx as u8) {
             f.rounded_outline(
@@ -250,7 +306,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 r.size() - Vec2::splat(2.0),
                 4.0,
                 2.0,
-                GOLD,
+                theme.gold,
             );
         } else if destinations.contains(&(idx as u8)) {
             f.rounded_outline(
@@ -258,7 +314,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 r.size() - Vec2::splat(4.0),
                 4.0,
                 2.0,
-                MAGENTA,
+                theme.secondary,
             );
         } else if focused || hovered {
             f.rounded_outline(
@@ -266,7 +322,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 r.size() - Vec2::splat(4.0),
                 4.0,
                 if focused { 2.0 } else { 1.5 },
-                if focused { GOLD } else { INK },
+                if focused { theme.gold } else { theme.ink },
             );
         }
         if moves_available {
@@ -287,7 +343,14 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 } else {
                     board_bottom - edge_y - checker_r - i as f32 * step
                 };
-                draw_checker(f, Vec2::new(r.center().x, cy), checker_r, color, s.cursor);
+                draw_checker(
+                    f,
+                    Vec2::new(r.center().x, cy),
+                    checker_r,
+                    color,
+                    s.cursor,
+                    &palette,
+                );
             }
             if p.count > 5 {
                 pip_badge(
@@ -303,6 +366,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                     p.count,
                     color,
                     small,
+                    &palette,
                 );
             }
         }
@@ -321,6 +385,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 checker_r,
                 side,
                 s.cursor,
+                &palette,
             );
         }
         if display_board.bar[side.index()] > 5 {
@@ -335,6 +400,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 display_board.bar[side.index()],
                 side,
                 small,
+                &palette,
             );
         }
     }
@@ -342,7 +408,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         (Side::Black, game.board.off[1], board_top + board_h * 0.25),
         (Side::White, game.board.off[0], board_top + board_h * 0.75),
     ] {
-        let color = side_color(side);
+        let color = side_color(side, &palette);
         circle(
             f,
             Vec2::new(tray_x + tray_w * 0.5, y),
@@ -368,7 +434,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 ""
             },
             if small { 8.0 } else { 10.0 },
-            INK,
+            theme.ink,
         );
     } else {
         let visible: Vec<u8> = game.rolled.iter().take(2).copied().collect();
@@ -397,7 +463,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
             } else {
                 *die
             };
-            draw_die(f, r, shown, side_color(dice_side));
+            draw_die(f, r, shown, side_color(dice_side, &palette));
         }
         let remaining = game
             .dice
@@ -413,7 +479,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
             ),
             &remaining,
             if small { 7.0 } else { 9.0 },
-            MUTED,
+            theme.muted,
         );
     }
     let moving = ui
@@ -459,7 +525,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                 false,
             );
             let p = start.lerp(end, t);
-            draw_checker(f, p, checker_r, motion.color, s.cursor);
+            draw_checker(f, p, checker_r, motion.color, s.cursor, &palette);
             if mv.is_hit && mv.to < 24 {
                 let victim = motion.color.opponent();
                 let from = checker_position(
@@ -496,7 +562,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
                     step,
                     false,
                 );
-                draw_checker(f, from.lerp(to, t), checker_r, victim, s.cursor);
+                draw_checker(f, from.lerp(to, t), checker_r, victim, s.cursor, &palette);
             }
         }
     }
@@ -526,9 +592,9 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         status,
         if small { 9.0 } else { 12.0 },
         if game.turn == Side::White {
-            CYAN
+            palette.white_team
         } else {
-            MAGENTA
+            palette.black_team
         },
     );
     let elapsed = format!(
@@ -540,7 +606,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         Vec2::new(m + 2.0, f.size.y - 62.0),
         &elapsed,
         if small { 9.0 } else { 11.0 },
-        MUTED,
+        theme.muted,
     );
     let wins = format!("WINS {}", s.save.backgammon_wins);
     f.text(
@@ -550,7 +616,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
         ),
         wins,
         if small { 9.0 } else { 11.0 },
-        GOLD,
+        theme.gold,
     );
     if game.phase == Phase::Won && !busy {
         let won = game.winner == Some(Side::White);
@@ -560,7 +626,7 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
             if small { 180.0 } else { 250.0 },
             60.0,
         );
-        f.rounded_rect(panel, 8.0, Color::srgba(0.008, 0.016, 0.031, 0.94));
+        f.rounded_rect(panel, 8.0, palette.dialog_panel);
         let pulse = if s.save.settings.reduced_motion {
             0.0
         } else {
@@ -582,21 +648,29 @@ pub(super) fn backgammon(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f
             panel.size(),
             8.0,
             1.0 + pulse,
-            if won { CYAN } else { MAGENTA },
+            if won {
+                palette.white_team
+            } else {
+                palette.black_team
+            },
         );
         centered(
             f,
             Vec2::new(panel.center().x, panel.min.y + 15.0),
             if won { "YOU WIN" } else { "CPU WINS" },
             if small { 15.0 } else { 20.0 },
-            if won { CYAN } else { MAGENTA },
+            if won {
+                palette.white_team
+            } else {
+                palette.black_team
+            },
         );
         centered(
             f,
             Vec2::new(panel.center().x, panel.min.y + 39.0),
             &format!("COMPLETED IN {elapsed}"),
             if small { 9.0 } else { 11.0 },
-            INK,
+            theme.ink,
         );
     }
     s.backgammon_ui.point_bounds = slots.to_vec();
@@ -621,12 +695,16 @@ fn draw_die(f: &mut Frame, r: Rect, value: u8, color: Color) {
         pips.extend([Vec2::new(lo.x, center.y), Vec2::new(hi.x, center.y)]);
     }
     for p in pips {
-        disk(f, p, r.width() * 0.065, BG);
+        disk(f, p, r.width() * 0.065, f.theme().bg);
     }
 }
 
-fn side_color(side: Side) -> Color {
-    if side == Side::White { CYAN } else { MAGENTA }
+fn side_color(side: Side, palette: &BackgammonPalette) -> Color {
+    if side == Side::White {
+        palette.white_team
+    } else {
+        palette.black_team
+    }
 }
 #[allow(clippy::too_many_arguments)]
 fn checker_position(
@@ -694,44 +772,46 @@ fn disk(f: &mut Frame, at: Vec2, r: f32, color: Color) {
         .collect();
     f.polygon(&points, color);
 }
-fn draw_checker(f: &mut Frame, at: Vec2, r: f32, side: Side, cursor: Option<Vec2>) {
-    let color = side_color(side);
-    disk(
-        f,
-        at + Vec2::new(0.0, 2.0),
-        r,
-        Color::srgb(0.003, 0.008, 0.014),
-    );
+fn draw_checker(
+    f: &mut Frame,
+    at: Vec2,
+    r: f32,
+    side: Side,
+    cursor: Option<Vec2>,
+    palette: &BackgammonPalette,
+) {
+    let color = side_color(side, palette);
+    disk(f, at + Vec2::new(0.0, 2.0), r, palette.shadow);
     disk(
         f,
         at,
         r,
         if side == Side::White {
-            Color::srgb(0.025, 0.21, 0.29)
+            palette.white_body
         } else {
-            Color::srgb(0.26, 0.015, 0.15)
+            palette.black_body
         },
     );
     circle(f, at, r, 1.5, color);
     circle(f, at, r * 0.72, 0.8, color);
     if cursor.is_some_and(|p| (p - at).length() < r * 1.2) {
-        circle(f, at, r + 2.0, 1.2, INK);
+        circle(f, at, r + 2.0, 1.2, f.theme().ink);
     }
 }
 
-fn pip_badge(f: &mut Frame, at: Vec2, n: u8, side: Side, small: bool) {
+fn pip_badge(f: &mut Frame, at: Vec2, n: u8, side: Side, small: bool, palette: &BackgammonPalette) {
     let r = if small { 7.0 } else { 9.0 };
     f.rounded_rect(
         rect(at.x - r, at.y - r * 0.62, r * 2.0, r * 1.24),
         r * 0.3,
-        side_color(side),
+        side_color(side, palette),
     );
     centered(
         f,
         Vec2::new(at.x, at.y - r * 0.45),
         &n.to_string(),
         if small { 8.0 } else { 10.0 },
-        BG,
+        f.theme().bg,
     );
 }
 fn centered(f: &mut Frame, p: Vec2, text: &str, size: f32, color: Color) {

@@ -126,7 +126,12 @@ pub(crate) const TOPICS: &[(&str, &[&str])] = &[
 pub(super) fn manual(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
     let narrow = w < 620.0;
     let title_size = if narrow { 26.0 } else { 40.0 };
-    f.text(Vec2::new(m, 101.0), "Game manual", title_size, INK);
+    f.text(
+        Vec2::new(m, 101.0),
+        "Game manual",
+        title_size,
+        f.theme().ink,
+    );
     if let Some(topic) = s.manual_topic {
         let (title, paragraphs) = TOPICS[topic];
         button(
@@ -142,7 +147,7 @@ pub(super) fn manual(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             Vec2::new(m, 155.0),
             title,
             if narrow { 16.0 } else { 23.0 },
-            CYAN,
+            f.theme().accent,
         );
         let clip = rect(m, 202.0, w.min(780.0), (f.size.y - 246.0).max(1.0));
         let size = if narrow { 14.0 } else { 17.0 };
@@ -168,11 +173,11 @@ pub(super) fn manual(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         l.lobby_clip = Some(clip);
         l.lobby_max_scroll = (height - clip.height()).max(0.0);
         s.lobby_scroll = s.lobby_scroll.clamp(0.0, l.lobby_max_scroll);
-        f.rounded_rect(clip, 8.0, PANEL);
+        f.rounded_rect(clip, 8.0, f.theme().panel);
         for (y, line) in lines {
             let y = clip.min.y + y - s.lobby_scroll;
             if y >= clip.min.y && y + line_height <= clip.max.y {
-                f.text(Vec2::new(clip.min.x + 14.0, y), line, size, INK);
+                f.text(Vec2::new(clip.min.x + 14.0, y), line, size, f.theme().ink);
             }
         }
         if l.lobby_max_scroll > 0.0 {
@@ -181,11 +186,11 @@ pub(super) fn manual(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             f.rect(
                 Vec2::new(clip.max.x - 4.0, top),
                 Vec2::new(2.0, length),
-                CYAN,
+                f.theme().accent,
             );
         }
     } else {
-        f.text(Vec2::new(m, 151.0), "Choose a game", 14.0, MUTED);
+        f.text(Vec2::new(m, 151.0), "Choose a game", 14.0, f.theme().muted);
         let columns = if narrow { 2 } else { 3 };
         let rows = TOPICS.len().div_ceil(columns);
         let gap = 8.0;

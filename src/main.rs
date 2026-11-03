@@ -19,6 +19,7 @@ mod roulette_app;
 mod session;
 mod sudoku_app;
 mod table_feedback;
+pub mod theme;
 mod touch_input;
 
 use arcade_input::{handle_input, handle_pointer_input, pointer_pressed};
@@ -521,10 +522,8 @@ impl Arcade {
                 self.persist();
             }
             Action::Palette => {
-                self.save.settings.color_scheme = match self.save.settings.color_scheme {
-                    ColorScheme::Cyan => ColorScheme::Amber,
-                    ColorScheme::Amber => ColorScheme::Cyan,
-                };
+                self.save.settings.color_scheme =
+                    theme::cycle_scheme(self.save.settings.color_scheme);
                 self.persist();
             }
             Action::Curvature(delta) => {
@@ -2609,6 +2608,72 @@ mod tests {
         assert_eq!(s.save.mahjong, saved);
         assert!(s.mahjong_ui.feedback.events.is_empty());
         assert!(s.mahjong_ui.feedback.take_sounds().is_empty());
+    }
+
+    #[test]
+    fn every_screen_can_switch_themes_without_changing_controls() {
+        for (width, height) in [(1280, 720), (360, 740)] {
+            for screen in [
+                Screen::Lobby,
+                Screen::Manual,
+                Screen::Settings,
+                Screen::Mines,
+                Screen::Cards,
+                Screen::Blackjack,
+                Screen::Baccarat,
+                Screen::Sudoku,
+                Screen::Mahjong,
+                Screen::Solitaire,
+                Screen::FreeCell,
+                Screen::Spider,
+                Screen::Hearts,
+                Screen::Cribbage,
+                Screen::Holdem,
+                Screen::Roulette,
+                Screen::Backgammon,
+            ] {
+                let mut app = App::new();
+                let mut state = test_arcade();
+                state.open(screen);
+                app.insert_resource(state)
+                    .insert_resource(Time::<()>::default())
+                    .init_resource::<ViewLayout>()
+                    .init_resource::<rendering::Frame>()
+                    .init_resource::<rendering::RenderOptions>()
+                    .add_systems(Update, presentation::paint);
+                app.world_mut().spawn((
+                    Window {
+                        resolution: WindowResolution::new(width, height),
+                        ..default()
+                    },
+                    PrimaryWindow,
+                ));
+                let mut controls = None;
+                for meta in theme::THEME_REGISTRY {
+                    app.world_mut()
+                        .resource_mut::<Arcade>()
+                        .save
+                        .settings
+                        .color_scheme = meta.scheme;
+                    app.update();
+                    assert_eq!(
+                        app.world().resource::<rendering::Frame>().palette,
+                        meta.scheme
+                    );
+                    let hits: Vec<_> = app
+                        .world()
+                        .resource::<ViewLayout>()
+                        .hits
+                        .iter()
+                        .map(|hit| hit.rect)
+                        .collect();
+                    if let Some(previous) = &controls {
+                        assert_eq!(&hits, previous, "{screen:?}: theme changed controls");
+                    }
+                    controls = Some(hits);
+                }
+            }
+        }
     }
 
     #[test]

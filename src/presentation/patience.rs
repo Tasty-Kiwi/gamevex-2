@@ -4,12 +4,8 @@ use gamevex_core::{
     patience::{Pile, Variant},
 };
 
-const FELT: Color = Color::srgb(0.012, 0.055, 0.047);
-const FACE: Color = Color::srgb(0.025, 0.075, 0.095);
-const LEGAL: Color = Color::srgb(0.0, 1.0, 0.72);
-const SELECTED: Color = Color::srgb(1.0, 0.0, 0.67);
-
 pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let theme = *f.theme();
     let game = s.patience_game();
     let ui = &s.patience_ui;
     let variant = game.variant;
@@ -25,7 +21,7 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             _ => "SPIDER",
         },
         if w < 460.0 { 25.0 } else { 31.0 },
-        INK,
+        theme.ink,
     );
     f.text(
         Vec2::new(m, title_y + 38.0),
@@ -35,7 +31,7 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             super::format_time(game.elapsed_ms)
         ),
         11.0,
-        CYAN,
+        theme.accent,
     );
     let record_index = Variant::ALL
         .iter()
@@ -51,7 +47,11 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             if game.assisted { " / ASSISTED" } else { "" }
         ),
         10.0,
-        if game.assisted { GOLD } else { MUTED },
+        if game.assisted {
+            theme.gold
+        } else {
+            theme.muted
+        },
     );
 
     let mode_y = title_y + 56.0;
@@ -118,9 +118,9 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         if enabled {
             button(f, s, l, r, label, action, false);
         } else {
-            f.rect(r.min, r.size(), PANEL);
-            f.outline(r.min, r.size(), 1.0, EDGE);
-            f.text(r.min + Vec2::new(5.0, 8.0), label, 11.0, MUTED);
+            f.rect(r.min, r.size(), theme.panel);
+            f.outline(r.min, r.size(), 1.0, theme.edge);
+            f.text(r.min + Vec2::new(5.0, 8.0), label, 11.0, theme.muted);
         }
     }
 
@@ -157,8 +157,12 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         (content_h - clip.height()).max(0.0),
     );
     let pan = ui.pan.clamp(Vec2::ZERO, l.patience_max_pan);
-    f.rect(clip.min, clip.size(), FELT);
-    f.outline(clip.min, clip.size(), 1.0, EDGE);
+    f.rect(
+        clip.min,
+        clip.size(),
+        super::game_palette::table(f.palette).patience_felt,
+    );
+    f.outline(clip.min, clip.size(), 1.0, theme.edge);
     let top_y = clip.min.y - pan.y;
     let x0 = clip.min.x + (clip.width() - content_w).max(0.0) * 0.5 - pan.x;
 
@@ -474,21 +478,21 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             Vec2::new(clip.min.x + 4.0, clip.max.y - 18.0),
             format!("{} COMPLETED", game.completed.len()),
             10.0,
-            GREEN,
+            theme.success,
         );
     }
     f.text(
         Vec2::new(m, f.size.y - 49.0),
         "Drag or tap to move. Swipe empty table to pan.",
         10.0,
-        MUTED,
+        theme.muted,
     );
     if game.won() {
         f.text(
             Vec2::new(clip.min.x + 6.0, clip.min.y + 6.0),
             "TABLE CLEARED",
             13.0,
-            GREEN,
+            theme.success,
         );
     } else if !ui.message.is_empty() {
         f.text(
@@ -498,7 +502,7 @@ pub(super) fn patience(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 .take((clip.width() / 6.0) as usize)
                 .collect::<String>(),
             10.0,
-            GOLD,
+            theme.gold,
         );
     }
 }
@@ -516,7 +520,9 @@ fn pile_slot(
     if r.width() <= 0.0 || r.height() <= 0.0 {
         return;
     }
-    f.rect(r.min, r.size(), FACE);
+    let theme = *f.theme();
+    let card_pal = super::game_palette::card(f.palette);
+    f.rect(r.min, r.size(), card_pal.face_bg);
     f.outline(
         r.min + Vec2::splat(1.0),
         r.size() - Vec2::splat(2.0),
@@ -528,11 +534,11 @@ fn pile_slot(
             .or(s.patience_ui.selected)
             .is_some_and(|(p, i)| s.patience_game().legal_move(p, i, pile))
         {
-            LEGAL
+            card_pal.border_legal
         } else if s.patience_ui.selected.is_some_and(|(p, _)| p == pile) {
-            SELECTED
+            card_pal.border_selected
         } else {
-            CYAN
+            card_pal.border_normal
         },
     );
     if stock {
@@ -541,7 +547,7 @@ fn pile_slot(
                 r.min + Vec2::splat(inset),
                 r.size() - Vec2::splat(inset * 2.0),
                 0.7,
-                EDGE,
+                theme.edge,
             );
         }
     }
@@ -561,7 +567,7 @@ fn pile_slot(
                 ),
             label,
             10.0,
-            MUTED,
+            theme.muted,
         );
     }
     l.hits.push(Hit {
@@ -579,12 +585,14 @@ fn pile_slot_visual(f: &mut Frame, clip: Rect, full: Rect) {
     if r.width() <= 0.0 || r.height() <= 0.0 {
         return;
     }
-    f.rect(r.min, r.size(), FACE);
+    let theme = *f.theme();
+    let card_pal = super::game_palette::card(f.palette);
+    f.rect(r.min, r.size(), card_pal.face_bg);
     f.outline(
         r.min + Vec2::splat(1.0),
         r.size() - Vec2::splat(2.0),
         1.0,
-        EDGE,
+        theme.edge,
     );
 }
 
@@ -627,25 +635,27 @@ fn draw_card(
     if r.width() <= 0.0 || r.height() <= 0.0 {
         return;
     }
+    let theme = *f.theme();
+    let card_pal = super::game_palette::card(f.palette);
     let border = if selected {
-        SELECTED
+        card_pal.border_selected
     } else if legal {
-        LEGAL
+        card_pal.border_legal
     } else {
-        CYAN
+        card_pal.border_normal
     };
     f.rect(
         r.min + Vec2::new(2.0, 3.0),
         r.size() - Vec2::new(2.0, 3.0),
-        Color::srgb(0.0, 0.01, 0.025),
+        card_pal.shadow,
     );
     f.rect(
         r.min,
         r.size(),
         if card.face_up {
-            FACE
+            card_pal.face_bg
         } else {
-            Color::srgb(0.035, 0.12, 0.15)
+            card_pal.back_bg
         },
     );
     let stroke = if selected { 2.5 } else { 1.2 };
@@ -659,7 +669,7 @@ fn draw_card(
         r.min + Vec2::splat(4.0),
         r.size() - Vec2::splat(8.0),
         0.7,
-        EDGE,
+        theme.edge,
     );
     if !card.face_up {
         let inset = 7.0;
@@ -671,12 +681,12 @@ fn draw_card(
             let bottom = center + Vec2::new(0.0, radius);
             let left = center + Vec2::new(-radius, 0.0);
             for (a, b) in [(top, right), (right, bottom), (bottom, left), (left, top)] {
-                f.line(a, b, 0.8, CYAN);
+                f.line(a, b, 0.8, card_pal.border_normal);
             }
         }
     }
     if card.face_up {
-        let color = if card.suit.is_red() { MAGENTA } else { CYAN };
+        let color = card_pal.suit_color(card.suit);
         let rank_pos = full.min + Vec2::new(5.0, 2.0);
         let rank_size = (full.width() * 0.27).clamp(9.0, 14.0);
         let rank_width = card.rank_label().len() as f32 * rank_size * 0.65;

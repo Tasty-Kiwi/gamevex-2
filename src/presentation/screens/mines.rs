@@ -1,12 +1,77 @@
 use super::*;
 
+#[derive(Clone, Copy)]
+pub struct MinesPalette {
+    pub board_bg: Color,
+    pub cell_unrevealed: Color,
+    pub cell_hovered: Color,
+    pub cell_revealed: Color,
+    pub cell_exploded: Color,
+    pub cell_unrevealed_line: Color,
+    pub cell_revealed_outline: Color,
+    pub mine_normal: Color,
+    pub mine_exploded: Color,
+    pub flag: Color,
+    pub wrong_flag: Color,
+    pub num1: Color,
+    pub num2: Color,
+    pub num3: Color,
+    pub num4: Color,
+    pub num5: Color,
+}
+
+impl MinesPalette {
+    pub fn for_scheme(scheme: gamevex_core::ColorScheme) -> Self {
+        match scheme {
+            gamevex_core::ColorScheme::Cyan => Self {
+                board_bg: Color::srgb(0.01, 0.03, 0.047),
+                cell_unrevealed: Color::srgb(0.027, 0.08, 0.115),
+                cell_hovered: Color::srgb(0.05, 0.15, 0.20),
+                cell_revealed: Color::srgb(0.018, 0.045, 0.065),
+                cell_exploded: Color::srgb(0.34, 0.025, 0.08),
+                cell_unrevealed_line: Color::srgb(0.12, 0.34, 0.41),
+                cell_revealed_outline: Color::srgb(0.04, 0.12, 0.16),
+                mine_normal: Color::srgb(1.0, 0.0, 0.67),
+                mine_exploded: Color::srgb(1.0, 0.2, 0.4),
+                flag: Color::srgb(1.0, 0.67, 0.0),
+                wrong_flag: Color::srgb(1.0, 0.2, 0.4),
+                num1: Color::srgb(0.0, 0.83, 1.0),
+                num2: Color::srgb(0.0, 1.0, 0.72),
+                num3: Color::srgb(1.0, 0.67, 0.0),
+                num4: Color::srgb(1.0, 0.0, 0.67),
+                num5: Color::srgb(1.0, 0.2, 0.4),
+            },
+            gamevex_core::ColorScheme::Amber => Self {
+                board_bg: Color::srgb(0.038, 0.026, 0.016),
+                cell_unrevealed: Color::srgb(0.085, 0.058, 0.032),
+                cell_hovered: Color::srgb(0.15, 0.10, 0.05),
+                cell_revealed: Color::srgb(0.05, 0.035, 0.022),
+                cell_exploded: Color::srgb(0.36, 0.05, 0.06),
+                cell_unrevealed_line: Color::srgb(0.32, 0.22, 0.12),
+                cell_revealed_outline: Color::srgb(0.12, 0.08, 0.045),
+                mine_normal: Color::srgb(1.0, 0.45, 0.30),
+                mine_exploded: Color::srgb(1.0, 0.25, 0.20),
+                flag: Color::srgb(1.0, 0.75, 0.20),
+                wrong_flag: Color::srgb(1.0, 0.25, 0.20),
+                num1: Color::srgb(1.0, 0.76, 0.20),
+                num2: Color::srgb(0.28, 0.88, 0.58),
+                num3: Color::srgb(1.0, 0.40, 0.25),
+                num4: Color::srgb(0.95, 0.92, 0.82),
+                num5: Color::srgb(1.0, 0.22, 0.32),
+            },
+        }
+    }
+}
+
 pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
+    let palette = MinesPalette::for_scheme(f.palette);
+    let t = f.theme();
     let narrow = w < 700.0;
     f.text(
         Vec2::new(m, 100.0),
         "Minesweeper",
         if narrow { 31.0 } else { 42.0 },
-        INK,
+        t.ink,
     );
     let y = 158.0;
     let difficulty = s.save.minesweeper.game.difficulty;
@@ -71,17 +136,21 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         Status::Lost => "MINE HIT",
     };
     let status_color = match s.save.minesweeper.game.status {
-        Status::Won => GREEN,
-        Status::Lost => RED,
-        _ => CYAN,
+        Status::Won => t.success,
+        Status::Lost => t.danger,
+        _ => t.accent,
     };
     let values = [
         ("Field", status.to_string(), status_color),
-        ("Time", format_time(s.save.minesweeper.game.elapsed_ms), INK),
+        (
+            "Time",
+            format_time(s.save.minesweeper.game.elapsed_ms),
+            t.ink,
+        ),
         (
             "Mines left",
             format!("{:02}", s.save.minesweeper.game.remaining_mines()),
-            GOLD,
+            t.gold,
         ),
         (
             "Best",
@@ -91,12 +160,12 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
                 .best(difficulty)
                 .map(format_time)
                 .unwrap_or("--".into()),
-            MAGENTA,
+            t.secondary,
         ),
     ];
     for (i, (label, value, color)) in values.into_iter().enumerate() {
         let x = m + i as f32 * w / 4.0;
-        f.text(Vec2::new(x, rail_y), label, 12.0, MUTED);
+        f.text(Vec2::new(x, rail_y), label, 12.0, t.muted);
         f.text(
             Vec2::new(x, rail_y + 19.0),
             value,
@@ -110,9 +179,9 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
     f.rect(
         Vec2::new(m, top),
         Vec2::new(w, bottom - top),
-        Color::srgb(0.01, 0.03, 0.047),
+        palette.board_bg,
     );
-    f.outline(Vec2::new(m, top), Vec2::new(w, bottom - top), 1.0, EDGE);
+    f.outline(Vec2::new(m, top), Vec2::new(w, bottom - top), 1.0, t.edge);
     let cell = if difficulty == Difficulty::Beginner && w > 500.0 {
         38.0
     } else {
@@ -141,13 +210,13 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         }
         let hovered = s.cursor.is_some_and(|v| r.contains(v) && clip.contains(v));
         let fill = if s.save.minesweeper.game.exploded == Some(i) {
-            Color::srgb(0.34, 0.025, 0.08)
+            palette.cell_exploded
         } else if c.revealed {
-            Color::srgb(0.018, 0.045, 0.065)
+            palette.cell_revealed
         } else if hovered {
-            Color::srgb(0.05, 0.15, 0.20)
+            palette.cell_hovered
         } else {
-            Color::srgb(0.027, 0.08, 0.115)
+            palette.cell_unrevealed
         };
         f.rect(visible.min, visible.size(), fill);
         f.outline(
@@ -155,9 +224,9 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             visible.size(),
             1.0,
             if c.revealed {
-                Color::srgb(0.04, 0.12, 0.16)
+                palette.cell_revealed_outline
             } else {
-                EDGE
+                t.edge
             },
         );
         if visible.width() < r.width() - 0.1 || visible.height() < r.height() - 0.1 {
@@ -169,20 +238,20 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
                 r.center(),
                 cell * 0.2,
                 if s.save.minesweeper.game.exploded == Some(i) {
-                    RED
+                    palette.mine_exploded
                 } else {
-                    MAGENTA
+                    palette.mine_normal
                 },
             );
         } else if c.flagged {
-            flag(f, r.center(), cell * 0.28, GOLD);
+            flag(f, r.center(), cell * 0.28, palette.flag);
         } else if c.revealed && c.adjacent > 0 {
             let color = match c.adjacent {
-                1 => CYAN,
-                2 => GREEN,
-                3 => GOLD,
-                4 => MAGENTA,
-                _ => RED,
+                1 => palette.num1,
+                2 => palette.num2,
+                3 => palette.num3,
+                4 => palette.num4,
+                _ => palette.num5,
             };
             f.text(
                 r.min + Vec2::new(cell * 0.25, cell * 0.10),
@@ -195,16 +264,21 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
                 r.min + Vec2::splat(4.0),
                 r.min + Vec2::new(9.0, 4.0),
                 1.0,
-                Color::srgb(0.12, 0.34, 0.41),
+                palette.cell_unrevealed_line,
             );
         }
         if s.save.minesweeper.game.status == Status::Lost && c.flagged && !c.mine {
-            f.line(r.min + Vec2::splat(6.0), r.max - Vec2::splat(6.0), 2.0, RED);
+            f.line(
+                r.min + Vec2::splat(6.0),
+                r.max - Vec2::splat(6.0),
+                2.0,
+                palette.wrong_flag,
+            );
             f.line(
                 r.min + Vec2::new(6.0, r.height() - 6.0),
                 r.min + Vec2::new(r.width() - 6.0, 6.0),
                 2.0,
-                RED,
+                palette.wrong_flag,
             );
         }
         if board_focus && s.cell == i && (s.keyboard || focused) {
@@ -212,7 +286,7 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
                 r.min - Vec2::splat(1.0),
                 r.size() + Vec2::splat(2.0),
                 2.0,
-                GOLD,
+                t.gold,
             );
         }
     }
@@ -231,12 +305,12 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
                 "Scroll to pan / Shift+scroll sideways / arrows follow focus"
             },
             12.0,
-            GOLD,
+            t.gold,
         );
         if max_pan.x > 0.0 {
             let bar = w * (clip.width() / board_size.x).min(1.0);
             let x = m + (w - bar) * s.pan.x / max_pan.x;
-            f.rect(Vec2::new(x, bottom - 3.0), Vec2::new(bar, 3.0), CYAN);
+            f.rect(Vec2::new(x, bottom - 3.0), Vec2::new(bar, 3.0), t.accent);
         }
     } else {
         f.text(
@@ -244,9 +318,9 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             compact(&s.message, (w / 7.2) as usize),
             12.0,
             if s.save.minesweeper.game.status == Status::Lost {
-                RED
+                t.danger
             } else {
-                MUTED
+                t.muted
             },
         );
     }
@@ -258,7 +332,7 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             "Arrows: move   Space: reveal   F: flag   Enter: chord   Tab: controls"
         },
         12.0,
-        INK,
+        t.ink,
     );
     f.text(
         Vec2::new(m, f.size.y - 53.0),
@@ -268,6 +342,6 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             "Right click: flag   Click an open number: chord   Esc: lobby   Timer pauses away"
         },
         12.0,
-        MUTED,
+        t.muted,
     );
 }

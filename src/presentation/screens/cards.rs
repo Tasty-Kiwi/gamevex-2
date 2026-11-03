@@ -1,18 +1,19 @@
 use super::*;
 
 pub(crate) fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: f32) {
+    let t = f.theme();
     let small = w < 620.0;
     f.text(
         Vec2::new(m, 102.0),
         "Card Lab",
         if small { 34.0 } else { 44.0 },
-        INK,
+        t.ink,
     );
     f.text(
         Vec2::new(m, 154.0),
         "An interaction sandbox. No stakes, just a hand of cards.",
         if small { 11.0 } else { 15.0 },
-        MUTED,
+        t.muted,
     );
     let controls_y = 190.0;
     button(
@@ -57,26 +58,26 @@ pub(crate) fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         let r = rect(start + i as f32 * (card_w + gap), slots_y, card_w, card_h);
         l.slots[i] = r;
         let hovered = s.lab.drag.is_some() && s.cursor.is_some_and(|p| r.contains(p));
-        f.rect(r.min, r.size(), PANEL);
+        f.rect(r.min, r.size(), t.panel);
         f.outline(
             r.min,
             r.size(),
             if hovered { 2.0 } else { 1.0 },
-            if hovered { GOLD } else { EDGE },
+            if hovered { t.gold } else { t.edge },
         );
         if s.lab.slots[i].is_none() {
             f.text(
                 r.min + Vec2::new(card_w * 0.35, card_h * 0.38),
                 format!("{}", i + 1),
                 28.0,
-                EDGE,
+                t.edge,
             );
         }
         f.text(
             r.min - Vec2::new(0.0, 23.0),
             format!("Slot {}", i + 1),
             12.0,
-            MUTED,
+            t.muted,
         );
     }
     let hand_y = (f.size.y - card_h - 105.0).max(slots_y + card_h + 36.0);
@@ -163,7 +164,7 @@ pub(crate) fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             "Drag to a slot. Invalid drops snap back. Click a card to select it."
         },
         12.0,
-        INK,
+        t.ink,
     );
     f.text(
         Vec2::new(m, f.size.y - 57.0),
@@ -173,7 +174,7 @@ pub(crate) fn cards(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
             "Left/Right select   Right-click or F flip   1 / 2 / 3 place in slot   Backspace returns card   Esc lobby"
         },
         12.0,
-        MUTED,
+        t.muted,
     );
 }
 
@@ -208,6 +209,8 @@ pub(crate) fn card_face_with_emphasis(
     rank_visible: bool,
     emphasis: f32,
 ) {
+    let t = f.theme();
+    let palette = crate::presentation::game_palette::card(f.palette);
     let emphasis = emphasis.clamp(0.0, 1.0);
     let tint = |color: Color| {
         let c = color.to_srgba();
@@ -227,14 +230,14 @@ pub(crate) fn card_face_with_emphasis(
                 Vec2::new(4.0, 7.0)
             },
         r.size(),
-        Color::srgb(0.0, 0.01, 0.025),
+        palette.shadow,
     );
-    f.rect(r.min, r.size(), Color::srgb(0.025, 0.055, 0.095));
+    f.rect(r.min, r.size(), palette.shared_face_bg);
     f.outline(
         r.min,
         r.size(),
         if selected { 2.5 } else { 1.5 },
-        tint(if selected { GOLD } else { CYAN }),
+        tint(if selected { t.gold } else { t.accent }),
     );
     let inset_size = if compact { 4.0 } else { 7.0 };
     let inset = r.min + Vec2::splat(inset_size);
@@ -242,10 +245,10 @@ pub(crate) fn card_face_with_emphasis(
         inset,
         r.size() - Vec2::splat(inset_size * 2.0),
         0.75,
-        tint(EDGE),
+        tint(t.edge),
     );
     if card.face_up {
-        let color = tint(if card.suit.is_red() { MAGENTA } else { CYAN });
+        let color = tint(palette.suit_color(card.suit));
         // Rank stays on the exposed left edge of an overlapping hand.
         if rank_visible {
             let rank_size = if compact {
@@ -296,7 +299,12 @@ pub(crate) fn card_face_with_emphasis(
             let p = r.min + Vec2::new(d, d);
             let size = r.size() - Vec2::splat(d * 2.0);
             if size.min_element() > 0.0 {
-                f.outline(p, size, 1.0, tint(if i % 2 == 0 { MAGENTA } else { EDGE }));
+                f.outline(
+                    p,
+                    size,
+                    1.0,
+                    tint(if i % 2 == 0 { t.secondary } else { t.edge }),
+                );
             }
         }
     }

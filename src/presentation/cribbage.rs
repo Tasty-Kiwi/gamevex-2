@@ -9,6 +9,7 @@ use gamevex_core::{
 };
 
 pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: f32) {
+    let theme = *f.theme();
     let g = s.save.cribbage.clone();
     let small = w < 620.0;
     let compact = f.size.y < 650.0;
@@ -18,7 +19,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         Vec2::new(m, 82.0),
         "Cribbage",
         if small { 26.0 } else { 36.0 },
-        INK,
+        theme.ink,
     );
     f.text(
         Vec2::new(m, if small { 112.0 } else { 126.0 }),
@@ -27,7 +28,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             g.round, s.save.cribbage_wins
         ),
         if small { 10.0 } else { 12.0 },
-        MUTED,
+        theme.muted,
     );
     let cy = if small { 132.0 } else { 88.0 };
     button(
@@ -42,8 +43,12 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
     let top = if small { 184.0 } else { 154.0 };
     let bottom = f.size.y - 52.0;
     let table = rect(m, top, w, bottom - top);
-    f.rounded_rect(table, 18.0, Color::srgb(0.012, 0.028, 0.046));
-    f.rounded_outline(table.min, table.size(), 18.0, 1.5, EDGE);
+    f.rounded_rect(
+        table,
+        18.0,
+        super::game_palette::table(f.palette).round_inset,
+    );
+    f.rounded_outline(table.min, table.size(), 18.0, 1.5, theme.edge);
     let badge_w = (w - 38.0) * 0.5;
     for (i, label) in ["YOU", "CPU"].into_iter().enumerate() {
         let r = rect(
@@ -52,8 +57,12 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             badge_w,
             36.0,
         );
-        f.rounded_rect(r, 6.0, PANEL);
-        let color = if i == 0 { CYAN } else { MAGENTA };
+        f.rounded_rect(r, 6.0, theme.panel);
+        let color = if i == 0 {
+            theme.accent
+        } else {
+            theme.secondary
+        };
         f.rounded_outline(
             r.min,
             r.size(),
@@ -66,7 +75,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             if g.turn == i && g.phase == Phase::Pegging {
                 color
             } else {
-                EDGE
+                theme.edge
             },
         );
         f.text(
@@ -79,24 +88,33 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             Vec2::new(r.max.x - 42.0, r.min.y + 7.0),
             format!("{}", g.scores[i]),
             18.0,
-            INK,
+            theme.ink,
         );
     }
     let tx = m + 18.0;
     let tw = w - 36.0;
     for i in 0..2 {
         let y = top + 57.0 + i as f32 * 10.0;
-        f.line(Vec2::new(tx, y), Vec2::new(tx + tw, y), 1.0, EDGE);
+        f.line(Vec2::new(tx, y), Vec2::new(tx + tw, y), 1.0, theme.edge);
         for tick in 0..=12 {
             let x = tx + tw * tick as f32 / 12.0;
-            f.line(Vec2::new(x, y - 2.0), Vec2::new(x, y + 2.0), 1.0, MUTED);
+            f.line(
+                Vec2::new(x, y - 2.0),
+                Vec2::new(x, y + 2.0),
+                1.0,
+                theme.muted,
+            );
         }
         circle(
             f,
             Vec2::new(tx + tw * (g.scores[i] as f32 / 121.0).min(1.0), y),
             3.5,
             2.0,
-            if i == 0 { CYAN } else { MAGENTA },
+            if i == 0 {
+                theme.accent
+            } else {
+                theme.secondary
+            },
         );
     }
     // Keep enough room for both the running count and a six-card touch hand.
@@ -137,7 +155,13 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         };
         let ch = cw * 1.4;
         let y = if compact { top + 91.0 } else { center_y - 60.0 };
-        centered(f, Vec2::new(m + w * 0.5, y - 15.0), label, 11.0, CYAN);
+        centered(
+            f,
+            Vec2::new(m + w * 0.5, y - 15.0),
+            label,
+            11.0,
+            theme.accent,
+        );
         let width = cw * 5.0 + 4.0 * 6.0;
         for (i, card) in cards.iter().copied().chain(std::iter::once(st)).enumerate() {
             card_face(
@@ -165,7 +189,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 ),
                 line,
                 if small { 8.0 } else { 11.0 },
-                INK,
+                theme.ink,
             );
         }
         centered(
@@ -176,7 +200,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             ),
             &format!("COUNT +{}", score.total),
             12.0,
-            GOLD,
+            theme.gold,
         );
     } else {
         let cw = if compact {
@@ -188,7 +212,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         };
         let ch = cw * 1.4;
         let row_y = top + 91.0;
-        f.text(Vec2::new(m + 14.0, row_y - 13.0), "CRIB", 9.0, MUTED);
+        f.text(Vec2::new(m + 14.0, row_y - 13.0), "CRIB", 9.0, theme.muted);
         for i in 0..g.crib.len() {
             let mut card = g.crib[i];
             card.face_up = reveal;
@@ -201,7 +225,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
             );
         }
         let starter = rect(m + w * 0.5 - cw * 0.5, row_y, cw, ch);
-        f.text(starter.min - Vec2::new(0.0, 13.0), "CUT", 9.0, MUTED);
+        f.text(starter.min - Vec2::new(0.0, 13.0), "CUT", 9.0, theme.muted);
         card_face(
             f,
             starter,
@@ -212,7 +236,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         let cpu = if reveal { &g.hands[1] } else { &g.remaining[1] };
         let stride = cw * 0.44;
         let x = m + w - 14.0 - cw - stride * cpu.len().saturating_sub(1) as f32;
-        f.text(Vec2::new(x, row_y - 13.0), "CPU", 9.0, MUTED);
+        f.text(Vec2::new(x, row_y - 13.0), "CPU", 9.0, theme.muted);
         for (i, c) in cpu.iter().enumerate() {
             let mut card = *c;
             card.face_up = reveal;
@@ -238,7 +262,7 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 format!("COUNT {} / 31", g.count)
             },
             if compact { 12.0 } else { 16.0 },
-            GOLD,
+            theme.gold,
         );
         let sw = if compact {
             22.0
@@ -384,13 +408,13 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         Vec2::new(m + 12.0, bottom - 13.0),
         status,
         if small { 9.0 } else { 12.0 },
-        INK,
+        theme.ink,
     );
     f.text(
         Vec2::new(m + 12.0, bottom - 44.0),
         &g.last_message,
         if small { 9.0 } else { 11.0 },
-        GOLD,
+        theme.gold,
     );
     if !busy {
         let action = match g.phase {
@@ -427,9 +451,9 @@ pub(super) fn cribbage(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         }
         let t = (event.age / event.duration()).clamp(0.0, 1.0);
         let color = if event.kind == EffectKind::Stuck {
-            RED
+            theme.danger
         } else {
-            GOLD
+            theme.gold
         };
         let c = color.to_srgba();
         f.rounded_outline(

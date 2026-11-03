@@ -4,6 +4,7 @@ use super::*;
 use gamevex_core::holdem::{Action as Play, Phase};
 
 pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, dt: f32) {
+    let theme = *f.theme();
     let g = s.holdem_ui.game.clone();
     let small = w < 620.0;
     let compact = f.size.y < 650.0 || (!small && f.size.y < 700.0);
@@ -22,13 +23,13 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         Vec2::new(m, 82.0),
         "Texas Hold'em",
         if small { 25.0 } else { 36.0 },
-        INK,
+        theme.ink,
     );
     f.text(
         Vec2::new(m, if small { 113.0 } else { 126.0 }),
         format!("Bankroll ${} / Blinds $5/$10", s.save.holdem_balance),
         if small { 10.0 } else { 12.0 },
-        CYAN,
+        theme.accent,
     );
     if terminal && ready {
         let x = if small { m } else { m + w - 244.0 };
@@ -50,7 +51,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 if g.seats.len() == 2 { "" } else { "s" }
             ),
             11.0,
-            MUTED,
+            theme.muted,
         );
         button(
             f,
@@ -62,8 +63,12 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             false,
         );
     }
-    f.rounded_rect(table, 18.0, Color::srgb(0.012, 0.028, 0.046));
-    f.rounded_outline(table.min, table.size(), 18.0, 1.5, EDGE);
+    f.rounded_rect(
+        table,
+        18.0,
+        super::game_palette::table(f.palette).round_inset,
+    );
+    f.rounded_outline(table.min, table.size(), 18.0, 1.5, theme.edge);
     let ncpu = g.seats.len() - 1;
     let gap = if small { 6.0 } else { 18.0 };
     let seat_w =
@@ -99,7 +104,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                     }
             },
         );
-        f.rounded_rect(panel, 7.0, PANEL);
+        f.rounded_rect(panel, 7.0, theme.panel);
         let active = g.turn == Some(i) && !terminal;
         f.rounded_outline(
             panel.min,
@@ -107,24 +112,28 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             7.0,
             if active { 2.0 } else { 1.0 },
             if active {
-                MAGENTA
+                theme.secondary
             } else if reveal && g.winners[i] {
-                GOLD
+                theme.gold
             } else {
-                EDGE
+                theme.edge
             },
         );
         f.text(
             panel.min + Vec2::new(6.0, 6.0),
             format!("CPU {i}"),
             if small { 9.0 } else { 12.0 },
-            if seat.folded { MUTED } else { MAGENTA },
+            if seat.folded {
+                theme.muted
+            } else {
+                theme.secondary
+            },
         );
         f.text(
             panel.min + Vec2::new(6.0, if small { 19.0 } else { 23.0 }),
             format!("${}", if idle { s.holdem_ui.buy_in } else { seat.stack }),
             if small { 10.0 } else { 13.0 },
-            INK,
+            theme.ink,
         );
         if !idle && g.dealer == i {
             dealer(f, Vec2::new(panel.max.x - 10.0, panel.min.y + 10.0));
@@ -163,14 +172,14 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             &seat.last_action
         };
         if compact && reveal && seat_w > 140.0 {
-            f.text(Vec2::new(x + 6.0, cpu_y + 38.0), caption, 7.0, GOLD);
+            f.text(Vec2::new(x + 6.0, cpu_y + 38.0), caption, 7.0, theme.gold);
         }
         if !caption.is_empty() && !compact {
             f.text(
                 Vec2::new(x + 6.0, panel.max.y + 5.0),
                 caption,
                 if small { 7.0 } else { 10.0 },
-                if seat.folded { MUTED } else { GOLD },
+                if seat.folded { theme.muted } else { theme.gold },
             );
         }
         if seat.committed > 0 && !terminal && !compact {
@@ -181,7 +190,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 ),
                 format!("IN ${}", seat.committed),
                 if small { 8.0 } else { 11.0 },
-                MUTED,
+                theme.muted,
             );
         }
     }
@@ -217,7 +226,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             format!("{} / ${amount}", if terminal { "PAID" } else { "POT" })
         },
         if compact { 12.0 } else { 16.0 },
-        GOLD,
+        theme.gold,
     );
     for i in 0..5 {
         let r = rect(bx + i as f32 * (bw + bg), board_y, bw, bh);
@@ -244,12 +253,12 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 );
             }
         } else {
-            f.rounded_outline(r.min, r.size(), 4.0, 1.0, EDGE);
+            f.rounded_outline(r.min, r.size(), 4.0, 1.0, theme.edge);
             f.line(
                 r.center() - Vec2::new(7.0, 0.0),
                 r.center() + Vec2::new(7.0, 0.0),
                 1.0,
-                EDGE,
+                theme.edge,
             );
         }
     }
@@ -277,7 +286,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             },
             phase,
             if compact { 8.0 } else { 11.0 },
-            MUTED,
+            theme.muted,
         );
     }
     if idle {
@@ -362,7 +371,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
             Vec2::new(m + 12.0, hy + 5.0),
             format!("YOU / ${}", g.seats[0].stack),
             if small { 10.0 } else { 14.0 },
-            CYAN,
+            theme.accent,
         );
         if g.dealer == 0 {
             dealer(
@@ -377,11 +386,11 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         if terminal && !busy {
             let net = i64::from(g.seats[0].stack) - i64::from(g.buy_in);
             let color = if net > 0 {
-                GOLD
+                theme.gold
             } else if net < 0 {
-                RED
+                theme.danger
             } else {
-                CYAN
+                theme.accent
             };
             centered(
                 f,
@@ -411,7 +420,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                     Vec2::new(m + 12.0, hy + if compact { 34.0 } else { 52.0 }),
                     e.label(),
                     if small { 8.0 } else { 12.0 },
-                    MUTED,
+                    theme.muted,
                 );
             }
             setup(f, s, l, m, w, bottom);
@@ -425,7 +434,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 Vec2::new(m + 12.0, bottom - 13.0),
                 turn,
                 if small { 9.0 } else { 12.0 },
-                INK,
+                theme.ink,
             );
             if g.seats[0].folded {
                 button(
@@ -453,11 +462,11 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
         }
         let t = (event.age / event.duration()).clamp(0.0, 1.0);
         let c = if event.kind == EffectKind::Stuck {
-            RED
+            theme.danger
         } else if event.kind == EffectKind::Win {
-            GOLD
+            theme.gold
         } else {
-            CYAN
+            theme.accent
         }
         .to_srgba();
         f.rounded_outline(
@@ -486,6 +495,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
     }
 }
 fn setup(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, bottom: f32) {
+    let theme = *f.theme();
     let compact = f.size.y < 650.0;
     let ready = !s.holdem_ui.busy(s.save.settings.reduced_motion);
     if !ready {
@@ -513,7 +523,7 @@ fn setup(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32, bott
         Vec2::new(center, y - 20.0),
         &format!("BUY-IN ${}", s.holdem_ui.buy_in),
         if compact { 10.0 } else { 13.0 },
-        CYAN,
+        theme.accent,
     );
     let gap = 6.0;
     let bw = ((w - 24.0 - gap * 3.0) / 4.0).min(105.0);
@@ -611,8 +621,9 @@ fn betting(
     let _ = small;
 }
 fn dealer(f: &mut Frame, p: Vec2) {
-    circle(f, p, 7.0, 1.0, GOLD);
-    f.text(p - Vec2::new(3.0, 4.0), "D", 8.0, GOLD);
+    let theme = *f.theme();
+    circle(f, p, 7.0, 1.0, theme.gold);
+    f.text(p - Vec2::new(3.0, 4.0), "D", 8.0, theme.gold);
 }
 fn centered(f: &mut Frame, p: Vec2, text: &str, size: f32, color: Color) {
     f.text(

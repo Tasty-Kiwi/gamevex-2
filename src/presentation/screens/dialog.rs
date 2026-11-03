@@ -12,14 +12,15 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
         width,
         254.0,
     );
+    let t = f.theme();
     f.outline(
         r.min - Vec2::splat(6.0),
         r.size() + Vec2::splat(12.0),
         1.0,
-        EDGE,
+        t.edge,
     );
-    f.rect(r.min, r.size(), PANEL);
-    f.rounded_outline(r.min, r.size(), 8.0, 2.0, GOLD);
+    f.rect(r.min, r.size(), t.panel);
+    f.rounded_outline(r.min, r.size(), 8.0, 2.0, t.gold);
     let recover = matches!(s.modal, Some(Pending::Recover));
     let sudoku = matches!(s.modal, Some(Pending::NewSudoku(..)));
     let leave_holdem = matches!(s.modal, Some(Pending::LeaveHoldem(_)));
@@ -34,7 +35,7 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             "Replace this run?"
         },
         if width < 400.0 { 23.0 } else { 29.0 },
-        INK,
+        t.ink,
     );
     f.text(
         r.min + Vec2::new(22.0, 83.0),
@@ -60,7 +61,7 @@ pub(crate) fn dialog(f: &mut Frame, s: &Arcade, l: &mut ViewLayout, m: f32) {
             "Your unfinished field will be replaced.\nCancel to keep playing this run."
         },
         if width < 400.0 { 12.0 } else { 16.0 },
-        MUTED,
+        t.muted,
     );
     let bw = (width - 58.0) * 0.5;
     button(
