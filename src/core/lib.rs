@@ -2,6 +2,7 @@ pub mod baccarat;
 pub mod backgammon;
 pub mod blackjack;
 pub mod cards;
+pub mod connect4;
 pub mod cribbage;
 pub mod hearts;
 pub mod holdem;

@@ -4,6 +4,7 @@ mod backgammon_app;
 mod browser_audio;
 mod casino_audio;
 mod casino_feedback;
+mod connect4_app;
 mod cribbage_app;
 mod hearts_app;
 mod hearts_motion;
@@ -70,6 +71,7 @@ pub(crate) struct Arcade {
     pub blackjack_motion: presentation::blackjack_motion::BlackjackMotion,
     pub baccarat_motion: presentation::baccarat_motion::BaccaratMotion,
     pub casino_feedback: casino_feedback::CasinoFeedback,
+    pub connect4_ui: connect4_app::Connect4Ui,
     pub sudoku_ui: sudoku_app::SudokuUi,
     pub mahjong_ui: mahjong_app::MahjongUi,
     pub patience_ui: patience_app::PatienceUi,
@@ -95,6 +97,7 @@ pub(crate) struct Arcade {
 pub(crate) enum Pending {
     New(Difficulty, bool),
     Recover,
+    NewConnect4(connect4::Mode),
     NewHearts,
     NewCribbage,
     LeaveBlackjack(Screen),
@@ -275,6 +278,7 @@ impl Arcade {
                 Some(Pending::NewSudoku(size, difficulty)) => self.new_sudoku(size, difficulty),
                 Some(Pending::NewMahjong(layout, seed, zen)) => self.new_mahjong(layout, seed, zen),
                 Some(Pending::NewPatience(v, seed)) => self.new_patience(v, seed),
+                Some(Pending::NewConnect4(mode)) => self.new_connect4(mode),
                 Some(Pending::NewHearts) => self.new_hearts(),
                 Some(Pending::NewCribbage) => self.new_cribbage(),
                 Some(Pending::BackgammonReplace(difficulty)) => self.start_backgammon(difficulty),
@@ -299,6 +303,8 @@ impl Arcade {
                 }
                 self.restore_modal_focus();
             }
+            Action::Connect4Drop(column) => self.connect4_drop(column),
+            Action::Connect4New => self.connect4_request_new(self.save.connect4.mode),
             Action::BackgammonPoint(point) => self.backgammon_point(point),
             Action::BackgammonRoll => self.backgammon_roll(),
             Action::BackgammonNew => self.backgammon_new(false),
@@ -594,6 +600,7 @@ impl Arcade {
         self.blackjack_motion.clear();
         self.baccarat_motion.clear();
         self.casino_feedback.clear();
+        self.connect4_ui = Default::default();
         self.sudoku_ui = Default::default();
         self.mahjong_ui = Default::default();
         self.patience_ui = Default::default();
@@ -950,6 +957,7 @@ mod tests {
             blackjack_motion: Default::default(),
             baccarat_motion: Default::default(),
             casino_feedback: Default::default(),
+            connect4_ui: Default::default(),
             sudoku_ui: Default::default(),
             mahjong_ui: Default::default(),
             patience_ui: Default::default(),
@@ -969,6 +977,119 @@ mod tests {
             save_age: 0.0,
             sound: None,
             audio_started: false,
+        }
+    }
+
+    #[test]
+    fn connect4_replacement_navigation_and_computer_resume_preserve_sessions() {
+        let mut state = test_arcade();
+        let adjacent = state.save.backgammon.clone();
+        state.open(Screen::Connect4);
+        state.save.settings.reduced_motion = true;
+        state.act(Action::Connect4Drop(3));
+        let pending_turn = state.save.connect4.clone();
+        state.act(Action::Connect4New);
+        assert!(matches!(
+            state.modal,
+            Some(Pending::NewConnect4(connect4::Mode::Computer))
+        ));
+        state.act(Action::Connect4Drop(2));
+        state.connect4_tick(1.0);
+        assert_eq!(state.save.connect4, pending_turn);
+        state.act(Action::Cancel);
+        assert_eq!(state.save.connect4, pending_turn);
+        state.open(Screen::Lobby);
+        state.connect4_tick(1.0);
+        assert_eq!(state.save.connect4, pending_turn);
+        state.open(Screen::Connect4);
+        state.connect4_tick(1.0);
+        assert_eq!(state.save.connect4.history.len(), 2);
+        assert_eq!(state.save.connect4.turn, connect4::Player::Red);
+        let restored = Save::from_json(&state.save.to_json().unwrap()).unwrap();
+        assert_eq!(restored.connect4, state.save.connect4);
+        state.act(Action::Connect4New);
+        state.act(Action::Confirm);
+        assert_eq!(state.save.connect4.mode, connect4::Mode::Computer);
+        assert!(state.save.connect4.history.is_empty());
+        assert_eq!(state.save.backgammon, adjacent);
+    }
+
+    #[test]
+    fn connect4_controls_fit_and_keyboard_activation_only_drops_once() {
+        for (width, height) in [(320, 568), (390, 844), (1280, 720), (1000, 560)] {
+            let mut app = App::new();
+            let mut state = test_arcade();
+            state.open(Screen::Connect4);
+            state.save.settings.reduced_motion = true;
+            state.save.connect4 = connect4::Game::new(connect4::Mode::Computer);
+            app.insert_resource(state)
+                .insert_resource(Time::<()>::default())
+                .init_resource::<ButtonInput<KeyCode>>()
+                .add_message::<MouseWheel>()
+                .init_resource::<ViewLayout>()
+                .init_resource::<rendering::Frame>()
+                .init_resource::<rendering::RenderOptions>()
+                .add_systems(Update, (handle_input, presentation::paint).chain());
+            app.world_mut().spawn((
+                Window {
+                    resolution: WindowResolution::new(width, height),
+                    ..default()
+                },
+                PrimaryWindow,
+            ));
+            app.update();
+            let layout = app.world().resource::<ViewLayout>();
+            assert!(matches!(
+                layout.hits[connect4_app::BOARD_FOCUS].action,
+                Action::Connect4Drop(3)
+            ));
+            assert_eq!(
+                layout
+                    .hits
+                    .iter()
+                    .filter(|h| matches!(h.action, Action::Connect4Drop(_)))
+                    .count(),
+                7
+            );
+            for (i, hit) in layout.hits.iter().enumerate() {
+                assert!(
+                    hit.rect.min.x >= 0.0
+                        && hit.rect.min.y >= 0.0
+                        && hit.rect.max.x <= width as f32
+                        && hit.rect.max.y <= height as f32
+                );
+                for other in &layout.hits[i + 1..] {
+                    let overlap = hit.rect.intersect(other.rect);
+                    assert!(
+                        overlap.width() <= 0.0 || overlap.height() <= 0.0,
+                        "overlap at {width}x{height}: {:?} {:?}",
+                        hit.rect,
+                        other.rect
+                    );
+                }
+            }
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::Enter);
+            app.update();
+            assert_eq!(app.world().resource::<Arcade>().save.connect4.history, [3]);
+            app.world_mut().resource_mut::<Arcade>().connect4_tick(1.0);
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .reset_all();
+            // Both events can arrive between rendered frames. Moving the
+            // selection must not swallow the activation in that same frame.
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::ArrowLeft);
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::Space);
+            app.update();
+            let history = &app.world().resource::<Arcade>().save.connect4.history;
+            assert_eq!(history.len(), 3);
+            assert_eq!(history[0], 3);
+            assert_eq!(history[2], 2);
         }
     }
 
@@ -2629,6 +2750,7 @@ mod tests {
                 Screen::Cribbage,
                 Screen::Holdem,
                 Screen::Roulette,
+                Screen::Connect4,
                 Screen::Backgammon,
             ] {
                 let mut app = App::new();
@@ -2999,7 +3121,7 @@ mod tests {
                     76.0
                 );
             }
-            assert_eq!(games.len(), 14);
+            assert_eq!(games.len(), 15);
             app.world_mut()
                 .resource_mut::<Arcade>()
                 .act(Action::LobbyCategory(None));
@@ -3045,6 +3167,7 @@ fn capture_tools(
                 Screen::Cribbage => "cribbage",
                 Screen::Holdem => "holdem",
                 Screen::Roulette => "roulette",
+                Screen::Connect4 => "connect4",
                 Screen::Backgammon => "backgammon",
             };
             let folder = std::path::Path::new("docs/screenshots");

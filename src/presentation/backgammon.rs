@@ -823,9 +823,7 @@ fn draw_checker(
     cursor: Option<Vec2>,
     palette: &BackgammonPalette,
 ) {
-    let color = side_color(side, palette);
-    disk(f, at + Vec2::new(0.0, 2.0), r, palette.shadow);
-    disk(
+    checker_piece(
         f,
         at,
         r,
@@ -834,12 +832,26 @@ fn draw_checker(
         } else {
             palette.black_body
         },
+        side_color(side, palette),
+        palette.shadow,
     );
-    circle(f, at, r, 1.5, color);
-    circle(f, at, r * 0.72, 0.8, color);
     if cursor.is_some_and(|p| (p - at).length() < r * 1.2) {
         circle(f, at, r + 2.0, 1.2, f.theme().ink);
     }
+}
+
+pub(super) fn checker_piece(
+    f: &mut Frame,
+    at: Vec2,
+    r: f32,
+    body: Color,
+    rim: Color,
+    shadow: Color,
+) {
+    disk(f, at + Vec2::new(0.0, 2.0), r, shadow);
+    disk(f, at, r, body);
+    circle(f, at, r, 1.5, rim);
+    circle(f, at, r * 0.72, 0.8, rim);
 }
 
 fn pip_badge(f: &mut Frame, at: Vec2, n: u8, side: Side, small: bool, palette: &BackgammonPalette) {

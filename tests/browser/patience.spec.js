@@ -75,7 +75,7 @@ async function openPatience(page, family = 'Solitaire') {
   }).toBe(true);
   await expect.poll(async () => c.evaluate((el) => {
     const save = JSON.parse(el.dataset.session || '{}');
-    return Boolean(save.version === 12 && save.solitaire && save.freecell && save.spider);
+    return Boolean(save.version === 13 && save.solitaire && save.freecell && save.spider);
   })).toBe(true);
   await clickLobbyAction(page, family.toLowerCase());
   await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe(family);

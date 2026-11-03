@@ -24,6 +24,7 @@ pub(super) fn handle_pointer_input(
     touch.sync_lifecycle(&mut state, &mut pointer);
     // Browser canvas metrics can change before winit emits a resize event.
     if !layout_valid {
+        state.connect4_ui.settle_motion();
         state.backgammon_ui.settle_motion();
         state.holdem_ui.settle_motion();
         state.cribbage_ui.age = 1.0;
@@ -366,6 +367,10 @@ pub(super) fn handle_input(
                 state.act(Action::Baccarat(command));
             }
         }
+    }
+    if state.screen == Screen::Connect4 && state.connect4_key(&keys, &layout) {
+        wheel.clear();
+        return;
     }
     sudoku_app::board_keys(&mut state, &keys, &layout);
     mahjong_app::keys(&mut state, &keys, &layout);

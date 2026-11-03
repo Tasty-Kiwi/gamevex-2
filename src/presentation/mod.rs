@@ -24,6 +24,7 @@ pub enum Screen {
     Holdem,
     Roulette,
     Backgammon,
+    Connect4,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -71,6 +72,8 @@ pub enum Action {
     MahjongRestart,
     MahjongNew(gamevex_core::mahjong::Layout),
     MahjongZen(bool),
+    Connect4Drop(usize),
+    Connect4New,
     BackgammonPoint(u8),
     BackgammonRoll,
     BackgammonNew,
@@ -265,6 +268,7 @@ pub fn paint(
             time.delta_secs(),
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Connect4 => connect4::draw(&mut frame, &state, &mut layout, margin, w),
         Screen::Backgammon => {
             backgammon::backgammon(&mut frame, &mut state, &mut layout, margin, w)
         }
@@ -350,6 +354,7 @@ mod backgammon;
 mod blackjack;
 pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
+mod connect4;
 mod cribbage;
 pub(crate) mod game_palette;
 mod hearts;
@@ -382,6 +387,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         "focusIndex": state.focus,
         "focusCount": layout.hits.len(),
         "modal": match state.modal {
+            Some(Pending::NewConnect4(_)) => Some("connect4-replace"),
             Some(Pending::NewHearts) => Some("hearts-replace"),
             Some(Pending::NewCribbage) => Some("cribbage-replace"),
             Some(Pending::LeaveHoldem(_)) => Some("holdem-leave"),
@@ -487,6 +493,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "cribbage":action_bounds(Screen::Cribbage),
             "holdem":action_bounds(Screen::Holdem),
             "roulette":action_bounds(Screen::Roulette),
+            "connect4":action_bounds(Screen::Connect4),
             "backgammon":action_bounds(Screen::Backgammon),
             "lobbyClip":layout.lobby_clip.map(|r| [r.min.x,r.min.y,r.width(),r.height()]),
             "lobbyScroll":state.lobby_scroll,
@@ -525,6 +532,37 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             })
             .to_string(),
         );
+    }
+    if state.screen == Screen::Connect4 {
+        let mut bounds = serde_json::Map::new();
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::Connect4Drop(column) => format!("column{column}"),
+                Action::Connect4New => "new".into(),
+                Action::Open(Screen::Settings) => "settings".into(),
+                Action::Open(Screen::Lobby) => "lobby".into(),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-connect4-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        let mut view = serde_json::to_value(&state.save.connect4).unwrap_or_default();
+        view["animating"] =
+            serde_json::json!(state.connect4_ui.busy(state.save.settings.reduced_motion));
+        platform::diagnostics_attribute("data-connect4-view", &view.to_string());
     }
     if state.screen == Screen::Backgammon {
         let mut bounds = serde_json::Map::new();

@@ -78,7 +78,7 @@ async function openBackgammon(page) {
   await expect.poll(async () => c.evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
   await expect.poll(async () => {
     const session = await save(page);
-    return session.version === 12 && Boolean(session.backgammon) && Number.isInteger(session.backgammon_wins);
+    return session.version === 13 && Boolean(session.backgammon) && Number.isInteger(session.backgammon_wins);
   }).toBe(true);
   await clickLobbyAction(page, 'backgammon');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Backgammon');

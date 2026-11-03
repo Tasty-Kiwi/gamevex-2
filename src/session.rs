@@ -58,6 +58,7 @@ impl Arcade {
             blackjack_motion: Default::default(),
             baccarat_motion: Default::default(),
             casino_feedback: Default::default(),
+            connect4_ui: Default::default(),
             sudoku_ui: Default::default(),
             mahjong_ui: Default::default(),
             patience_ui: Default::default(),
@@ -150,6 +151,9 @@ pub(super) fn lifecycle(
             *age = (*age + delta.min(0.1) as f32).min(3.0);
         }
     }
+    if state.screen == Screen::Connect4 && foreground && !transitioned && state.modal.is_none() {
+        state.connect4_tick(delta.min(0.1) as f32);
+    }
     if state.screen == Screen::Backgammon && foreground && !transitioned && state.modal.is_none() {
         state.backgammon_tick(delta as f32);
     }
@@ -171,6 +175,7 @@ pub(super) fn lifecycle(
         state.patience_ui.motion.clear();
         state.patience_ui.feedback.clear();
         state.mahjong_ui.feedback.clear();
+        state.connect4_ui.settle_motion();
         state.backgammon_ui.settle_motion();
         state.holdem_ui.settle_motion();
         state.cribbage_ui.age = 1.0;

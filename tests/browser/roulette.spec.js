@@ -119,7 +119,7 @@ async function openRoulette(page, viewport) {
   await page.goto('/?qa=fresh&diagnostics');
   const c = page.locator(canvas);
   await expect.poll(async () => c.evaluate((el) => el.dataset.ready === 'true'), { timeout: 30_000 }).toBe(true);
-  await expect.poll(async () => JSON.parse(await c.evaluate((el) => el.dataset.session || '{}')).version).toBe(12);
+  await expect.poll(async () => JSON.parse(await c.evaluate((el) => el.dataset.session || '{}')).version).toBe(13);
   await clickLobbyAction(page, 'roulette');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Roulette');
   await expect.poll(async () => (await view(page)).bankroll).toBe(1000);

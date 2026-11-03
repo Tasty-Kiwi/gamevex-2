@@ -115,6 +115,14 @@ pub(crate) const TOPICS: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "Connect 4",
+        &[
+            "Drop a disc into one of seven columns. Gravity carries it to the lowest empty space. Connect four of your discs horizontally, vertically, or diagonally to win. A full board without a winner is a draw.",
+            "You play first against the computer. Your pieces and the computer pieces use the same theme colors as Backgammon. Click or tap a column, use 1-7, or focus a column with Tab and use Left/Right then Enter or Space.",
+            "New game asks before replacing an unfinished match. Your board saves after every move. Leaving the cabinet pauses computer play until you return.",
+        ],
+    ),
+    (
         "Card Lab",
         &[
             "Card Lab is a sandbox for the shared card controls. Select or drag a card into an empty slot. Occupied slots reject another card.",

@@ -22,7 +22,7 @@ async function openReady(page) {
   await expect.poll(async () => page.locator(canvas).evaluate((el) => {
     if (!el.dataset.session) return null;
     const save = JSON.parse(el.dataset.session);
-    return Boolean(save.version === 12 && save.mahjong && save.minesweeper && save.blackjack && save.baccarat && save.sudoku
+    return Boolean(save.version === 13 && save.mahjong && save.minesweeper && save.blackjack && save.baccarat && save.sudoku
       && save.solitaire && save.freecell && save.spider);
   })).toBe(true);
 }
@@ -758,7 +758,7 @@ test.describe('touch input regressions', () => {
     await tap((await bounds()).manual);
     await expect.poll(async () => (await interaction(page)).screen).toBe('Manual');
     const topics = (await bounds()).manualTopics;
-    expect(Object.keys(topics)).toHaveLength(14);
+    expect(Object.keys(topics)).toHaveLength(15);
     for (const [x, y, w, h] of Object.values(topics)) {
       expect(x + w).toBeLessThanOrEqual(360);
       expect(y + h).toBeLessThanOrEqual(527);

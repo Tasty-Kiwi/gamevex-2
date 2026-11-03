@@ -19,6 +19,7 @@ impl Arcade {
         {
             self.roulette_ui.settle_motion();
         }
+        self.connect4_ui.settle_motion();
         self.backgammon_ui.settle_motion();
         self.holdem_ui.settle_motion();
         self.cribbage_ui.age = 1.0;
@@ -106,6 +107,7 @@ impl Arcade {
                 });
                 0
             }
+            Screen::Connect4 => connect4_app::BOARD_FOCUS,
             Screen::Sudoku => sudoku_app::BOARD_FOCUS,
             _ => 0,
         };
@@ -120,6 +122,7 @@ impl Arcade {
     }
 
     pub(super) fn open_modal(&mut self, pending: Pending) {
+        self.connect4_ui.settle_motion();
         self.backgammon_ui.settle_motion();
         self.holdem_ui.settle_motion();
         self.cribbage_ui.age = 1.0;

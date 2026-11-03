@@ -56,7 +56,11 @@ impl LobbyCategory {
             ),
             Self::CardAndBoard => matches!(
                 screen,
-                Screen::Hearts | Screen::Cribbage | Screen::Backgammon | Screen::Cards
+                Screen::Hearts
+                    | Screen::Cribbage
+                    | Screen::Backgammon
+                    | Screen::Connect4
+                    | Screen::Cards
             ),
         }
     }
@@ -83,7 +87,7 @@ impl EntryRole {
     }
 }
 
-const ENTRIES: [(&str, &str, &str, EntryRole, Screen); 14] = [
+const ENTRIES: [(&str, &str, &str, EntryRole, Screen); 15] = [
     (
         "MINESWEEPER",
         "Read the field. Trust the numbers.",
@@ -174,6 +178,13 @@ const ENTRIES: [(&str, &str, &str, EntryRole, Screen); 14] = [
         "SPIN",
         EntryRole::Accent,
         Screen::Roulette,
+    ),
+    (
+        "CONNECT 4",
+        "Drop your discs. Connect four to win.",
+        "PLAY",
+        EntryRole::Danger,
+        Screen::Connect4,
     ),
     (
         "BACKGAMMON",
