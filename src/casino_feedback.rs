@@ -155,6 +155,7 @@ impl CasinoFeedback {
                     bc::BetSide::Player => "PLAYER",
                     bc::BetSide::Banker => "BANKER",
                     bc::BetSide::Tie => "TIE",
+                    _ => "ROUND",
                 },
                 SoundCue::Bet,
             ),
@@ -284,6 +285,15 @@ pub fn baccarat_result(game: &bc::Baccarat) -> RoundResult {
         "BANKROLL EMPTY"
     } else if game.outcome == Some(bc::Outcome::Push) {
         "TIE / STAKE RETURNED"
+    } else if matches!(
+        game.selected,
+        Some(bc::BetSide::PlayerPair | bc::BetSide::BankerPair)
+    ) {
+        if game.outcome == Some(bc::Outcome::Win) {
+            "PAIR WIN / 11:1"
+        } else {
+            "NO PAIR / BET LOST"
+        }
     } else {
         match (game.result, game.outcome) {
             (Some(bc::BetSide::Player), Some(bc::Outcome::Win)) => "PLAYER WIN",

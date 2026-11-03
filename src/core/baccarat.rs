@@ -11,6 +11,8 @@ pub enum BetSide {
     Player,
     Banker,
     Tie,
+    PlayerPair,
+    BankerPair,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,18 +176,7 @@ impl Baccarat {
         };
         self.result = Some(result);
         let bet_side = self.selected.expect("legal Deal requires a selection");
-        let (outcome, payout) = match (bet_side, result) {
-            (side, winner) if side == winner => {
-                let payout = match result {
-                    BetSide::Player => self.bet * 2,
-                    BetSide::Banker => (self.bet * 195 + 50) / 100,
-                    BetSide::Tie => self.bet * 9,
-                };
-                (Outcome::Win, payout)
-            }
-            (BetSide::Player | BetSide::Banker, BetSide::Tie) => (Outcome::Push, self.bet),
-            _ => (Outcome::Loss, 0),
-        };
+        let (outcome, payout) = self.settlement(bet_side, result);
         self.balance = self.balance.saturating_add(payout).min(MAX_CREDITS);
         self.outcome = Some(outcome);
         self.payout = payout;
@@ -195,6 +186,30 @@ impl Baccarat {
             Phase::Settled
         };
         true
+    }
+
+    fn settlement(&self, selected: BetSide, result: BetSide) -> (Outcome, u64) {
+        let pair = match selected {
+            BetSide::PlayerPair => Some(&self.player),
+            BetSide::BankerPair => Some(&self.banker),
+            _ => None,
+        };
+        if let Some(hand) = pair {
+            return if hand[0].rank == hand[1].rank {
+                (Outcome::Win, self.bet * 12)
+            } else {
+                (Outcome::Loss, 0)
+            };
+        }
+        match selected {
+            BetSide::Player if selected == result => (Outcome::Win, self.bet * 2),
+            BetSide::Banker if selected == result => (Outcome::Win, (self.bet * 195 + 50) / 100),
+            BetSide::Tie if selected == result => (Outcome::Win, self.bet * 9),
+            BetSide::Player | BetSide::Banker if result == BetSide::Tie => {
+                (Outcome::Push, self.bet)
+            }
+            _ => (Outcome::Loss, 0),
+        }
     }
 
     fn clear_round(&mut self) {
@@ -248,7 +263,6 @@ impl Baccarat {
                     || self.result.is_none()
                     || self.outcome.is_none()
                     || self.selected.is_none()
-                    || self.payout > MAX_CREDITS
                     || (self.phase == Phase::GameOver) != (self.balance == 0)
                 {
                     return Err("invalid settled state".into());
@@ -273,26 +287,11 @@ impl Baccarat {
                         return Err("banker third card does not match the tableau".into());
                     }
                 }
-                let expected = match (self.selected.unwrap(), self.result.unwrap()) {
-                    (side, result) if side == result => Outcome::Win,
-                    (BetSide::Player | BetSide::Banker, BetSide::Tie) => Outcome::Push,
-                    _ => Outcome::Loss,
-                };
-                if self.outcome != Some(expected)
-                    || (expected == Outcome::Loss && self.payout != 0)
-                    || (expected != Outcome::Loss && self.payout == 0)
-                {
-                    return Err("outcome or payout is inconsistent".into());
+                let (expected, expected_payout) =
+                    self.settlement(self.selected.unwrap(), self.result.unwrap());
+                if self.outcome != Some(expected) {
+                    return Err("outcome is inconsistent".into());
                 }
-                let expected_payout = match expected {
-                    Outcome::Loss => 0,
-                    Outcome::Push => self.bet,
-                    Outcome::Win => match self.result.unwrap() {
-                        BetSide::Player => self.bet * 2,
-                        BetSide::Banker => (self.bet * 195 + 50) / 100,
-                        BetSide::Tie => self.bet * 9,
-                    },
-                };
                 if self.payout != expected_payout {
                     return Err("payout does not match the bet".into());
                 }
@@ -357,6 +356,20 @@ mod tests {
         let mut g = game(cards, selected, bet);
         assert!(g.command(Command::Deal));
         g
+    }
+
+    #[test]
+    fn pair_wagers_use_the_first_two_ranks_independently_of_the_winner() {
+        for (cards, selection, payout) in [
+            ([4, 4, 4, 5], BetSide::PlayerPair, 120),
+            ([4, 5, 4, 4], BetSide::BankerPair, 120),
+            ([10, 13, 4, 5], BetSide::PlayerPair, 0),
+        ] {
+            let game = deal(&cards, selection, 10);
+            assert_eq!(game.payout, payout);
+            assert_eq!(game.balance, 990 + payout);
+            assert!(game.validate().is_ok());
+        }
     }
 
     #[test]

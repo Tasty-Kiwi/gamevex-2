@@ -40,6 +40,8 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 Some(BetSide::Player) => "PLAYER BET",
                 Some(BetSide::Banker) => "BANKER BET",
                 Some(BetSide::Tie) => "TIE BET",
+                Some(BetSide::PlayerPair) => "PLAYER PAIR",
+                Some(BetSide::BankerPair) => "BANKER PAIR",
                 None => "BET",
             },
             game.bet
@@ -51,12 +53,14 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         f.text(
             Vec2::new(m, info_y + 18.0),
             if game.phase == Phase::Betting {
-                "Choose Player, Banker, or Tie."
+                "Choose one wager."
             } else {
                 match game.selected {
                     Some(BetSide::Player) => "BET ON PLAYER",
                     Some(BetSide::Banker) => "BET ON BANKER",
                     Some(BetSide::Tie) => "BET ON TIE",
+                    Some(BetSide::PlayerPair) => "BET ON PLAYER PAIR",
+                    Some(BetSide::BankerPair) => "BET ON BANKER PAIR",
                     None => "PLAYER / BANKER",
                 }
             },
@@ -87,12 +91,24 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
                 },
             ),
             (BetSide::Tie, "TIE  8:1"),
+            (BetSide::PlayerPair, "PLAYER PAIR 11:1"),
+            (BetSide::BankerPair, "BANKER PAIR 11:1"),
         ]
         .into_iter()
         .enumerate()
         {
-            let x = m + i as f32 * (button_w + gap);
-            let r = rect(x, select_y, button_w, if short { 32.0 } else { 36.0 });
+            let h = if short { 32.0 } else { 36.0 };
+            let (x, y, width) = if i < 3 {
+                (m + i as f32 * (button_w + gap), select_y, button_w)
+            } else {
+                let width = (w - gap) / 2.0;
+                (
+                    m + (i - 3) as f32 * (width + gap),
+                    select_y + h + gap,
+                    width,
+                )
+            };
+            let r = rect(x, y, width, h);
             let cmd = Command::Select(side);
             if !busy && game.legal(cmd) {
                 button(
@@ -110,7 +126,7 @@ pub(super) fn baccarat(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32
         }
     }
 
-    let bet_y = select_y + if short { 39.0 } else { 44.0 };
+    let bet_y = select_y + if short { 78.0 } else { 87.0 };
     if betting {
         let h = if short { 28.0 } else { 32.0 };
         let widths = [58.0, 58.0, 60.0];
@@ -418,7 +434,7 @@ fn result_line(game: &gamevex_core::baccarat::Baccarat) -> String {
         Some(BetSide::Player) => "PLAYER WINS",
         Some(BetSide::Banker) => "BANKER WINS",
         Some(BetSide::Tie) => "TIE",
-        None => "DEALING",
+        _ => "DEALING",
     };
     format!("{winner} / {outcome} / RETURN {}{commission}", game.payout)
 }
