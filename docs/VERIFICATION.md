@@ -1,5 +1,21 @@
 # GameVex Rust demo verification
 
+## Backgammon port — 3 November 2026
+
+Backgammon completes the agreed game-port roster. The human plays cyan/White and moves first, matching the original UI; Easy and Hard CPU modes use the reference heuristics. The board supports legal-source/destination selection, maximum dice use, the higher-die rule, four moves for doubles, bar priority, hitting, and bearing off. Checker and hit-to-bar animations, animated dice, completion time, total wins, shared sounds, reduced motion, and rules are included. The neon board fits desktop and compact phone layouts.
+
+- The reference engine has an oversized-bearing-off defect: it can remove a nearer checker while another checker remains farther from home. The port follows the rulebook instead; focused tests cover exact and oversized bearing off in both directions. Four affected oracle cases are explicitly excluded and documented in the fixture.
+- The generated fixture compares **142 reference positions**, all **21,347 legal sequences**, **1,032 sampled transition paths**, pip counts, home-board checks, and Hard CPU best-choice sets. It contains 72 opening cases, 68 included midgame/color cases, and two focused cases. Regenerate with `node scripts/generate-backgammon-fixtures.ts ../gamevex`; metadata records source revision and SHA256.
+- Core tests complete 100 seeded Hard-vs-Hard games while validating each transition. App tests cover saved-state isolation, rules/settings/dialog pause, difficulty replacement, exactly-once win recording and sound, and responsive slot geometry at 360×560, 390×740, 1280×720, and 1280×800.
+- Save **v12** adds the active Backgammon game and win total. Migration preserves existing sessions and casino balances. Domain moves commit before animation; leaving or reloading preserves the current turn and remaining dice. CPU movement and foreground-only timing resume from the saved position. Timers stop before the first roll and after victory.
+- All 282 Rust tests, strict Clippy, native macOS packaging, and the WASM build pass. The existing browser regressions passed in the full run. A Backgammon test compared state after CPU play had resumed, so the test now verifies the pause and cancellation separately. All six Backgammon browser tests passed on the corrected run.
+- Desktop and compact phone previews verified checker shapes, point order, and legal move highlights.
+
+![Backgammon desktop](screenshots/backgammon.png)
+
+![Backgammon compact](screenshots/backgammon-compact.png)
+
+
 ## Roulette strip and table revision — 2 November 2026
 
 A full-width strip replaces the small circular wheel. All 37 European-wheel pockets pass beneath a fixed gold marker, with ease-out motion landing precisely on the resolved pocket. Zero is green in both the strip and betting table. The reference table puts 3/6/…/36 above 2/5/…/35 and 1/4/…/34, zero on the left, and three 2:1 column bets on the right; dozens and the six even-money bets sit underneath. Red and black bets use diamond symbols.

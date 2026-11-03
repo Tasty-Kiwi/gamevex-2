@@ -1,3 +1,4 @@
+mod backgammon_app;
 #[cfg(any(target_arch = "wasm32", test))]
 mod browser_audio;
 mod casino_audio;
@@ -64,6 +65,7 @@ pub(crate) struct Arcade {
     pub hearts_ui: hearts_app::HeartsUi,
     pub cribbage_ui: cribbage_app::CribbageUi,
     pub holdem_ui: holdem_app::HoldemUi,
+    pub backgammon_ui: backgammon_app::BackgammonUi,
     pub roulette_ui: roulette_app::RouletteUi,
     pub message: String,
     pub persistence: String,
@@ -86,6 +88,7 @@ pub(crate) enum Pending {
     NewCribbage,
     LeaveBlackjack(Screen),
     LeaveHoldem(Screen),
+    BackgammonReplace(gamevex_core::backgammon::Difficulty),
     NewSudoku(u8, sudoku::Difficulty),
     SudokuSetup,
     NewMahjong(mahjong::Layout, u64, bool),
@@ -144,6 +147,7 @@ impl Arcade {
             hearts_ui: Default::default(),
             cribbage_ui: Default::default(),
             holdem_ui: Default::default(),
+            backgammon_ui: Default::default(),
             roulette_ui: Default::default(),
             message,
             persistence,
@@ -197,6 +201,7 @@ impl Arcade {
         {
             self.roulette_ui.settle_motion();
         }
+        self.backgammon_ui.settle_motion();
         self.holdem_ui.settle_motion();
         self.cribbage_ui.age = 1.0;
         self.cribbage_ui.hovered = None;
@@ -348,7 +353,9 @@ impl Arcade {
         }
         let table_action = matches!(
             action,
-            Action::RouletteSpin
+            Action::BackgammonRoll
+                | Action::BackgammonPoint(_)
+                | Action::RouletteSpin
                 | Action::HoldemPlay(..)
                 | Action::HoldemStart
                 | Action::CribbageCard(..)
@@ -411,6 +418,7 @@ impl Arcade {
                 Some(Pending::NewPatience(v, seed)) => self.new_patience(v, seed),
                 Some(Pending::NewHearts) => self.new_hearts(),
                 Some(Pending::NewCribbage) => self.new_cribbage(),
+                Some(Pending::BackgammonReplace(difficulty)) => self.start_backgammon(difficulty),
                 Some(Pending::SudokuSetup) => self.restore_modal_focus(),
                 Some(Pending::Recover) => {
                     self.reset_saved_data();
@@ -432,6 +440,11 @@ impl Arcade {
                 }
                 self.restore_modal_focus();
             }
+            Action::BackgammonPoint(point) => self.backgammon_point(point),
+            Action::BackgammonRoll => self.backgammon_roll(),
+            Action::BackgammonNew => self.backgammon_new(false),
+            Action::BackgammonDifficulty => self.backgammon_new(true),
+            Action::BackgammonRules => self.backgammon_ui.rules = !self.backgammon_ui.rules,
             Action::RouletteBet(bet) => self.roulette_bet(bet),
             Action::RouletteStake(delta) => self.roulette_stake(delta),
             Action::RouletteStakeMin => self.roulette_stake_limit(false),
@@ -730,6 +743,7 @@ impl Arcade {
         self.hearts_ui = Default::default();
         self.cribbage_ui = Default::default();
         self.holdem_ui = Default::default();
+        self.backgammon_ui = Default::default();
         self.roulette_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
@@ -745,6 +759,7 @@ impl Arcade {
     }
 
     fn open_modal(&mut self, pending: Pending) {
+        self.backgammon_ui.settle_motion();
         self.holdem_ui.settle_motion();
         self.cribbage_ui.age = 1.0;
         self.cribbage_ui.hovered = None;
@@ -908,6 +923,9 @@ fn lifecycle(
             *age = (*age + delta.min(0.1) as f32).min(3.0);
         }
     }
+    if state.screen == Screen::Backgammon && foreground && !transitioned && state.modal.is_none() {
+        state.backgammon_tick(delta as f32);
+    }
     if state.screen == Screen::Roulette && foreground && !transitioned && state.modal.is_none() {
         state.roulette_tick(delta as f32);
     }
@@ -926,6 +944,7 @@ fn lifecycle(
         state.patience_ui.motion.clear();
         state.patience_ui.feedback.clear();
         state.mahjong_ui.feedback.clear();
+        state.backgammon_ui.settle_motion();
         state.holdem_ui.settle_motion();
         state.cribbage_ui.age = 1.0;
         state.cribbage_ui.hovered = None;
@@ -1068,6 +1087,7 @@ fn handle_pointer_input(
     touch.sync_lifecycle(&mut state, &mut pointer);
     // Browser canvas metrics can change before winit emits a resize event.
     if !layout_valid {
+        state.backgammon_ui.settle_motion();
         state.holdem_ui.settle_motion();
         state.cribbage_ui.age = 1.0;
         state.cribbage_ui.hovered = None;
@@ -1309,6 +1329,8 @@ fn handle_input(
     if keys.just_pressed(KeyCode::Escape) {
         if state.modal.is_some() {
             state.act(Action::Cancel);
+        } else if state.screen == Screen::Backgammon && state.backgammon_ui.rules {
+            state.backgammon_ui.rules = false;
         } else if state.screen == Screen::Roulette && state.roulette_ui.rules {
             state.roulette_ui.rules = false;
         } else if state.screen == Screen::Holdem && state.holdem_ui.rules {
@@ -1670,6 +1692,7 @@ fn play_sound(
             | Screen::Cribbage
             | Screen::Holdem
             | Screen::Roulette
+            | Screen::Backgammon
     ) || patience_app::is_family(state.screen);
     let enabled =
         state.audio_started && !state.save.settings.muted && state.save.settings.volume > 0.0;
@@ -1692,7 +1715,9 @@ fn play_sound(
         .into_iter()
         .map(|cue| (Some(cue), 0.0))
         .collect();
-    let table_sounds = if state.screen == Screen::Roulette {
+    let table_sounds = if state.screen == Screen::Backgammon {
+        state.backgammon_ui.feedback.take_sounds()
+    } else if state.screen == Screen::Roulette {
         state.roulette_ui.feedback.take_sounds()
     } else if state.screen == Screen::Holdem {
         state.holdem_ui.feedback.take_sounds()
@@ -1855,6 +1880,7 @@ mod tests {
             hearts_ui: Default::default(),
             cribbage_ui: Default::default(),
             holdem_ui: Default::default(),
+            backgammon_ui: Default::default(),
             roulette_ui: Default::default(),
             message: String::new(),
             persistence: String::new(),
@@ -3535,12 +3561,12 @@ mod tests {
                     |(_, h)| matches!(h.action, Action::Open(screen) if !matches!(screen, Screen::Settings | Screen::Lobby)),
                 )
                 .collect();
-            assert_eq!(games.len(), 13);
+            assert_eq!(games.len(), 14);
             let first = games[0].0;
             let last = games.last().unwrap().0;
             assert!(matches!(
                 games.last().unwrap().1.action,
-                Action::Open(Screen::Roulette)
+                Action::Open(Screen::Backgammon)
             ));
             assert_eq!(games.last().unwrap().1.rect.height(), 0.0);
             {
@@ -3601,6 +3627,7 @@ fn capture_tools(
                 Screen::Cribbage => "cribbage",
                 Screen::Holdem => "holdem",
                 Screen::Roulette => "roulette",
+                Screen::Backgammon => "backgammon",
             };
             let folder = std::path::Path::new("docs/screenshots");
             if std::fs::create_dir_all(folder).is_ok() {

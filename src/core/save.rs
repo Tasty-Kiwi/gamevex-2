@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Maximum accepted serialized save size. This also bounds parsing work on untrusted storage.
 pub const MAX_SAVE_BYTES: usize = 256 * 1024;
-pub const SAVE_VERSION: u32 = 11;
+pub const SAVE_VERSION: u32 = 12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayPreset {
@@ -156,6 +156,8 @@ pub struct Save {
     pub cribbage_wins: u32,
     pub holdem_balance: u64,
     pub roulette_balance: u64,
+    pub backgammon: crate::backgammon::Game,
+    pub backgammon_wins: u32,
 }
 
 #[derive(Deserialize)]
@@ -244,6 +246,11 @@ impl Save {
             cribbage_wins: 0,
             holdem_balance: 1000,
             roulette_balance: 1000,
+            backgammon: crate::backgammon::Game::new(
+                seed ^ 0x4241_434b,
+                crate::backgammon::Difficulty::Easy,
+            ),
+            backgammon_wins: 0,
             patience_records: [None; 7],
             solitaire: crate::patience::Game::new(
                 crate::patience::Variant::Klondike1,
@@ -267,6 +274,7 @@ impl Save {
         self.settings.validate()?;
         self.hearts.validate()?;
         self.cribbage.validate()?;
+        self.backgammon.validate()?;
         if self.roulette_balance > crate::roulette::MAX_BALANCE {
             return Err("roulette balance exceeds limit".into());
         }
@@ -399,7 +407,7 @@ impl Save {
                 migrated.spider = old.spider;
                 migrated
             }
-            7..=10 => {
+            7..=11 => {
                 let mut value = value;
                 let fields = value.as_object_mut().ok_or("invalid save object")?;
                 fields.insert("version".into(), serde_json::json!(SAVE_VERSION));
@@ -422,10 +430,28 @@ impl Save {
                 if version <= 9 {
                     fields.insert("holdem_balance".into(), serde_json::json!(1000));
                 }
-                fields.insert("roulette_balance".into(), serde_json::json!(1000));
+                if version <= 10 {
+                    fields.insert("roulette_balance".into(), serde_json::json!(1000));
+                }
+                let backgammon_seed = fields
+                    .get("minesweeper")
+                    .and_then(|v| v.get("game"))
+                    .and_then(|v| v.get("seed"))
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0)
+                    ^ 0x4241_434b;
+                fields.insert(
+                    "backgammon".into(),
+                    serde_json::to_value(crate::backgammon::Game::new(
+                        backgammon_seed,
+                        crate::backgammon::Difficulty::Easy,
+                    ))
+                    .map_err(|e| e.to_string())?,
+                );
+                fields.insert("backgammon_wins".into(), serde_json::json!(0));
                 serde_json::from_value(value).map_err(|e| format!("invalid migrated save: {e}"))?
             }
-            11 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
+            12 => serde_json::from_value(value).map_err(|e| format!("invalid save JSON: {e}"))?,
             _ => return Err(format!("unsupported save version {version}")),
         };
         save.validate()?;
@@ -900,5 +926,28 @@ mod tests {
         assert!(Save::from_json(&missing.to_string()).is_err());
         previous.roulette_balance = crate::roulette::MAX_BALANCE + 1;
         assert!(previous.validate().is_err());
+    }
+    #[test]
+    fn v11_adds_backgammon_without_replacing_existing_sessions_or_balances() {
+        let mut expected = Save::new(123);
+        expected.roulette_balance = 842;
+        expected.holdem_balance = 1742;
+        expected.cribbage_wins = 3;
+        let mut old = serde_json::to_value(&expected).unwrap();
+        old["version"] = 11.into();
+        old.as_object_mut().unwrap().remove("backgammon");
+        old.as_object_mut().unwrap().remove("backgammon_wins");
+        assert_eq!(Save::from_json(&old.to_string()).unwrap(), expected);
+        expected.backgammon.roll();
+        expected.backgammon_wins = 4;
+        assert_eq!(
+            Save::from_json(&expected.to_json().unwrap()).unwrap(),
+            expected
+        );
+        let mut missing = serde_json::to_value(&expected).unwrap();
+        missing.as_object_mut().unwrap().remove("backgammon");
+        assert!(Save::from_json(&missing.to_string()).is_err());
+        expected.backgammon.board.bar[0] = 16;
+        assert!(expected.to_json().is_err());
     }
 }

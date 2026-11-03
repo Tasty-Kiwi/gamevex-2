@@ -95,7 +95,7 @@ async function openPatience(page, family = 'Solitaire') {
   }).toBe(true);
   await expect.poll(async () => c.evaluate((el) => {
     const save = JSON.parse(el.dataset.session || '{}');
-    return Boolean(save.version === 11 && save.solitaire && save.freecell && save.spider);
+    return Boolean(save.version === 12 && save.solitaire && save.freecell && save.spider);
   })).toBe(true);
   await clickLobbyAction(page, family.toLowerCase());
   await expect.poll(async () => interaction(page).then((i) => i.screen)).toBe(family);
@@ -350,7 +350,7 @@ test('FreeCell finish completes a provable two card foundation and undo treats i
   const base = await save(page);
   const key = 'gamevex.rust-demo.qa.v1';
   const nearWin = structuredClone(base);
-  nearWin.version = 11;
+  nearWin.version = 12;
   nearWin.freecell = {
     ...nearWin.freecell,
     variant: 'FreeCell',

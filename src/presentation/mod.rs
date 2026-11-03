@@ -33,6 +33,7 @@ pub enum Screen {
     Cribbage,
     Holdem,
     Roulette,
+    Backgammon,
 }
 #[derive(Clone, Copy)]
 pub enum Action {
@@ -78,6 +79,11 @@ pub enum Action {
     MahjongRestart,
     MahjongNew(gamevex_core::mahjong::Layout),
     MahjongZen(bool),
+    BackgammonPoint(u8),
+    BackgammonRoll,
+    BackgammonNew,
+    BackgammonDifficulty,
+    BackgammonRules,
     RouletteBet(gamevex_core::roulette::Bet),
     RouletteStake(i64),
     RouletteStakeMin,
@@ -258,6 +264,9 @@ pub fn paint(
             time.delta_secs(),
         ),
         Screen::Settings => settings(&mut frame, &mut state, &mut layout, margin, w),
+        Screen::Backgammon => {
+            backgammon::backgammon(&mut frame, &mut state, &mut layout, margin, w)
+        }
         Screen::Roulette => roulette::roulette(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Blackjack => blackjack(&mut frame, &mut state, &mut layout, margin, w),
         Screen::Holdem => holdem::holdem(
@@ -326,6 +335,7 @@ pub fn paint(
 
 mod baccarat;
 pub(crate) mod baccarat_motion;
+mod backgammon;
 mod blackjack;
 pub(crate) mod blackjack_motion;
 pub(crate) mod casino_fx;
@@ -362,6 +372,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             Some(Pending::NewHearts) => Some("hearts-replace"),
             Some(Pending::NewCribbage) => Some("cribbage-replace"),
             Some(Pending::LeaveHoldem(_)) => Some("holdem-leave"),
+            Some(Pending::BackgammonReplace(_)) => Some("backgammon-replace"),
             Some(Pending::SudokuSetup) => Some("sudoku-setup"),
             Some(Pending::NewSudoku(..)) => Some("sudoku-replace"),
             Some(Pending::NewMahjong(..)) => Some("mahjong-replace"),
@@ -442,6 +453,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             "cribbage":action_bounds(Screen::Cribbage),
             "holdem":action_bounds(Screen::Holdem),
             "roulette":action_bounds(Screen::Roulette),
+            "backgammon":action_bounds(Screen::Backgammon),
             "lobbyClip":layout.lobby_clip.map(|r| [r.min.x,r.min.y,r.width(),r.height()]),
             "lobbyScroll":state.lobby_scroll,
             "lobbyMaxScroll":layout.lobby_max_scroll,
@@ -449,6 +461,48 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
         if let Ok(json) = serde_json::to_string(&bounds) {
             platform::diagnostics_attribute("data-action-bounds", &json);
         }
+    }
+    if state.screen == Screen::Backgammon {
+        let mut bounds = serde_json::Map::new();
+        let ui = &state.backgammon_ui;
+        let g = &state.save.backgammon;
+        for hit in &layout.hits {
+            let key = match hit.action {
+                Action::BackgammonPoint(p)
+                    if !ui.busy(state.save.settings.reduced_motion)
+                        && (ui.legal.iter().any(|m| m.from == p)
+                            || ui.selected.is_some_and(|source| {
+                                ui.legal.iter().any(|m| m.from == source && m.to == p)
+                            })) =>
+                {
+                    format!("backgammonPoint{p}")
+                }
+                Action::BackgammonPoint(_) => continue,
+                Action::BackgammonRoll => "backgammonRoll".into(),
+                Action::BackgammonRules => "backgammonRules".into(),
+                Action::BackgammonNew => "backgammonNew".into(),
+                Action::BackgammonDifficulty => "backgammonDifficulty".into(),
+                Action::Cancel => "cancel".into(),
+                Action::Confirm => "confirm".into(),
+                Action::Open(Screen::Lobby) | Action::Back => "lobby".into(),
+                Action::Open(Screen::Settings) => "settings".into(),
+                _ => continue,
+            };
+            bounds.insert(
+                key,
+                serde_json::json!([
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height()
+                ]),
+            );
+        }
+        platform::diagnostics_attribute(
+            "data-action-bounds",
+            &serde_json::Value::Object(bounds).to_string(),
+        );
+        platform::diagnostics_attribute("data-backgammon-view",&serde_json::json!({"turn":g.turn,"phase":g.phase,"board":g.board,"dice":g.dice,"rolled":g.rolled,"legal":ui.legal,"selected":ui.selected,"rulesOpen":ui.rules,"animating":ui.busy(state.save.settings.reduced_motion),"wins":state.save.backgammon_wins,"elapsedMs":g.elapsed_ms,"difficulty":g.difficulty}).to_string());
     }
     if state.screen == Screen::Roulette {
         let mut bounds = serde_json::Map::new();

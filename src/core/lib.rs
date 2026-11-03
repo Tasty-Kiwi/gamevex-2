@@ -1,4 +1,5 @@
 pub mod baccarat;
+pub mod backgammon;
 pub mod blackjack;
 pub mod cards;
 pub mod cribbage;
@@ -27,3 +28,6 @@ mod holdem_parity;
 
 #[cfg(test)]
 mod roulette_parity;
+
+#[cfg(test)]
+mod backgammon_parity;
