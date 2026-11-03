@@ -94,10 +94,16 @@ async function beginHand(page) {
 
 async function startHand(page) {
   await clickAction(page, 'holdemStart');
+  // Software WebGPU can take several seconds per CPU action at 2x density.
+  // Wait for the dealt hand to settle, including any CPU turns before ours.
   await expect.poll(async () => {
     const current = await view(page);
-    return phaseName(current.phase) === 'preflop' && current.seats?.length >= 2 && !current.animating;
-  }).toBe(true);
+    return {
+      phase: phaseName(current.phase),
+      seated: current.seats?.length >= 2,
+      animating: current.animating,
+    };
+  }, { timeout: 15_000 }).toEqual({ phase: 'preflop', seated: true, animating: false });
 }
 
 async function waitForHumanTurn(page) {
@@ -283,7 +289,8 @@ for (const density of [1, 2]) {
   test.describe(`Holdem text stability at ${density}x density`, () => {
     test.use({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: density });
     test('showdown keeps the title visible', async ({ page }) => {
-      test.setTimeout(60_000);
+      // Include startup, two screenshots, and five-seat play on software WebGPU.
+      test.setTimeout(120_000);
       await openHoldem(page);
       const clip = { x: 45, y: 82, width: 310, height: 54 };
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
