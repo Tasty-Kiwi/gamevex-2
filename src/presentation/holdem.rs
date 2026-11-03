@@ -427,7 +427,7 @@ pub(super) fn holdem(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, 
                 if small { 9.0 } else { 12.0 },
                 INK,
             );
-            if g.seats[0].folded && ready {
+            if g.seats[0].folded {
                 button(
                     f,
                     s,

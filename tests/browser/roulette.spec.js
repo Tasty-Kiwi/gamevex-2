@@ -276,9 +276,9 @@ test('roulette desktop table keeps the reference number, column, dozen, and outs
   }
 });
 
-test('roulette phone table pans horizontally for far and middle bets without selecting during a swipe', async ({ page }) => {
-  test.setTimeout(30_000);
-  for (const viewport of [{ width: 390, height: 740 }, { width: 360, height: 560 }]) {
+for (const viewport of [{ width: 390, height: 740 }, { width: 360, height: 560 }]) {
+  test(`roulette phone table pans horizontally without selecting during a swipe at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    test.setTimeout(60_000);
     await openRoulette(page, viewport);
     const initial = await view(page);
     expect(initial.tablePan).toBe(0);
@@ -317,5 +317,5 @@ test('roulette phone table pans horizontally for far and middle bets without sel
     await touchAction(page, 'rouletteBetRed');
     expect((await view(page)).bet).toBe('red');
     expect((await view(page)).bankroll).toBe(startingBalance);
-  }
-});
+  });
+}

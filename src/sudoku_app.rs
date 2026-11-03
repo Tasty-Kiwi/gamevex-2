@@ -19,6 +19,9 @@ pub(crate) struct SudokuUi {
     pub setup: Option<(u8, Difficulty)>,
 }
 
+// The board is the first focusable item after the logo and Settings.
+pub(crate) const BOARD_FOCUS: usize = 2;
+
 impl Arcade {
     pub(crate) fn new_sudoku(&mut self, size: u8, difficulty: Difficulty) {
         self.save.sudoku.game = Sudoku::new(size, difficulty, fresh_seed());
@@ -37,7 +40,7 @@ impl Arcade {
         self.modal = None;
         self.fractional_ms = 0.0;
         self.last_active = false;
-        self.focus = 3;
+        self.focus = BOARD_FOCUS;
         self.persist();
     }
 
@@ -99,7 +102,7 @@ impl Arcade {
             .command(command, &mut self.sudoku_ui.history)
         {
             // Mouse actions return entry focus to the board so typing can continue.
-            self.focus = 3;
+            self.focus = BOARD_FOCUS;
             if let Some((board, notes)) = undo_before
                 && let Some(index) =
                     self.save

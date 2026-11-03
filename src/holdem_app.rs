@@ -136,10 +136,7 @@ impl Arcade {
         }
     }
     pub(crate) fn holdem_skip(&mut self) {
-        if !self.holdem_ready()
-            || !self.holdem_ui.game.seats[0].folded
-            || self.holdem_ui.game.terminal()
-        {
+        if !self.holdem_ui.game.seats[0].folded || self.holdem_ui.game.terminal() {
             return;
         }
         // Resolve the same CPU decisions without replaying every action cue.

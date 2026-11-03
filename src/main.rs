@@ -282,7 +282,8 @@ impl Arcade {
             Screen::Mines => 9,
             Screen::Blackjack if self.save.blackjack.phase == blackjack::Phase::Betting => 7,
             Screen::Blackjack => 3,
-            Screen::Baccarat | Screen::Sudoku => 3,
+            Screen::Baccarat => 3,
+            Screen::Sudoku => sudoku_app::BOARD_FOCUS,
             _ => 0,
         };
         self.keyboard = false;
@@ -677,7 +678,7 @@ impl Arcade {
             Action::SudokuPencil => {
                 if !self.save.sudoku.game.complete {
                     self.sudoku_ui.pencil = !self.sudoku_ui.pencil;
-                    self.focus = 3;
+                    self.focus = sudoku_app::BOARD_FOCUS;
                 }
             }
             Action::SudokuErrors => {
@@ -2595,18 +2596,18 @@ mod tests {
         let original = state.sudoku_ui.selected;
         state.focus = 9;
         state.act(Action::SudokuPencil);
-        assert_eq!(state.focus, 3);
+        assert_eq!(state.focus, sudoku_app::BOARD_FOCUS);
         state.focus = 9;
         state.act(Action::Sudoku(sudoku::Command::Enter {
             index: original,
             value: 2,
             pencil: true,
         }));
-        assert_eq!(state.focus, 3);
+        assert_eq!(state.focus, sudoku_app::BOARD_FOCUS);
         state.sudoku_ui.selected = (original + 1) % state.save.sudoku.game.board.len();
         state.focus = 10;
         state.act(Action::Sudoku(sudoku::Command::Undo));
-        assert_eq!(state.focus, 3);
+        assert_eq!(state.focus, sudoku_app::BOARD_FOCUS);
         assert_eq!(state.sudoku_ui.selected, original);
         assert_eq!(state.save.sudoku.game.notes[original], 0);
         assert!(state.sudoku_ui.follow);
@@ -2746,27 +2747,22 @@ mod tests {
     fn sudoku_keyboard_values_are_scoped_and_hex_letters_remain_values() {
         let mut state = sudoku_test_state();
         let mut layout = ViewLayout {
-            hits: [
-                Action::SudokuSetup,
-                Action::SudokuSetup,
-                Action::SudokuSetup,
-                Action::SudokuCell,
-            ]
-            .into_iter()
-            .map(|action| presentation::Hit {
-                rect: Rect::default(),
-                action,
-            })
-            .collect(),
+            hits: [Action::SudokuSetup, Action::SudokuSetup, Action::SudokuCell]
+                .into_iter()
+                .map(|action| presentation::Hit {
+                    rect: Rect::default(),
+                    action,
+                })
+                .collect(),
             ..default()
         };
-        state.focus = 3;
+        state.focus = sudoku_app::BOARD_FOCUS;
         let mut keys = ButtonInput::<KeyCode>::default();
         keys.press(KeyCode::Digit2);
         sudoku_app::board_keys(&mut state, &keys, &layout);
         let i = state.sudoku_ui.selected;
         assert_eq!(state.save.sudoku.game.board[i], 2);
-        layout.hits[3].action = Action::SudokuPencil;
+        layout.hits[sudoku_app::BOARD_FOCUS].action = Action::SudokuPencil;
         keys.reset_all();
         keys.press(KeyCode::Digit3);
         sudoku_app::board_keys(&mut state, &keys, &layout);
@@ -2780,7 +2776,7 @@ mod tests {
             .iter()
             .position(|v| *v == 0)
             .unwrap();
-        layout.hits[3].action = Action::SudokuCell;
+        layout.hits[sudoku_app::BOARD_FOCUS].action = Action::SudokuCell;
         keys.reset_all();
         keys.press(KeyCode::KeyA);
         sudoku_app::board_keys(&mut state, &keys, &layout);
@@ -2867,6 +2863,10 @@ mod tests {
                     ));
                     app.update();
                     let layout = app.world().resource::<ViewLayout>();
+                    assert!(matches!(
+                        layout.hits[sudoku_app::BOARD_FOCUS].action,
+                        Action::SudokuCell
+                    ));
                     for hit in &layout.hits {
                         assert!(
                             hit.rect.min.x >= 0.0

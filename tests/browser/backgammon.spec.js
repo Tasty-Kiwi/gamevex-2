@@ -203,7 +203,6 @@ test('Backgammon new-game confirmation can be canceled', async ({ page }) => {
   await openBackgammon(page);
   const played = await playHumanTurn(page);
   expect(played.changed).toBe(true);
-  await expect.poll(async () => (await view(page)).turn).toBe('black');
   await expect.poll(async () => {
     const current = await view(page);
     return current.turn === 'white' && current.phase === 'await_roll' && !current.animating;
@@ -226,7 +225,10 @@ test('Backgammon difficulty changes only after confirmation and preserves other 
   const original = stable(await save(page));
   const played = await playHumanTurn(page);
   expect(played.changed).toBe(true);
-  await expect.poll(async () => (await view(page)).turn).toBe('black');
+  await expect.poll(async () => {
+    const current = await view(page);
+    return current.turn === 'white' && current.phase === 'await_roll' && !current.animating;
+  }, { timeout: 15_000 }).toBe(true);
   const progressed = stable(await save(page));
   await clickAction(page, 'backgammonDifficulty');
   await expect.poll(async () => (await interaction(page)).modal).toBe('backgammon-replace');

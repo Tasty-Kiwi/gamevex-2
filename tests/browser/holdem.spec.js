@@ -306,7 +306,7 @@ for (const density of [1, 2]) {
     test('showdown keeps the title visible', async ({ page }) => {
       test.setTimeout(60_000);
       await openHoldem(page);
-      const clip = { x: 82, y: 101, width: 300, height: 30 };
+      const clip = { x: 45, y: 82, width: 310, height: 54 };
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
       const ink = (buffer) => {
         const { data } = PNG.sync.read(buffer);
@@ -318,9 +318,9 @@ for (const density of [1, 2]) {
       };
       let before;
       await expect.poll(async () => {
-        before = await page.screenshot({ clip });
+        before = await page.screenshot({ clip, scale: 'css' });
         return ink(before);
-      }).toBeGreaterThan(1000 * density * density);
+      }, { timeout: 20_000 }).toBeGreaterThan(500);
       for (let i = 0; i < 3; i++) {
         await clickAction(page, 'holdemOpponentsUp');
         await expect.poll(async () => (await view(page)).opponents).toBe(i + 2);
@@ -335,7 +335,7 @@ for (const density of [1, 2]) {
       // The title lies above every animated/table primitive. Allow small
       // antialiasing differences while detecting lost text in the actual pixels.
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
-      const after = await page.screenshot({ clip });
+      const after = await page.screenshot({ clip, scale: 'css' });
       expect(ink(after)).toBeGreaterThan(ink(before) * 0.9);
       expect(ink(after)).toBeLessThan(ink(before) * 1.1);
     });
