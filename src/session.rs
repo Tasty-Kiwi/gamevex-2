@@ -153,10 +153,12 @@ pub(super) fn lifecycle(
         }
     }
     if state.screen == Screen::TicTacToe && foreground && !transitioned && state.modal.is_none() {
-        state.tictactoe_tick(delta.min(0.1) as f32);
+        // These are elapsed-time delays, not simulation steps. Clamping each
+        // foreground frame makes CPU turns take seconds on a slow renderer.
+        state.tictactoe_tick(delta as f32);
     }
     if state.screen == Screen::Connect4 && foreground && !transitioned && state.modal.is_none() {
-        state.connect4_tick(delta.min(0.1) as f32);
+        state.connect4_tick(delta as f32);
     }
     if state.screen == Screen::Backgammon && foreground && !transitioned && state.modal.is_none() {
         state.backgammon_tick(delta as f32);

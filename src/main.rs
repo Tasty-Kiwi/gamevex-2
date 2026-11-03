@@ -1016,6 +1016,95 @@ mod tests {
         }
     }
 
+    fn board_clock_app(screen: Screen) -> App {
+        let mut state = test_arcade();
+        state.open(screen);
+        state.act(match screen {
+            Screen::Connect4 => Action::Connect4Drop(0),
+            Screen::TicTacToe => Action::TicTacToeCell(0),
+            _ => unreachable!(),
+        });
+        let mut app = App::new();
+        app.insert_resource(state)
+            .insert_resource(Time::<Real>::default())
+            .add_message::<WindowFocused>()
+            .add_message::<WindowCloseRequested>()
+            .add_systems(Update, lifecycle);
+        app.world_mut().spawn((
+            Window {
+                focused: true,
+                ..default()
+            },
+            PrimaryWindow,
+        ));
+        app
+    }
+
+    fn advance_board_clock(app: &mut App, seconds: f64) {
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(std::time::Duration::from_secs_f64(seconds));
+        app.update();
+    }
+
+    fn board_history_len(app: &App, screen: Screen) -> usize {
+        let state = app.world().resource::<Arcade>();
+        match screen {
+            Screen::Connect4 => state.save.connect4.history.len(),
+            Screen::TicTacToe => state.save.tictactoe.history.len(),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn board_bots_use_elapsed_foreground_time_at_low_frame_rates() {
+        for screen in [Screen::Connect4, Screen::TicTacToe] {
+            let mut app = board_clock_app(screen);
+            // One 900ms frame covers the human disc fall and CPU think delay.
+            advance_board_clock(&mut app, 0.9);
+            assert_eq!(board_history_len(&app, screen), 2, "{screen:?}");
+            advance_board_clock(&mut app, 0.9);
+            assert_eq!(board_history_len(&app, screen), 2, "{screen:?}");
+        }
+    }
+
+    #[test]
+    fn board_bots_pause_in_background_and_skip_the_refocus_frame() {
+        for screen in [Screen::Connect4, Screen::TicTacToe] {
+            let mut app = board_clock_app(screen);
+            let window = app
+                .world_mut()
+                .query_filtered::<Entity, With<PrimaryWindow>>()
+                .single(app.world())
+                .unwrap();
+            app.world_mut().get_mut::<Window>(window).unwrap().focused = false;
+            advance_board_clock(&mut app, 5.0);
+            assert_eq!(board_history_len(&app, screen), 1, "{screen:?}");
+            app.world_mut().get_mut::<Window>(window).unwrap().focused = true;
+            app.world_mut().write_message(WindowFocused {
+                window,
+                focused: true,
+            });
+            advance_board_clock(&mut app, 5.0);
+            assert_eq!(board_history_len(&app, screen), 1, "{screen:?}");
+            advance_board_clock(&mut app, 0.9);
+            assert_eq!(board_history_len(&app, screen), 2, "{screen:?}");
+        }
+    }
+
+    #[test]
+    fn connect4_cpu_delay_starts_after_the_disc_lands() {
+        let mut state = test_arcade();
+        state.open(Screen::Connect4);
+        state.act(Action::Connect4Drop(0));
+        state.connect4_tick(0.4);
+        assert_eq!(state.save.connect4.history.len(), 1);
+        state.connect4_tick(0.1);
+        assert_eq!(state.save.connect4.history.len(), 1);
+        state.connect4_tick(0.35);
+        assert_eq!(state.save.connect4.history.len(), 2);
+    }
+
     #[test]
     fn connect4_replacement_navigation_and_computer_resume_preserve_sessions() {
         let mut state = test_arcade();

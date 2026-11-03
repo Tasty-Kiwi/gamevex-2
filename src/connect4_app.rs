@@ -154,6 +154,11 @@ impl Arcade {
         }
 
         let was_busy = self.connect4_ui.busy(self.save.settings.reduced_motion);
+        let remaining_fall = if was_busy {
+            (self.connect4_ui.fall_duration - self.connect4_ui.fall_age).max(0.0)
+        } else {
+            0.0
+        };
         self.connect4_ui.fall_age += delta;
 
         if was_busy && !self.connect4_ui.busy(self.save.settings.reduced_motion) {
@@ -168,7 +173,9 @@ impl Arcade {
             && self.save.connect4.turn == Player::Yellow
             && self.save.connect4.status == Status::Playing
         {
-            self.connect4_ui.bot_timer += delta;
+            // The CPU delay starts after the human disc lands, including when
+            // a single slow frame spans the end of its fall animation.
+            self.connect4_ui.bot_timer += (delta - remaining_fall).max(0.0);
             const BOT_DELAY: f32 = 0.45;
             if self.connect4_ui.bot_timer >= BOT_DELAY
                 && let Some(col) = self.save.connect4.bot_column()

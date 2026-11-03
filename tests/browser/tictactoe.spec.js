@@ -22,6 +22,8 @@ async function open(page) {
 }
 
 test('Tic-tac-toe plays a draw, confirms replacement, and restores its board', async ({ page }) => {
+  // Several turns, confirmation, a screenshot, and a reload share this budget.
+  test.setTimeout(90_000);
   await open(page);
   const initial = await read(page, 'session');
   for (const [i, cell] of [0, 1, 6, 5, 7].entries()) {
