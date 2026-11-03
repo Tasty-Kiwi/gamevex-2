@@ -8,3 +8,7 @@
 /node_modules/
 /test-results/
 /playwright-report/
+
+# Generated for the exact web build.
+/web/backend.js
+/web/sw.js

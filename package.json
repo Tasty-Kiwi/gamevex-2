@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "test:browser": "playwright test",
-    "test:browser:smoke": "playwright test --grep @smoke"
+    "test:browser:smoke": "playwright test --grep @smoke",
+    "test:pwa": "playwright test tests/browser/pwa.spec.js",
+    "test:graphics": "playwright test tests/browser/graphics.spec.js"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

@@ -4,9 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["webgpu"]
+webgpu = ["bevy/webgpu"]
+webgl2 = ["bevy/webgl2"]
+
 [dependencies]
 gamevex-core = { path = "crates/gamevex-core" }
-bevy = { version = "=0.17.3", default-features = false, features = ["std", "async_executor", "bevy_asset", "bevy_audio", "bevy_color", "bevy_core_pipeline", "bevy_camera", "bevy_image", "bevy_mesh", "bevy_render", "bevy_shader", "bevy_sprite", "bevy_sprite_render", "bevy_text", "bevy_window", "bevy_winit", "bevy_log", "default_font", "multi_threaded", "webgpu", "wav", "png"] }
+bevy = { version = "=0.17.3", default-features = false, features = ["std", "async_executor", "bevy_asset", "bevy_audio", "bevy_color", "bevy_core_pipeline", "bevy_camera", "bevy_image", "bevy_mesh", "bevy_render", "bevy_shader", "bevy_sprite", "bevy_sprite_render", "bevy_text", "bevy_window", "bevy_winit", "bevy_log", "default_font", "multi_threaded", "wav", "png"] }
 serde_json.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

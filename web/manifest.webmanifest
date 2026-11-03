@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "GameVex",
+  "short_name": "GameVex",
+  "description": "Your local arcade of card, board, and puzzle games.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#080d1c",
+  "theme_color": "#080d1c",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

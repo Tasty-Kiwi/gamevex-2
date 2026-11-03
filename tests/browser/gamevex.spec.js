@@ -1,6 +1,7 @@
 import { screenPoint } from './interaction.js';
 import { revealLobbyGame } from './lobby.js';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './web-fixture.js';
 
 const canvas = '#gamevex';
 
@@ -19,6 +20,9 @@ async function openReady(page) {
     throw new Error(`WebGPU browser harness unavailable: ${state.error}`);
   }
   expect(state.ready).toBe(true);
+  if (process.env.GAMEVEX_TEST_GRAPHICS) {
+    await expect(page.locator(canvas)).toHaveAttribute('data-graphics-backend', process.env.GAMEVEX_TEST_GRAPHICS);
+  }
   await expect.poll(async () => page.locator(canvas).evaluate((el) => {
     if (!el.dataset.session) return null;
     const save = JSON.parse(el.dataset.session);

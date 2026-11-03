@@ -3,7 +3,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 WEB_DIR="$WORKSPACE_DIR/web"
-if [[ ! -f "$WEB_DIR/pkg/gamevex_app.js" ]]; then
+if [[ ( ! -f "$WEB_DIR/pkg/webgpu/gamevex_app.js" && ! -f "$WEB_DIR/pkg/webgl2/gamevex_app.js" ) || ! -f "$WEB_DIR/backend.js" || ! -f "$WEB_DIR/sw.js" ]]; then
   echo "Web artifacts are missing. Run scripts/build-web.sh first." >&2
   exit 1
 fi

@@ -679,8 +679,10 @@ fn fresh_seed() -> u64 {
 fn main() {
     #[cfg(target_os = "macos")]
     let backend = Backends::METAL;
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
     let backend = Backends::BROWSER_WEBGPU;
+    #[cfg(all(target_arch = "wasm32", not(feature = "webgpu")))]
+    let backend = Backends::GL;
     #[cfg(all(not(target_os = "macos"), not(target_arch = "wasm32")))]
     let backend = Backends::PRIMARY;
     App::new()

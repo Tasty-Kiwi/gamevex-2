@@ -29,7 +29,7 @@ The update flow is input → command → rules update → domain events → pres
 
   The script uses the installed `wasm32-unknown-unknown` standard library when present. With rustup, it installs that target when needed. A non-rustup toolchain can build the standard library from its installed Rust sources (`rust-src`) with Cargo's `build-std` fallback. Set `WASM_BINDGEN` to the CLI path if it is not on `PATH`.
 
-- Python 3 for the local static server.
+- Python 3 for offline service-worker generation and the local static server.
 
 ## Run
 
@@ -41,7 +41,27 @@ scripts/build-web.sh
 scripts/serve-web.sh
 ```
 
-Then open `http://localhost:18435`. Set `GAMEVEX_PORT` to choose another port. Use an origin separate from the original GameVex app: its offline service worker can otherwise serve cached pages instead of this application. The browser loader reports a visible setup error when the page is not in a secure context, WebGPU is unavailable, or no compatible adapter is found. `scripts/build-all.sh` builds the native release and browser release in sequence.
+Then open `http://localhost:18435`. Set `GAMEVEX_PORT` to choose another port. Use an origin separate from the original GameVex app: its offline service worker can otherwise serve cached pages instead of this application. The browser loader reports a visible setup error when the page is not in a secure context or the selected graphics backend is unavailable. `scripts/build-all.sh` builds the native release and browser release in sequence.
+
+## Install and use offline
+
+The web build is a PWA. In Chrome or Edge, use the browser's **Install GameVex** action (in the address bar or browser menu). On Safari for macOS use **File → Add to Dock**; on iPhone/iPad use **Share → Add to Home Screen**. Installation options depend on the browser. The installed app still needs a graphics backend supported by that browser; installation does not add WebGPU support.
+
+Visit once online and allow the offline download to finish before disconnecting. The service worker caches the complete runtime, including WebAssembly, icons, and the shell. Fonts, the CRT shader, and sounds are embedded or synthesized, so they need no additional runtime downloads. Browser storage can be evicted or cleared; offline play requires a successful first cache. Saves continue to use the existing localStorage namespace on that origin.
+
+Updates download in the background and become active after every GameVex tab and installed app window closes. Reopening then uses the new version. An incomplete update retains the previous installed version. No update forces a reload during play. To see local edits while developing, close all app windows after rebuilding, or unregister GameVex's worker in browser developer tools. Rebuild after changing web files: `scripts/build-web.sh` generates the cache revision from the actual runtime files. All PWA URLs are relative and work under the GitHub Pages repository path.
+
+## Browser graphics fallback
+
+The normal `scripts/build-web.sh` build packages both WebGPU and WebGL2. GameVex tries WebGPU first. If the API is missing, its adapter is unavailable, or adapter detection fails or times out, it selects WebGL2 before loading a game runtime.
+
+If WebGPU fails after its runtime starts, GameVex restarts the page once with WebGL2. This gives Bevy a fresh canvas and releases the old event loop and save lock. Recovery covers initialization and download failures, startup timeouts, uncaught graphics errors, device creation failures, device loss, and uncaptured GPU errors. Saved progress reloads through the existing save system; a running game returns to the lobby after recovery. Query parameters and the URL fragment are preserved. If WebGL2 also fails, the page shows an error instead of repeatedly restarting. A later manual reload tries WebGPU again.
+
+The PWA precaches both runtime packages so automatic fallback also works offline after the initial cache completes. That increases the initial offline download. Normal game startup imports only the selected runtime. Native macOS continues to use Metal.
+
+For backend-specific QA, `GAMEVEX_WEB_BACKEND=webgpu scripts/build-web.sh` or `GAMEVEX_WEB_BACKEND=webgl2 scripts/build-web.sh` builds only that backend. Run `scripts/build-web.sh` again to restore the automatic dual-backend build. Bevy requires independent WASM packages because its WebGPU feature overrides WebGL2 at compile time.
+
+Run `npm run test:graphics -- --workers=1` for the fallback regression suite. To exercise the existing card/Sudoku suite with WebGPU hidden and WebGL2 selection asserted, run `GAMEVEX_TEST_GRAPHICS=webgl2 npm run test:browser -- tests/browser/gamevex.spec.js --workers=1`. See [the web platform notes](docs/WEB_PLATFORM.md) for recovery details, offline behavior, and verification limits.
 
 ## Browser QA modes
 
@@ -158,7 +178,7 @@ scripts/build-web.sh
 npm run test:browser
 ```
 
-Use `npm run test:browser:smoke -- --workers=1` for the three automatic smoke cases: card input/navigation, Blackjack settlement and save/reload, and Sudoku editing and save/reload. `npm run test:browser -- --workers=1` always runs the complete suite, including these cases.
+Use `npm run test:browser:smoke -- --workers=1` for the automatic smoke cases: card input/navigation, Blackjack settlement and save/reload, Sudoku editing and save/reload, PWA installability with offline save recovery, and graphics fallback both before and after runtime initialization. `npm run test:browser -- --workers=1` always runs the complete suite, including these cases.
 
 CI runs on pull requests and pushes to `main`, avoiding duplicate branch-push runs. It retains all Rust checks and both release builds, then runs only the browser smoke cases against that run's web artifact. Newer updates cancel superseded build and smoke jobs; active Pages deployments are allowed to finish. The existing `browser-regressions` CI check name is retained for branch protection, but it now reports the smoke suite.
 
@@ -174,4 +194,4 @@ See [the porting roster](PORTING.md) for the agreed queue: solitaire parity, Hea
 
 ## Limits
 
-GameVex targets macOS/Metal and desktop browsers/WebGPU. It has no WebGL fallback, accounts, networking, migration from the original TypeScript application, other games, offline service worker, or cloud storage. The lobby Manual includes Blackjack strategy and Baccarat draw and payout cheat sheets. The browser build must be served from localhost or HTTPS and needs WebGPU. The canvas has keyboard controls and visible focus, but it does not expose individual board cells or all virtual controls as a screen-reader accessibility tree. This is not a WCAG-conformance claim. The local Mac bundle is unsigned and not notarized. Very short browser viewports scroll the minimum-height application surface; touch input supports taps, card dragging, board swipes, and settings scrolling; physical phone compatibility still requires device testing.
+GameVex targets macOS/Metal and desktop browsers with WebGPU-first rendering, automatic WebGL2 fallback, and an installable offline PWA. It has no accounts, networking, migration from the original TypeScript application, other games, or cloud storage. The lobby Manual includes Blackjack strategy and Baccarat draw and payout cheat sheets. The browser build must be served from localhost or HTTPS and needs WebGPU or WebGL2. The canvas has keyboard controls and visible focus, but it does not expose individual board cells or all virtual controls as a screen-reader accessibility tree. This is not a WCAG-conformance claim. The local Mac bundle is unsigned and not notarized. Very short browser viewports scroll the minimum-height application surface; touch input supports taps, card dragging, board swipes, and settings scrolling; physical phone compatibility still requires device testing.

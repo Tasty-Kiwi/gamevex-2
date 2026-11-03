@@ -4,6 +4,12 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 cd "$WORKSPACE_DIR"
 
+WEB_BACKEND="${GAMEVEX_WEB_BACKEND:-auto}"
+case "$WEB_BACKEND" in
+  auto) WEB_BACKENDS=(webgpu webgl2) ;;
+  webgpu|webgl2) WEB_BACKENDS=("$WEB_BACKEND") ;;
+  *) echo "GAMEVEX_WEB_BACKEND must be auto, webgpu, or webgl2." >&2; exit 1 ;;
+esac
 WASM_TARGET="wasm32-unknown-unknown"
 TARGET_LIBDIR="$(rustc --print target-libdir --target "$WASM_TARGET" 2>/dev/null || true)"
 HAS_WASM_STD=false
@@ -75,15 +81,23 @@ else
 fi
 echo "Using WebAssembly linker: $WASM_LINKER"
 
-if [[ "$BUILD_MODE" == build-std ]]; then
-  RUSTC_BOOTSTRAP=1 cargo -Z build-std=std,panic_abort build --locked -p gamevex-app --release --target "$WASM_TARGET"
-else
-  cargo build --locked -p gamevex-app --release --target "$WASM_TARGET"
-fi
-mkdir -p web/pkg web/assets
-"$WASM_BINDGEN_CMD" --target web --out-dir web/pkg --out-name gamevex_app \
-  target/wasm32-unknown-unknown/release/gamevex-app.wasm
+for backend in "${WEB_BACKENDS[@]}"; do
+  echo "Building browser backend: $backend"
+  if [[ "$BUILD_MODE" == build-std ]]; then
+    RUSTC_BOOTSTRAP=1 cargo -Z build-std=std,panic_abort build --locked -p gamevex-app --no-default-features --features "$backend" --release --target "$WASM_TARGET"
+  else
+    cargo build --locked -p gamevex-app --no-default-features --features "$backend" --release --target "$WASM_TARGET"
+  fi
+  mkdir -p "web/pkg/$backend"
+  "$WASM_BINDGEN_CMD" --target web --out-dir "web/pkg/$backend" --out-name gamevex_app \
+    target/wasm32-unknown-unknown/release/gamevex-app.wasm
+done
+mkdir -p web/assets
 if [[ -d assets ]]; then
   cp -R assets/. web/assets/
 fi
+# Remove the obsolete single-package layout from earlier local builds.
+rm -f web/pkg/gamevex_app.js web/pkg/gamevex_app_bg.wasm \
+  web/pkg/gamevex_app.d.ts web/pkg/gamevex_app_bg.wasm.d.ts
+python3 scripts/generate-pwa.py "${WEB_BACKENDS[@]}"
 echo "Web build is ready in $WORKSPACE_DIR/web"
