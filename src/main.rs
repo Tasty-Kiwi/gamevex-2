@@ -521,9 +521,8 @@ impl Arcade {
                 };
                 self.persist();
             }
-            Action::Palette => {
-                self.save.settings.color_scheme =
-                    theme::cycle_scheme(self.save.settings.color_scheme);
+            Action::SelectTheme(scheme) => {
+                self.save.settings.color_scheme = scheme;
                 self.persist();
             }
             Action::Curvature(delta) => {
@@ -1190,7 +1189,7 @@ mod tests {
         layout.settings_max_scroll = 300.0;
         layout.hits.push(presentation::Hit {
             rect: Rect::from_corners(Vec2::ZERO, Vec2::splat(400.0)),
-            action: Action::Palette,
+            action: Action::SelectTheme(ColorScheme::Emerald),
         });
         touch_event(&mut app, window, 1, Started, 200.0, 300.0);
         touch_event(&mut app, window, 1, Moved, 200.0, 150.0);
@@ -2674,6 +2673,274 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn theme_picker_direct_selection_updates_settings_and_frame() {
+        for (width, height) in [(1280, 720), (360, 740)] {
+            let mut app = App::new();
+            let mut state = test_arcade();
+            state.open(Screen::Settings);
+            app.insert_resource(state)
+                .insert_resource(Time::<()>::default())
+                .init_resource::<ViewLayout>()
+                .init_resource::<rendering::Frame>()
+                .init_resource::<rendering::RenderOptions>()
+                .add_systems(Update, presentation::paint);
+            app.world_mut().spawn((
+                Window {
+                    resolution: WindowResolution::new(width, height),
+                    ..default()
+                },
+                PrimaryWindow,
+            ));
+            app.update();
+
+            // Verify all 6 themes have direct selection hits
+            for meta in theme::THEME_REGISTRY {
+                let hit_exists = app.world().resource::<ViewLayout>().hits.iter().any(
+                    |h| matches!(h.action, Action::SelectTheme(scheme) if scheme == meta.scheme),
+                );
+                assert!(
+                    hit_exists,
+                    "Missing direct selection hit for {:?}",
+                    meta.scheme
+                );
+
+                // Act directly on Action::SelectTheme
+                app.world_mut()
+                    .resource_mut::<Arcade>()
+                    .act(Action::SelectTheme(meta.scheme));
+                assert_eq!(
+                    app.world().resource::<Arcade>().save.settings.color_scheme,
+                    meta.scheme
+                );
+
+                // On next update, frame palette reflects the selected theme
+                app.update();
+                assert_eq!(
+                    app.world().resource::<rendering::Frame>().palette,
+                    meta.scheme
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn theme_picker_responsive_grid_layout_desktop_and_mobile() {
+        // Desktop: 1280x720 -> 3 columns x 2 rows
+        {
+            let mut app = App::new();
+            let mut state = test_arcade();
+            state.open(Screen::Settings);
+            app.insert_resource(state)
+                .insert_resource(Time::<()>::default())
+                .init_resource::<ViewLayout>()
+                .init_resource::<rendering::Frame>()
+                .init_resource::<rendering::RenderOptions>()
+                .add_systems(Update, presentation::paint);
+            app.world_mut().spawn((
+                Window {
+                    resolution: WindowResolution::new(1280, 720),
+                    ..default()
+                },
+                PrimaryWindow,
+            ));
+            app.update();
+
+            let layout = app.world().resource::<ViewLayout>();
+            let theme_hits: Vec<_> = layout
+                .hits
+                .iter()
+                .filter(|h| matches!(h.action, Action::SelectTheme(_)))
+                .collect();
+            assert_eq!(theme_hits.len(), 6);
+
+            let mut y_coords: Vec<f32> = theme_hits.iter().map(|h| h.rect.min.y).collect();
+            y_coords.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            y_coords.dedup_by(|a, b| (*a - *b).abs() < 1.0);
+            assert_eq!(y_coords.len(), 2, "Desktop must lay out 6 tiles in 2 rows");
+
+            for h in &theme_hits {
+                assert!(
+                    h.rect.width() > 100.0,
+                    "Tile width too narrow: {}",
+                    h.rect.width()
+                );
+                assert_eq!(h.rect.height(), 36.0);
+            }
+        }
+
+        // Mobile: 360x740 -> 2 columns x 3 rows
+        {
+            let mut app = App::new();
+            let mut state = test_arcade();
+            state.open(Screen::Settings);
+            app.insert_resource(state)
+                .insert_resource(Time::<()>::default())
+                .init_resource::<ViewLayout>()
+                .init_resource::<rendering::Frame>()
+                .init_resource::<rendering::RenderOptions>()
+                .add_systems(Update, presentation::paint);
+            app.world_mut().spawn((
+                Window {
+                    resolution: WindowResolution::new(360, 740),
+                    ..default()
+                },
+                PrimaryWindow,
+            ));
+            app.update();
+
+            let layout = app.world().resource::<ViewLayout>();
+            let theme_hits: Vec<_> = layout
+                .hits
+                .iter()
+                .filter(|h| matches!(h.action, Action::SelectTheme(_)))
+                .collect();
+            assert_eq!(theme_hits.len(), 6);
+
+            let mut y_coords: Vec<f32> = theme_hits.iter().map(|h| h.rect.min.y).collect();
+            y_coords.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            y_coords.dedup_by(|a, b| (*a - *b).abs() < 1.0);
+            assert_eq!(y_coords.len(), 3, "Mobile must lay out 6 tiles in 3 rows");
+
+            for h in &theme_hits {
+                assert!(
+                    h.rect.width() > 100.0,
+                    "Tile width too narrow: {}",
+                    h.rect.width()
+                );
+                assert_eq!(h.rect.height(), 36.0);
+            }
+        }
+    }
+
+    #[test]
+    fn theme_picker_scroll_clips_offscreen_hit_targets() {
+        let mut app = App::new();
+        let mut state = test_arcade();
+        state.open(Screen::Settings);
+        app.insert_resource(state)
+            .insert_resource(Time::<()>::default())
+            .init_resource::<ViewLayout>()
+            .init_resource::<rendering::Frame>()
+            .init_resource::<rendering::RenderOptions>()
+            .add_systems(Update, presentation::paint);
+        app.world_mut().spawn((
+            Window {
+                resolution: WindowResolution::new(360, 740),
+                ..default()
+            },
+            PrimaryWindow,
+        ));
+        app.update();
+
+        let clip = app.world().resource::<ViewLayout>().settings_clip.unwrap();
+        let max_scroll = app.world().resource::<ViewLayout>().settings_max_scroll;
+        assert!(
+            max_scroll > 50.0,
+            "Settings max scroll should be content-dependent"
+        );
+
+        // Test at various scroll offsets: 0, partial, and max scroll
+        for scroll in [0.0, 100.0, 200.0, max_scroll] {
+            app.world_mut().resource_mut::<Arcade>().settings_scroll = scroll;
+            app.update();
+
+            let layout = app.world().resource::<ViewLayout>();
+            // Every registered hit target in the scrollable area must be fully within clip bounds
+            for hit in &layout.hits {
+                // Exclude fixed header (y < 100.0) and fixed bottom buttons (y >= 740.0 - 90.0)
+                if hit.rect.min.y >= 100.0 && hit.rect.min.y < 740.0 - 90.0 {
+                    assert!(
+                        hit.rect.min.y >= clip.min.y - 0.5 && hit.rect.max.y <= clip.max.y + 0.5,
+                        "Clipped/offscreen hit target detected at scroll {}: {:?}",
+                        scroll,
+                        hit.rect
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn theme_picker_keyboard_focus_order_and_activation() {
+        let mut app = App::new();
+        let mut state = test_arcade();
+        state.open(Screen::Settings);
+        state.keyboard = true;
+        app.insert_resource(state)
+            .insert_resource(Time::<()>::default())
+            .init_resource::<ViewLayout>()
+            .init_resource::<rendering::Frame>()
+            .init_resource::<rendering::RenderOptions>()
+            .insert_resource(ButtonInput::<KeyCode>::default())
+            .add_message::<MouseWheel>()
+            .add_systems(Update, (handle_input, presentation::paint).chain());
+        app.world_mut().spawn((
+            Window {
+                focused: true,
+                resolution: WindowResolution::new(1280, 720),
+                ..default()
+            },
+            PrimaryWindow,
+        ));
+        app.update();
+
+        let layout = app.world().resource::<ViewLayout>();
+        // Find indices of theme tiles in hits
+        let theme_indices: Vec<(usize, ColorScheme)> = layout
+            .hits
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, h)| {
+                if let Action::SelectTheme(scheme) = h.action {
+                    Some((idx, scheme))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(theme_indices.len(), 6);
+        // Verify contiguous indices matching THEME_REGISTRY
+        for (i, &(idx, scheme)) in theme_indices.iter().enumerate() {
+            assert_eq!(scheme, theme::THEME_REGISTRY[i].scheme);
+            if i > 0 {
+                assert_eq!(idx, theme_indices[i - 1].0 + 1);
+            }
+        }
+
+        // Exercise the real keyboard handler, including Tab and both activation keys.
+        app.world_mut().resource_mut::<Arcade>().focus = theme_indices[2].0;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Tab);
+        app.update();
+        assert_eq!(app.world().resource::<Arcade>().focus, theme_indices[3].0);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Enter);
+        app.update();
+        assert_eq!(
+            app.world().resource::<Arcade>().save.settings.color_scheme,
+            ColorScheme::Violet
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut().resource_mut::<Arcade>().focus = theme_indices[5].0;
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Space);
+        app.update();
+        assert_eq!(
+            app.world().resource::<Arcade>().save.settings.color_scheme,
+            ColorScheme::Paper
+        );
     }
 
     #[test]

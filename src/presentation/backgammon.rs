@@ -49,6 +49,62 @@ impl BackgammonPalette {
                 shadow: Color::srgb(0.015, 0.010, 0.005),
                 dialog_panel: Color::srgba(0.04, 0.028, 0.016, 0.94),
             },
+            gamevex_core::ColorScheme::Emerald => Self {
+                felt: Color::srgb(0.018, 0.048, 0.032),
+                wood: Color::srgb(0.035, 0.080, 0.052),
+                bar: Color::srgb(0.024, 0.055, 0.038),
+                tray: Color::srgb(0.014, 0.035, 0.024),
+                point_a: Color::srgb(0.05, 0.16, 0.11),
+                point_b: Color::srgb(0.14, 0.09, 0.07),
+                white_team: Color::srgb(0.35, 0.95, 0.70),
+                black_team: Color::srgb(1.0, 0.48, 0.36),
+                white_body: Color::srgb(0.035, 0.24, 0.15),
+                black_body: Color::srgb(0.28, 0.08, 0.07),
+                shadow: Color::srgb(0.005, 0.012, 0.008),
+                dialog_panel: Color::srgba(0.016, 0.038, 0.026, 0.94),
+            },
+            gamevex_core::ColorScheme::Violet => Self {
+                felt: Color::srgb(0.038, 0.022, 0.052),
+                wood: Color::srgb(0.075, 0.045, 0.095),
+                bar: Color::srgb(0.050, 0.030, 0.068),
+                tray: Color::srgb(0.028, 0.016, 0.040),
+                point_a: Color::srgb(0.14, 0.08, 0.18),
+                point_b: Color::srgb(0.05, 0.14, 0.15),
+                white_team: Color::srgb(0.82, 0.58, 1.0),
+                black_team: Color::srgb(0.25, 0.95, 0.88),
+                white_body: Color::srgb(0.22, 0.08, 0.28),
+                black_body: Color::srgb(0.04, 0.22, 0.22),
+                shadow: Color::srgb(0.012, 0.006, 0.016),
+                dialog_panel: Color::srgba(0.032, 0.018, 0.044, 0.94),
+            },
+            gamevex_core::ColorScheme::Ice => Self {
+                felt: Color::srgb(0.016, 0.032, 0.060),
+                wood: Color::srgb(0.038, 0.065, 0.105),
+                bar: Color::srgb(0.024, 0.045, 0.078),
+                tray: Color::srgb(0.012, 0.024, 0.045),
+                point_a: Color::srgb(0.06, 0.13, 0.22),
+                point_b: Color::srgb(0.14, 0.08, 0.12),
+                white_team: Color::srgb(0.50, 0.88, 1.0),
+                black_team: Color::srgb(1.0, 0.45, 0.62),
+                white_body: Color::srgb(0.06, 0.18, 0.32),
+                black_body: Color::srgb(0.26, 0.06, 0.14),
+                shadow: Color::srgb(0.004, 0.008, 0.016),
+                dialog_panel: Color::srgba(0.014, 0.026, 0.048, 0.94),
+            },
+            gamevex_core::ColorScheme::Paper => Self {
+                felt: Color::srgb(0.93, 0.91, 0.86),
+                wood: Color::srgb(0.85, 0.82, 0.76),
+                bar: Color::srgb(0.78, 0.75, 0.68),
+                tray: Color::srgb(0.88, 0.86, 0.80),
+                point_a: Color::srgb(0.84, 0.72, 0.74),
+                point_b: Color::srgb(0.72, 0.80, 0.74),
+                white_team: Color::srgb(0.65, 0.08, 0.18),
+                black_team: Color::srgb(0.12, 0.14, 0.16),
+                white_body: Color::srgb(0.96, 0.94, 0.90),
+                black_body: Color::srgb(0.22, 0.24, 0.26),
+                shadow: Color::srgb(0.65, 0.62, 0.56),
+                dialog_panel: Color::srgba(0.95, 0.93, 0.89, 0.98),
+            },
         }
     }
 }
@@ -821,4 +877,38 @@ fn centered(f: &mut Frame, p: Vec2, text: &str, size: f32, color: Color) {
         size,
         color,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gamevex_core::ColorScheme;
+
+    #[test]
+    fn backgammon_palette_supports_all_schemes_and_paper_is_light() {
+        for scheme in [
+            ColorScheme::Cyan,
+            ColorScheme::Amber,
+            ColorScheme::Emerald,
+            ColorScheme::Violet,
+            ColorScheme::Ice,
+            ColorScheme::Paper,
+        ] {
+            let pal = BackgammonPalette::for_scheme(scheme);
+            let felt = pal.felt.to_srgba();
+            let wood = pal.wood.to_srgba();
+            assert!(felt.red.is_finite() && felt.green.is_finite() && felt.blue.is_finite());
+            assert!(wood.red.is_finite() && wood.green.is_finite() && wood.blue.is_finite());
+        }
+
+        let paper = BackgammonPalette::for_scheme(ColorScheme::Paper);
+        let felt = paper.felt.to_srgba();
+        assert!(felt.red > 0.85 && felt.green > 0.85 && felt.blue > 0.80);
+        let white_team = paper.white_team.to_srgba();
+        let black_team = paper.black_team.to_srgba();
+        // Burgundy white_team has high red and low green/blue
+        assert!(white_team.red > 0.50 && white_team.green < 0.20 && white_team.blue < 0.25);
+        // Charcoal black_team is dark
+        assert!(black_team.red < 0.20 && black_team.green < 0.20 && black_team.blue < 0.20);
+    }
 }

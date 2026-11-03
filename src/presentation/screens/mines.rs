@@ -59,6 +59,78 @@ impl MinesPalette {
                 num4: Color::srgb(0.95, 0.92, 0.82),
                 num5: Color::srgb(1.0, 0.22, 0.32),
             },
+            gamevex_core::ColorScheme::Emerald => Self {
+                board_bg: Color::srgb(0.014, 0.038, 0.025),
+                cell_unrevealed: Color::srgb(0.035, 0.095, 0.065),
+                cell_hovered: Color::srgb(0.055, 0.15, 0.10),
+                cell_revealed: Color::srgb(0.022, 0.055, 0.038),
+                cell_exploded: Color::srgb(0.32, 0.06, 0.08),
+                cell_unrevealed_line: Color::srgb(0.18, 0.45, 0.32),
+                cell_revealed_outline: Color::srgb(0.045, 0.11, 0.075),
+                mine_normal: Color::srgb(1.0, 0.48, 0.36),
+                mine_exploded: Color::srgb(1.0, 0.25, 0.25),
+                flag: Color::srgb(0.40, 0.95, 0.65),
+                wrong_flag: Color::srgb(1.0, 0.30, 0.30),
+                num1: Color::srgb(0.35, 0.95, 0.70),
+                num2: Color::srgb(0.20, 0.90, 0.50),
+                num3: Color::srgb(1.0, 0.52, 0.38),
+                num4: Color::srgb(0.85, 0.98, 0.90),
+                num5: Color::srgb(1.0, 0.30, 0.30),
+            },
+            gamevex_core::ColorScheme::Violet => Self {
+                board_bg: Color::srgb(0.036, 0.020, 0.048),
+                cell_unrevealed: Color::srgb(0.085, 0.052, 0.115),
+                cell_hovered: Color::srgb(0.14, 0.085, 0.19),
+                cell_revealed: Color::srgb(0.052, 0.030, 0.070),
+                cell_exploded: Color::srgb(0.34, 0.04, 0.15),
+                cell_unrevealed_line: Color::srgb(0.35, 0.22, 0.45),
+                cell_revealed_outline: Color::srgb(0.11, 0.065, 0.14),
+                mine_normal: Color::srgb(0.82, 0.55, 1.0),
+                mine_exploded: Color::srgb(1.0, 0.22, 0.45),
+                flag: Color::srgb(0.25, 0.95, 0.88),
+                wrong_flag: Color::srgb(1.0, 0.25, 0.45),
+                num1: Color::srgb(0.25, 0.95, 0.88),
+                num2: Color::srgb(0.82, 0.55, 1.0),
+                num3: Color::srgb(0.98, 0.55, 0.85),
+                num4: Color::srgb(0.92, 0.88, 0.98),
+                num5: Color::srgb(1.0, 0.30, 0.55),
+            },
+            gamevex_core::ColorScheme::Ice => Self {
+                board_bg: Color::srgb(0.015, 0.028, 0.052),
+                cell_unrevealed: Color::srgb(0.045, 0.075, 0.125),
+                cell_hovered: Color::srgb(0.08, 0.13, 0.20),
+                cell_revealed: Color::srgb(0.028, 0.048, 0.080),
+                cell_exploded: Color::srgb(0.30, 0.05, 0.12),
+                cell_unrevealed_line: Color::srgb(0.20, 0.35, 0.52),
+                cell_revealed_outline: Color::srgb(0.06, 0.10, 0.16),
+                mine_normal: Color::srgb(1.0, 0.45, 0.62),
+                mine_exploded: Color::srgb(1.0, 0.25, 0.35),
+                flag: Color::srgb(0.40, 0.85, 1.0),
+                wrong_flag: Color::srgb(1.0, 0.30, 0.45),
+                num1: Color::srgb(0.40, 0.82, 1.0),
+                num2: Color::srgb(0.45, 0.92, 0.80),
+                num3: Color::srgb(1.0, 0.48, 0.62),
+                num4: Color::srgb(0.90, 0.95, 1.0),
+                num5: Color::srgb(1.0, 0.30, 0.45),
+            },
+            gamevex_core::ColorScheme::Paper => Self {
+                board_bg: Color::srgb(0.93, 0.91, 0.86),
+                cell_unrevealed: Color::srgb(0.90, 0.88, 0.83),
+                cell_hovered: Color::srgb(0.85, 0.83, 0.77),
+                cell_revealed: Color::srgb(0.96, 0.95, 0.92),
+                cell_exploded: Color::srgb(0.92, 0.72, 0.75),
+                cell_unrevealed_line: Color::srgb(0.75, 0.72, 0.66),
+                cell_revealed_outline: Color::srgb(0.80, 0.78, 0.73),
+                mine_normal: Color::srgb(0.18, 0.18, 0.20),
+                mine_exploded: Color::srgb(0.72, 0.08, 0.15),
+                flag: Color::srgb(0.68, 0.08, 0.18),
+                wrong_flag: Color::srgb(0.75, 0.12, 0.16),
+                num1: Color::srgb(0.08, 0.32, 0.68),
+                num2: Color::srgb(0.08, 0.45, 0.20),
+                num3: Color::srgb(0.68, 0.08, 0.16),
+                num4: Color::srgb(0.14, 0.15, 0.18),
+                num5: Color::srgb(0.58, 0.20, 0.06),
+            },
         }
     }
 }
@@ -344,4 +416,52 @@ pub(crate) fn mines(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w
         12.0,
         t.muted,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gamevex_core::ColorScheme;
+
+    #[test]
+    fn mines_palette_supports_all_schemes_and_paper_is_light() {
+        for scheme in [
+            ColorScheme::Cyan,
+            ColorScheme::Amber,
+            ColorScheme::Emerald,
+            ColorScheme::Violet,
+            ColorScheme::Ice,
+            ColorScheme::Paper,
+        ] {
+            let pal = MinesPalette::for_scheme(scheme);
+            let bg = pal.board_bg.to_srgba();
+            let unrev = pal.cell_unrevealed.to_srgba();
+            let rev = pal.cell_revealed.to_srgba();
+            assert!(bg.red.is_finite() && bg.green.is_finite() && bg.blue.is_finite());
+            assert!(unrev.red.is_finite() && unrev.green.is_finite() && unrev.blue.is_finite());
+            assert!(rev.red.is_finite() && rev.green.is_finite() && rev.blue.is_finite());
+        }
+
+        let paper = MinesPalette::for_scheme(ColorScheme::Paper);
+        let bg = paper.board_bg.to_srgba();
+        let rev = paper.cell_revealed.to_srgba();
+        let unrev = paper.cell_unrevealed.to_srgba();
+        assert!(bg.red > 0.85 && bg.green > 0.85 && bg.blue > 0.80);
+        assert!(rev.red > 0.85 && rev.green > 0.85 && rev.blue > 0.85);
+        assert!(unrev.red > 0.85 && unrev.green > 0.85 && unrev.blue > 0.80);
+
+        // Mines numbers on Paper must avoid faint near-white colors: each must be dark and readable
+        for (i, num) in [paper.num1, paper.num2, paper.num3, paper.num4, paper.num5]
+            .iter()
+            .enumerate()
+        {
+            let n = num.to_srgba();
+            let lum = n.red * 0.2126 + n.green * 0.7152 + n.blue * 0.0722;
+            assert!(
+                lum < 0.40,
+                "Paper mines num{} must be dark and readable, got lum={lum}",
+                i + 1
+            );
+        }
+    }
 }

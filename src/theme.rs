@@ -86,6 +86,66 @@ pub const AMBER_THEME: Theme = Theme {
     danger: Color::srgb(1.0, 0.33, 0.20),
 };
 
+pub const EMERALD_THEME: Theme = Theme {
+    bg: Color::srgb(0.012, 0.032, 0.020),
+    panel: Color::srgb(0.026, 0.068, 0.044),
+    panel_hover: Color::srgb(0.055, 0.140, 0.092),
+    accent: Color::srgb(0.08, 0.86, 0.52),
+    secondary: Color::srgb(0.38, 0.94, 0.72),
+    gold: Color::srgb(0.96, 0.82, 0.30),
+    ink: Color::srgb(0.88, 0.98, 0.92),
+    muted: Color::srgb(0.40, 0.64, 0.50),
+    control_text: Color::srgb(0.66, 0.86, 0.75),
+    edge: Color::srgb(0.09, 0.24, 0.16),
+    success: Color::srgb(0.18, 0.94, 0.60),
+    danger: Color::srgb(1.0, 0.34, 0.26),
+};
+
+pub const VIOLET_THEME: Theme = Theme {
+    bg: Color::srgb(0.025, 0.012, 0.034),
+    panel: Color::srgb(0.058, 0.032, 0.078),
+    panel_hover: Color::srgb(0.125, 0.070, 0.165),
+    accent: Color::srgb(0.74, 0.36, 1.0),
+    secondary: Color::srgb(0.18, 0.88, 0.88),
+    gold: Color::srgb(1.0, 0.78, 0.28),
+    ink: Color::srgb(0.95, 0.90, 0.98),
+    muted: Color::srgb(0.58, 0.48, 0.68),
+    control_text: Color::srgb(0.78, 0.70, 0.88),
+    edge: Color::srgb(0.20, 0.12, 0.28),
+    success: Color::srgb(0.18, 0.92, 0.80),
+    danger: Color::srgb(1.0, 0.28, 0.44),
+};
+
+pub const ICE_THEME: Theme = Theme {
+    bg: Color::srgb(0.010, 0.018, 0.036),
+    panel: Color::srgb(0.028, 0.050, 0.092),
+    panel_hover: Color::srgb(0.065, 0.115, 0.20),
+    accent: Color::srgb(0.42, 0.82, 1.0),
+    secondary: Color::srgb(0.78, 0.86, 0.95),
+    gold: Color::srgb(0.98, 0.82, 0.38),
+    ink: Color::srgb(0.90, 0.96, 1.0),
+    muted: Color::srgb(0.44, 0.58, 0.72),
+    control_text: Color::srgb(0.68, 0.80, 0.92),
+    edge: Color::srgb(0.12, 0.22, 0.36),
+    success: Color::srgb(0.24, 0.94, 0.80),
+    danger: Color::srgb(1.0, 0.36, 0.48),
+};
+
+pub const PAPER_THEME: Theme = Theme {
+    bg: Color::srgb(0.95, 0.93, 0.88),
+    panel: Color::srgb(0.89, 0.86, 0.80),
+    panel_hover: Color::srgb(0.80, 0.76, 0.68),
+    accent: Color::srgb(0.55, 0.10, 0.20),
+    secondary: Color::srgb(0.14, 0.44, 0.24),
+    gold: Color::srgb(0.60, 0.40, 0.05),
+    ink: Color::srgb(0.12, 0.12, 0.14),
+    muted: Color::srgb(0.38, 0.36, 0.34),
+    control_text: Color::srgb(0.18, 0.18, 0.20),
+    edge: Color::srgb(0.72, 0.68, 0.60),
+    success: Color::srgb(0.12, 0.50, 0.22),
+    danger: Color::srgb(0.68, 0.12, 0.16),
+};
+
 impl Theme {
     /// Return the static `Theme` definition corresponding to `scheme`.
     #[must_use]
@@ -93,6 +153,10 @@ impl Theme {
         match scheme {
             ColorScheme::Cyan => &CYAN_THEME,
             ColorScheme::Amber => &AMBER_THEME,
+            ColorScheme::Emerald => &EMERALD_THEME,
+            ColorScheme::Violet => &VIOLET_THEME,
+            ColorScheme::Ice => &ICE_THEME,
+            ColorScheme::Paper => &PAPER_THEME,
         }
     }
 }
@@ -105,7 +169,7 @@ pub struct ThemeMeta {
     pub description: &'static str,
 }
 
-/// Registry of available themes in cycling order.
+/// Registry of available themes in cabinet display order.
 pub const THEME_REGISTRY: &[ThemeMeta] = &[
     ThemeMeta {
         scheme: ColorScheme::Cyan,
@@ -117,6 +181,26 @@ pub const THEME_REGISTRY: &[ThemeMeta] = &[
         name: "Amber",
         description: "Warm phosphor palette with charcoal, cream, jade, and coral",
     },
+    ThemeMeta {
+        scheme: ColorScheme::Emerald,
+        name: "Emerald",
+        description: "Deep forest cabinet with vibrant mint, emerald, and coral",
+    },
+    ThemeMeta {
+        scheme: ColorScheme::Violet,
+        name: "Violet",
+        description: "Dark plum arcade with electric violet, lavender, and turquoise",
+    },
+    ThemeMeta {
+        scheme: ColorScheme::Ice,
+        name: "Ice",
+        description: "Crisp navy and silver cabinet with pale blue and rose highlights",
+    },
+    ThemeMeta {
+        scheme: ColorScheme::Paper,
+        name: "Paper",
+        description: "Light ivory and charcoal print with burgundy and forest green",
+    },
 ];
 
 /// Returns the user-facing display name for a given color scheme.
@@ -126,15 +210,6 @@ pub fn scheme_name(scheme: ColorScheme) -> &'static str {
         .find(|meta| meta.scheme == scheme)
         .map(|meta| meta.name)
         .unwrap_or("Custom")
-}
-
-/// Advance to the next available theme in the registry cycle.
-pub fn cycle_scheme(current: ColorScheme) -> ColorScheme {
-    let index = THEME_REGISTRY
-        .iter()
-        .position(|meta| meta.scheme == current)
-        .unwrap_or(0);
-    THEME_REGISTRY[(index + 1) % THEME_REGISTRY.len()].scheme
 }
 
 #[cfg(test)]
@@ -190,14 +265,42 @@ mod tests {
     }
 
     #[test]
-    fn cycle_scheme_advances_and_wraps_cleanly() {
-        assert_eq!(cycle_scheme(ColorScheme::Cyan), ColorScheme::Amber);
-        assert_eq!(cycle_scheme(ColorScheme::Amber), ColorScheme::Cyan);
+    fn new_themes_provide_distinct_palettes_and_contrast() {
+        // Emerald
+        let emerald = &EMERALD_THEME;
+        let em_succ = emerald.success.to_srgba();
+        let em_dang = emerald.danger.to_srgba();
+        assert!(em_succ.green > em_succ.red * 2.0);
+        assert!(em_dang.red > em_dang.green * 2.0);
+
+        // Violet
+        let violet = &VIOLET_THEME;
+        let vi_acc = violet.accent.to_srgba();
+        assert!(vi_acc.blue > 0.9 && vi_acc.red > 0.6);
+
+        // Ice
+        let ice = &ICE_THEME;
+        let ice_acc = ice.accent.to_srgba();
+        assert!(ice_acc.blue > 0.9 && ice_acc.red < 0.5);
+
+        // Paper: light background, dark ink and control text for high contrast
+        let paper = &PAPER_THEME;
+        let paper_bg = paper.bg.to_srgba();
+        let paper_ink = paper.ink.to_srgba();
+        let paper_ctrl = paper.control_text.to_srgba();
+        assert!(paper_bg.red > 0.9 && paper_bg.green > 0.9 && paper_bg.blue > 0.8);
+        assert!(paper_ink.red < 0.2 && paper_ink.green < 0.2 && paper_ink.blue < 0.2);
+        assert!(paper_ctrl.red < 0.25 && paper_ctrl.green < 0.25 && paper_ctrl.blue < 0.25);
     }
 
     #[test]
-    fn scheme_name_matches_registry() {
+    fn scheme_name_matches_registry_for_all_six_themes() {
         assert_eq!(scheme_name(ColorScheme::Cyan), "Cyan");
         assert_eq!(scheme_name(ColorScheme::Amber), "Amber");
+        assert_eq!(scheme_name(ColorScheme::Emerald), "Emerald");
+        assert_eq!(scheme_name(ColorScheme::Violet), "Violet");
+        assert_eq!(scheme_name(ColorScheme::Ice), "Ice");
+        assert_eq!(scheme_name(ColorScheme::Paper), "Paper");
+        assert_eq!(THEME_REGISTRY.len(), 6);
     }
 }

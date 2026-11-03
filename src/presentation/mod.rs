@@ -37,7 +37,7 @@ pub enum Action {
     FlagMode,
     Board,
     Preset,
-    Palette,
+    SelectTheme(ColorScheme),
     Curvature(f32),
     Vignette(f32),
     ChromaticAberration(f32),

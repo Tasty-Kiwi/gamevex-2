@@ -544,11 +544,7 @@ fn seat(
     let theme = *f.theme();
     let active = (g.phase == Phase::Playing && g.turn == seat) || receiving;
     if active {
-        let active_bg = if f.palette == ColorScheme::Amber {
-            Color::srgba(0.85, 0.55, 0.15, 0.14)
-        } else {
-            Color::srgb(0.035, 0.09, 0.13)
-        };
+        let active_bg = super::game_palette::table(f.palette).seat_active_bg;
         rounded(f, r, 6.0, active_bg);
         f.rounded_outline(r.min, r.size(), 6.0, 1.5, theme.accent);
     }
@@ -596,11 +592,7 @@ fn muted_button(f: &mut Frame, r: Rect, label: &str) {
 fn face(f: &mut Frame, r: Rect, card: gamevex_core::cards::Card, selected: bool, dimmed: bool) {
     card_face(f, r, card, selected, true);
     if dimmed {
-        let dim = if f.palette == ColorScheme::Amber {
-            Color::srgba(0.03, 0.02, 0.01, 0.60)
-        } else {
-            Color::srgba(0.008, 0.016, 0.031, 0.60)
-        };
+        let dim = super::game_palette::card(f.palette).card_dim;
         f.rect(r.min, r.size(), dim);
     }
 }
@@ -675,6 +667,27 @@ mod tests {
             assert_eq!(targets[1].center().y, targets[3].center().y);
             assert!((targets[2].min.y - (400.0 - h - 5.0)).abs() < 0.001);
             assert!((targets[0].max.y - (400.0 + 5.0 + h)).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn hearts_seat_and_dim_colors_valid_for_all_schemes() {
+        for scheme in [
+            ColorScheme::Cyan,
+            ColorScheme::Amber,
+            ColorScheme::Emerald,
+            ColorScheme::Violet,
+            ColorScheme::Ice,
+            ColorScheme::Paper,
+        ] {
+            let active_bg = crate::presentation::game_palette::table(scheme)
+                .seat_active_bg
+                .to_srgba();
+            assert!(active_bg.red.is_finite() && active_bg.alpha > 0.0);
+            let dim = crate::presentation::game_palette::card(scheme)
+                .card_dim
+                .to_srgba();
+            assert!(dim.red.is_finite() && dim.alpha > 0.0);
         }
     }
 }

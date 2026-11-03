@@ -96,6 +96,126 @@ impl MahjongPalette {
                 header_gold: Color::srgb(1.0, 0.78, 0.28),
                 match_banner: Color::srgb(1.0, 0.76, 0.20),
             },
+            gamevex_core::ColorScheme::Emerald => Self {
+                felt: Color::srgb(0.016, 0.042, 0.028),
+                face_selectable: Color::srgb(0.045, 0.11, 0.075),
+                face_blocked: Color::srgb(0.028, 0.065, 0.045),
+                shadow: Color::srgba(0.0, 0.0, 0.0, 0.65),
+                side_right: Color::srgb(0.055, 0.12, 0.085),
+                side_bottom: Color::srgb(0.065, 0.14, 0.095),
+                rim_selected: Color::srgb(1.0, 0.48, 0.35),
+                rim_hinted: Color::srgb(0.40, 0.95, 0.70),
+                rim_selectable: Color::srgb(0.25, 0.60, 0.42),
+                rim_blocked: Color::srgb(0.12, 0.28, 0.19),
+                inner_rim: Color::srgba(0.50, 0.90, 0.70, 0.22),
+                dim_overlay: Color::srgba(0.01, 0.03, 0.02, 0.30),
+                stalk_bg: Color::srgb(0.025, 0.075, 0.050),
+                bamboo_center_bg: Color::srgb(0.035, 0.095, 0.065),
+                dots: Color::srgb(0.15, 0.92, 0.55),
+                bamboo: Color::srgb(0.38, 0.98, 0.72),
+                characters: Color::srgb(1.0, 0.45, 0.35),
+                winds: Color::srgb(0.85, 0.96, 0.90),
+                dragon_red: Color::srgb(1.0, 0.28, 0.32),
+                dragon_green: Color::srgb(0.18, 0.95, 0.58),
+                dragon_white: Color::srgb(0.88, 0.98, 0.92),
+                flowers: Color::srgb(1.0, 0.52, 0.40),
+                seasons: Color::srgb(0.35, 0.92, 0.75),
+                focused_outline: Color::srgb(1.0, 0.65, 0.35),
+                status_tag: Color::srgb(0.20, 0.92, 0.60),
+                header_accent: Color::srgb(0.35, 0.95, 0.70),
+                header_gold: Color::srgb(1.0, 0.75, 0.40),
+                match_banner: Color::srgb(0.35, 0.95, 0.70),
+            },
+            gamevex_core::ColorScheme::Violet => Self {
+                felt: Color::srgb(0.038, 0.022, 0.050),
+                face_selectable: Color::srgb(0.095, 0.060, 0.125),
+                face_blocked: Color::srgb(0.060, 0.038, 0.080),
+                shadow: Color::srgba(0.0, 0.0, 0.0, 0.65),
+                side_right: Color::srgb(0.11, 0.07, 0.14),
+                side_bottom: Color::srgb(0.13, 0.08, 0.16),
+                rim_selected: Color::srgb(0.25, 0.95, 0.88),
+                rim_hinted: Color::srgb(0.92, 0.75, 1.0),
+                rim_selectable: Color::srgb(0.52, 0.38, 0.66),
+                rim_blocked: Color::srgb(0.26, 0.18, 0.32),
+                inner_rim: Color::srgba(0.82, 0.70, 0.95, 0.22),
+                dim_overlay: Color::srgba(0.03, 0.015, 0.04, 0.32),
+                stalk_bg: Color::srgb(0.065, 0.040, 0.085),
+                bamboo_center_bg: Color::srgb(0.080, 0.050, 0.105),
+                dots: Color::srgb(0.78, 0.50, 1.0),
+                bamboo: Color::srgb(0.22, 0.92, 0.86),
+                characters: Color::srgb(0.95, 0.52, 0.85),
+                winds: Color::srgb(0.92, 0.88, 0.98),
+                dragon_red: Color::srgb(0.98, 0.25, 0.45),
+                dragon_green: Color::srgb(0.22, 0.92, 0.86),
+                dragon_white: Color::srgb(0.92, 0.88, 0.98),
+                flowers: Color::srgb(0.28, 0.90, 0.88),
+                seasons: Color::srgb(0.80, 0.55, 1.0),
+                focused_outline: Color::srgb(0.25, 0.95, 0.88),
+                status_tag: Color::srgb(0.80, 0.55, 1.0),
+                header_accent: Color::srgb(0.82, 0.58, 1.0),
+                header_gold: Color::srgb(0.95, 0.80, 0.55),
+                match_banner: Color::srgb(0.25, 0.95, 0.88),
+            },
+            gamevex_core::ColorScheme::Ice => Self {
+                felt: Color::srgb(0.018, 0.030, 0.055),
+                face_selectable: Color::srgb(0.055, 0.085, 0.14),
+                face_blocked: Color::srgb(0.038, 0.055, 0.095),
+                shadow: Color::srgba(0.0, 0.0, 0.0, 0.65),
+                side_right: Color::srgb(0.07, 0.10, 0.16),
+                side_bottom: Color::srgb(0.08, 0.12, 0.18),
+                rim_selected: Color::srgb(1.0, 0.45, 0.62),
+                rim_hinted: Color::srgb(0.85, 0.94, 1.0),
+                rim_selectable: Color::srgb(0.32, 0.52, 0.72),
+                rim_blocked: Color::srgb(0.18, 0.28, 0.38),
+                inner_rim: Color::srgba(0.70, 0.88, 1.0, 0.22),
+                dim_overlay: Color::srgba(0.01, 0.02, 0.04, 0.30),
+                stalk_bg: Color::srgb(0.035, 0.055, 0.095),
+                bamboo_center_bg: Color::srgb(0.045, 0.070, 0.115),
+                dots: Color::srgb(0.38, 0.82, 1.0),
+                bamboo: Color::srgb(0.45, 0.92, 0.85),
+                characters: Color::srgb(1.0, 0.48, 0.64),
+                winds: Color::srgb(0.88, 0.94, 1.0),
+                dragon_red: Color::srgb(1.0, 0.32, 0.48),
+                dragon_green: Color::srgb(0.35, 0.90, 0.80),
+                dragon_white: Color::srgb(0.92, 0.96, 1.0),
+                flowers: Color::srgb(1.0, 0.50, 0.66),
+                seasons: Color::srgb(0.40, 0.85, 1.0),
+                focused_outline: Color::srgb(0.88, 0.95, 1.0),
+                status_tag: Color::srgb(0.40, 0.82, 1.0),
+                header_accent: Color::srgb(0.40, 0.82, 1.0),
+                header_gold: Color::srgb(0.95, 0.88, 0.72),
+                match_banner: Color::srgb(0.40, 0.82, 1.0),
+            },
+            gamevex_core::ColorScheme::Paper => Self {
+                felt: Color::srgb(0.92, 0.90, 0.85),
+                face_selectable: Color::srgb(0.97, 0.96, 0.93),
+                face_blocked: Color::srgb(0.88, 0.86, 0.81),
+                shadow: Color::srgba(0.12, 0.10, 0.08, 0.28),
+                side_right: Color::srgb(0.84, 0.82, 0.77),
+                side_bottom: Color::srgb(0.80, 0.78, 0.73),
+                rim_selected: Color::srgb(0.68, 0.10, 0.20),
+                rim_hinted: Color::srgb(0.78, 0.52, 0.08),
+                rim_selectable: Color::srgb(0.42, 0.40, 0.36),
+                rim_blocked: Color::srgb(0.68, 0.65, 0.60),
+                inner_rim: Color::srgba(0.20, 0.18, 0.15, 0.15),
+                dim_overlay: Color::srgba(0.15, 0.13, 0.10, 0.14),
+                stalk_bg: Color::srgb(0.88, 0.86, 0.80),
+                bamboo_center_bg: Color::srgb(0.94, 0.93, 0.89),
+                dots: Color::srgb(0.62, 0.08, 0.18),
+                bamboo: Color::srgb(0.08, 0.45, 0.22),
+                characters: Color::srgb(0.12, 0.12, 0.14),
+                winds: Color::srgb(0.10, 0.11, 0.13),
+                dragon_red: Color::srgb(0.70, 0.08, 0.16),
+                dragon_green: Color::srgb(0.08, 0.48, 0.22),
+                dragon_white: Color::srgb(0.20, 0.22, 0.25),
+                flowers: Color::srgb(0.65, 0.12, 0.22),
+                seasons: Color::srgb(0.10, 0.46, 0.24),
+                focused_outline: Color::srgb(0.68, 0.10, 0.20),
+                status_tag: Color::srgb(0.08, 0.45, 0.22),
+                header_accent: Color::srgb(0.62, 0.08, 0.18),
+                header_gold: Color::srgb(0.65, 0.45, 0.12),
+                match_banner: Color::srgb(0.08, 0.45, 0.22),
+            },
         }
     }
 }
@@ -1189,5 +1309,48 @@ mod tests {
         let label = face_label(face, 27, 60.0, &palette);
         let covering_tile = rect(24.0, 18.0, 20.0, 28.0);
         assert!(label_overlaps_tile(label.bounds, covering_tile, 6.0));
+    }
+
+    #[test]
+    fn mahjong_palette_supports_all_schemes_and_paper_is_light() {
+        use gamevex_core::ColorScheme;
+        for scheme in [
+            ColorScheme::Cyan,
+            ColorScheme::Amber,
+            ColorScheme::Emerald,
+            ColorScheme::Violet,
+            ColorScheme::Ice,
+            ColorScheme::Paper,
+        ] {
+            let pal = MahjongPalette::for_scheme(scheme);
+            let felt = pal.felt.to_srgba();
+            let face = pal.face_selectable.to_srgba();
+            assert!(felt.red.is_finite() && felt.green.is_finite() && felt.blue.is_finite());
+            assert!(face.red.is_finite() && face.green.is_finite() && face.blue.is_finite());
+        }
+
+        let paper = MahjongPalette::for_scheme(ColorScheme::Paper);
+        let felt = paper.felt.to_srgba();
+        let face = paper.face_selectable.to_srgba();
+        assert!(felt.red > 0.85 && felt.green > 0.85 && felt.blue > 0.80);
+        assert!(face.red > 0.90 && face.green > 0.90 && face.blue > 0.85);
+
+        // Markings must be dark and readable on light tile faces (not faint near-white)
+        for mark in [
+            paper.dots,
+            paper.bamboo,
+            paper.characters,
+            paper.winds,
+            paper.dragon_red,
+            paper.dragon_green,
+            paper.dragon_white,
+        ] {
+            let m = mark.to_srgba();
+            let lum = m.red * 0.2126 + m.green * 0.7152 + m.blue * 0.0722;
+            assert!(
+                lum < 0.50,
+                "Paper tile markings must be dark and readable, got lum={lum}"
+            );
+        }
     }
 }

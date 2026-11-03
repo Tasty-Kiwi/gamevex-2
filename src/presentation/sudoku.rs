@@ -48,6 +48,62 @@ impl SudokuPalette {
                 btn_disabled_edge: Color::srgb(0.12, 0.08, 0.04),
                 btn_normal_text: Color::srgb(0.85, 0.75, 0.58),
             },
+            gamevex_core::ColorScheme::Emerald => Self {
+                board_bg: Color::srgb(0.016, 0.045, 0.030),
+                clue: Color::srgb(0.35, 0.95, 0.70),
+                entry: Color::srgb(1.0, 0.52, 0.38),
+                peer: Color::srgb(0.035, 0.11, 0.075),
+                same: Color::srgb(0.07, 0.20, 0.14),
+                error_bg: Color::srgb(0.32, 0.06, 0.08),
+                error_text: Color::srgb(1.0, 0.42, 0.35),
+                selected_bg: Color::srgb(0.09, 0.24, 0.16),
+                btn_disabled_bg: Color::srgb(0.020, 0.042, 0.030),
+                btn_hover_bg: Color::srgb(0.05, 0.16, 0.10),
+                btn_disabled_edge: Color::srgb(0.06, 0.12, 0.08),
+                btn_normal_text: Color::srgb(0.68, 0.88, 0.76),
+            },
+            gamevex_core::ColorScheme::Violet => Self {
+                board_bg: Color::srgb(0.038, 0.022, 0.052),
+                clue: Color::srgb(0.80, 0.58, 1.0),
+                entry: Color::srgb(0.25, 0.95, 0.88),
+                peer: Color::srgb(0.085, 0.050, 0.115),
+                same: Color::srgb(0.15, 0.09, 0.20),
+                error_bg: Color::srgb(0.32, 0.04, 0.15),
+                error_text: Color::srgb(1.0, 0.38, 0.58),
+                selected_bg: Color::srgb(0.18, 0.10, 0.25),
+                btn_disabled_bg: Color::srgb(0.032, 0.020, 0.044),
+                btn_hover_bg: Color::srgb(0.13, 0.08, 0.18),
+                btn_disabled_edge: Color::srgb(0.09, 0.06, 0.12),
+                btn_normal_text: Color::srgb(0.82, 0.74, 0.92),
+            },
+            gamevex_core::ColorScheme::Ice => Self {
+                board_bg: Color::srgb(0.016, 0.030, 0.055),
+                clue: Color::srgb(0.86, 0.93, 1.0),
+                entry: Color::srgb(0.40, 0.82, 1.0),
+                peer: Color::srgb(0.04, 0.075, 0.135),
+                same: Color::srgb(0.08, 0.15, 0.24),
+                error_bg: Color::srgb(0.30, 0.05, 0.12),
+                error_text: Color::srgb(1.0, 0.44, 0.58),
+                selected_bg: Color::srgb(0.10, 0.19, 0.30),
+                btn_disabled_bg: Color::srgb(0.02, 0.038, 0.065),
+                btn_hover_bg: Color::srgb(0.07, 0.13, 0.22),
+                btn_disabled_edge: Color::srgb(0.06, 0.10, 0.16),
+                btn_normal_text: Color::srgb(0.72, 0.84, 0.94),
+            },
+            gamevex_core::ColorScheme::Paper => Self {
+                board_bg: Color::srgb(0.93, 0.91, 0.86),
+                clue: Color::srgb(0.10, 0.11, 0.13),
+                entry: Color::srgb(0.58, 0.08, 0.18),
+                peer: Color::srgb(0.87, 0.85, 0.80),
+                same: Color::srgb(0.81, 0.78, 0.71),
+                error_bg: Color::srgb(0.93, 0.78, 0.80),
+                error_text: Color::srgb(0.72, 0.05, 0.10),
+                selected_bg: Color::srgb(0.78, 0.75, 0.67),
+                btn_disabled_bg: Color::srgb(0.86, 0.84, 0.79),
+                btn_hover_bg: Color::srgb(0.80, 0.77, 0.70),
+                btn_disabled_edge: Color::srgb(0.72, 0.69, 0.63),
+                btn_normal_text: Color::srgb(0.18, 0.19, 0.22),
+            },
         }
     }
 }
@@ -1061,5 +1117,32 @@ mod tests {
         );
         assert_eq!(lines.len(), 2);
         assert!(lines[1].ends_with("..."));
+    }
+
+    #[test]
+    fn sudoku_palette_supports_all_schemes_and_paper_is_light() {
+        use gamevex_core::ColorScheme;
+        for scheme in [
+            ColorScheme::Cyan,
+            ColorScheme::Amber,
+            ColorScheme::Emerald,
+            ColorScheme::Violet,
+            ColorScheme::Ice,
+            ColorScheme::Paper,
+        ] {
+            let pal = super::SudokuPalette::for_scheme(scheme);
+            let bg = pal.board_bg.to_srgba();
+            let clue = pal.clue.to_srgba();
+            assert!(bg.red.is_finite() && bg.green.is_finite() && bg.blue.is_finite());
+            assert!(clue.red.is_finite() && clue.green.is_finite() && clue.blue.is_finite());
+        }
+
+        let paper = super::SudokuPalette::for_scheme(ColorScheme::Paper);
+        let bg = paper.board_bg.to_srgba();
+        assert!(bg.red > 0.85 && bg.green > 0.85 && bg.blue > 0.80);
+        let clue = paper.clue.to_srgba();
+        assert!(clue.red < 0.20 && clue.green < 0.20 && clue.blue < 0.20);
+        let entry = paper.entry.to_srgba();
+        assert!(entry.red > 0.50 && entry.green < 0.15 && entry.blue < 0.25);
     }
 }

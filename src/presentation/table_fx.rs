@@ -13,21 +13,11 @@ pub(super) fn draw(
     locate: impl Fn(Anchor) -> Option<Rect>,
     reduced: bool,
 ) {
+    let pal = super::game_palette::table_fx(f.palette);
     for event in &feedback.events {
         let progress = (event.age / event.duration()).clamp(0.0, 1.0);
         let alpha = (1.0 - progress).powi(2);
-        let rgb = match (f.palette, event.kind) {
-            (gamevex_core::ColorScheme::Amber, K::Invalid | K::Stuck) => [0.94, 0.32, 0.22],
-            (gamevex_core::ColorScheme::Amber, K::Win | K::Run | K::Hint) => [1.0, 0.80, 0.26],
-            (gamevex_core::ColorScheme::Amber, K::Move) => [0.22, 0.82, 0.52],
-            (gamevex_core::ColorScheme::Amber, K::Undo | K::Shuffle) => [0.96, 0.55, 0.18],
-            (gamevex_core::ColorScheme::Amber, _) => [1.0, 0.73, 0.20],
-            (_, K::Invalid | K::Stuck) => [1.0, 0.24, 0.32],
-            (_, K::Win | K::Run | K::Hint) => [1.0, 0.78, 0.15],
-            (_, K::Move) => [0.12, 1.0, 0.68],
-            (_, K::Undo | K::Shuffle) => [0.9, 0.28, 1.0],
-            (_, _) => [0.0, 0.88, 1.0],
-        };
+        let rgb = pal.event_rgb(event.kind);
         let color = Color::srgba(rgb[0], rgb[1], rgb[2], alpha);
         let areas: Vec<_> = event
             .anchors
@@ -135,11 +125,8 @@ pub(super) fn draw(
                             angle.sin() * speed * t + 40.0 * t * t,
                         );
                     let tint = if j % 3 == 0 {
-                        if f.palette == gamevex_core::ColorScheme::Amber {
-                            Color::srgba(0.96, 0.55, 0.18, alpha)
-                        } else {
-                            Color::srgba(1.0, 0.2, 0.65, alpha)
-                        }
+                        let c = pal.fountain_tint.to_srgba();
+                        Color::srgba(c.red, c.green, c.blue, alpha)
                     } else {
                         color
                     };
@@ -164,11 +151,7 @@ pub(super) fn draw(
                 && r.min.y >= clip.min.y
                 && r.max.y <= clip.max.y
             {
-                let caption_bg = if f.palette == gamevex_core::ColorScheme::Amber {
-                    Color::srgba(0.05, 0.038, 0.025, 0.95)
-                } else {
-                    Color::srgba(0.015, 0.035, 0.05, 0.95)
-                };
+                let caption_bg = pal.caption_bg;
                 f.rect(r.min, r.size(), caption_bg);
                 outline(f, clip, r, color);
                 f.text(r.min + Vec2::splat(10.0), caption, size, color);
@@ -218,4 +201,40 @@ fn line(f: &mut Frame, clip: Rect, a: Vec2, b: Vec2, color: Color) {
         }
     }
     f.line(a + d * lo, a + d * hi, 1.4, color);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gamevex_core::ColorScheme;
+
+    #[test]
+    fn event_rgb_provides_valid_values_for_all_schemes() {
+        for scheme in [
+            ColorScheme::Cyan,
+            ColorScheme::Amber,
+            ColorScheme::Emerald,
+            ColorScheme::Violet,
+            ColorScheme::Ice,
+            ColorScheme::Paper,
+        ] {
+            let pal = crate::presentation::game_palette::table_fx(scheme);
+            for kind in [
+                K::Move,
+                K::Run,
+                K::Win,
+                K::Hint,
+                K::Undo,
+                K::Shuffle,
+                K::Deal,
+                K::Invalid,
+                K::Stuck,
+            ] {
+                let rgb = pal.event_rgb(kind);
+                for c in rgb {
+                    assert!(c.is_finite() && (0.0..=1.0).contains(&c));
+                }
+            }
+        }
+    }
 }

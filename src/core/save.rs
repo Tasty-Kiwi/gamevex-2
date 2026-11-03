@@ -16,6 +16,10 @@ pub enum ColorScheme {
     #[default]
     Cyan,
     Amber,
+    Emerald,
+    Violet,
+    Ice,
+    Paper,
 }
 
 fn default_curvature() -> f32 {
@@ -487,6 +491,29 @@ mod tests {
         }
     }
     use super::*;
+
+    #[test]
+    fn every_theme_round_trips_without_changing_games_and_legacy_defaults_to_cyan() {
+        let original = Save::new(61);
+        for scheme in [
+            ColorScheme::Cyan,
+            ColorScheme::Amber,
+            ColorScheme::Emerald,
+            ColorScheme::Violet,
+            ColorScheme::Ice,
+            ColorScheme::Paper,
+        ] {
+            let mut save = original.clone();
+            save.settings.color_scheme = scheme;
+            assert_eq!(Save::from_json(&save.to_json().unwrap()).unwrap(), save);
+        }
+        let mut legacy = serde_json::to_value(&original).unwrap();
+        legacy["settings"]
+            .as_object_mut()
+            .unwrap()
+            .remove("color_scheme");
+        assert_eq!(Save::from_json(&legacy.to_string()).unwrap(), original);
+    }
 
     #[test]
     fn default_save_round_trips_and_starts_beginner() {
