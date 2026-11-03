@@ -1,3 +1,4 @@
+import { revealLobbyGame } from './lobby.js';
 import { expect, test } from '@playwright/test';
 
 const canvas = '#gamevex';
@@ -115,27 +116,11 @@ async function openMahjong(page) {
 }
 
 async function clickLobbyAction(page, key) {
-  for (let reset = 0; reset < 16; reset++) {
-    const scroll = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0);
-    if (scroll <= 0) break;
-    await page.mouse.move(190, 360);
-    await page.mouse.wheel(0, -420);
-    await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).toBeLessThan(scroll);
-  }
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const data = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
-    const bounds = data[key];
-    if (Array.isArray(bounds) && bounds.length === 4) {
-      const p = center(bounds);
-      return clickSurface(page, p.x, p.y);
-    }
-    if ((data.lobbyScroll || 0) >= (data.lobbyMaxScroll || 0)) break;
-    await page.mouse.move(190, 360);
-    await page.mouse.wheel(0, 420);
-    const old = data.lobbyScroll || 0;
-    await expect.poll(async () => page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).not.toBe(old);
-  }
-  throw new Error(`Lobby action ${key} did not become visible after scrolling`);
+  const activate = (bounds) => {
+    const { x, y } = center(bounds);
+    return clickSurface(page, x, y);
+  };
+  await activate(await revealLobbyGame(page, key, activate));
 }
 
 function gameplay(game) {
@@ -235,10 +220,10 @@ test('Mahjong pair match and undo feedback plays once and does not replay after 
   const afterReload = (await audioStatus(page)).played;
   await clickLobbyAction(page, 'mahjong');
   await expect.poll(async () => (await interaction(page)).screen).toBe('Mahjong');
-  await expect.poll(async () => (await audioStatus(page)).played).toBe(afterReload + 1); // Lobby click only.
+  await expect.poll(async () => (await audioStatus(page)).played).toBe(afterReload + 2); // Category and game navigation clicks only.
   expect((await tableFeedback(page)).events).toHaveLength(0);
   await page.waitForTimeout(500);
-  expect((await audioStatus(page)).played).toBe(afterReload + 1);
+  expect((await audioStatus(page)).played).toBe(afterReload + 2);
 });
 
 test('Mahjong Undo feedback expires across slow application frames', async ({ page }) => {

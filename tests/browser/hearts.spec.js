@@ -1,3 +1,4 @@
+import { revealLobbyGame } from './lobby.js';
 import { expect, test } from '@playwright/test';
 
 const canvas = '#gamevex';
@@ -102,25 +103,8 @@ async function touchAction(page, key) {
 }
 
 async function clickLobbyAction(page, key) {
-  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
-  for (let reset = 0; reset < 16; reset++) {
-    const scroll = (await actions(page)).lobbyScroll || 0;
-    if (scroll <= 0) break;
-    await page.mouse.move(190, 360);
-    await page.mouse.wheel(0, -420);
-    await expect.poll(async () => (await actions(page)).lobbyScroll || 0).toBeLessThan(scroll);
-  }
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const data = await actions(page);
-    const bounds = data[key];
-    if (Array.isArray(bounds) && bounds.length === 4) return clickBounds(page, bounds);
-    if ((data.lobbyScroll || 0) >= (data.lobbyMaxScroll || 0)) break;
-    const old = data.lobbyScroll || 0;
-    await page.mouse.move(190, 360);
-    await page.mouse.wheel(0, 420);
-    await expect.poll(async () => (await actions(page)).lobbyScroll || 0).not.toBe(old);
-  }
-  throw new Error(`Lobby action ${key} did not become visible`);
+  const activate = (bounds) => clickBounds(page, bounds);
+  await activate(await revealLobbyGame(page, key, activate));
 }
 
 async function openHearts(page) {

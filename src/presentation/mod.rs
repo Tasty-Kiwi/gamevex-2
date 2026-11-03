@@ -37,6 +37,7 @@ pub enum Screen {
 }
 #[derive(Clone, Copy)]
 pub enum Action {
+    LobbyCategory(Option<LobbyCategory>),
     Open(Screen),
     Back,
     New(Difficulty, bool),
@@ -122,6 +123,8 @@ pub enum Action {
     PatienceHint,
     PatienceNew(gamevex_core::patience::Variant, bool),
 }
+pub(crate) use screens::LobbyCategory;
+
 pub struct Hit {
     pub rect: Rect,
     pub action: Action,
@@ -159,6 +162,7 @@ pub struct ViewLayout {
     pub settings_max_scroll: f32,
     pub settings_clip: Option<Rect>,
     pub lobby_clip: Option<Rect>,
+    pub(crate) lobby_category: Option<LobbyCategory>,
     pub lobby_max_scroll: f32,
     pub sudoku: Option<BoardLayout>,
     pub sudoku_max_pan: Vec2,
@@ -208,6 +212,7 @@ pub fn paint(
     layout.settings_max_scroll = 0.0;
     layout.settings_clip = None;
     layout.lobby_clip = None;
+    layout.lobby_category = state.lobby_category;
     layout.lobby_max_scroll = 0.0;
     options.scale_factor = metrics.map(|[_, _, d]| d).unwrap_or(window.scale_factor());
     options.pixel = state.save.settings.display_preset == DisplayPreset::PixelCrt;
@@ -439,7 +444,27 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
                 _ => None,
             })
         };
+        let mut categories = serde_json::Map::new();
+        let mut categories_back = None;
+        for hit in &layout.hits {
+            if let Action::LobbyCategory(category) = hit.action {
+                let bounds = [
+                    hit.rect.min.x,
+                    hit.rect.min.y,
+                    hit.rect.width(),
+                    hit.rect.height(),
+                ];
+                if let Some(category) = category {
+                    categories.insert(category.key().into(), serde_json::json!(bounds));
+                } else {
+                    categories_back = Some(bounds);
+                }
+            }
+        }
         let bounds = serde_json::json!({
+            "categories": categories,
+            "categoriesBack": categories_back,
+            "lobbyCategory": state.lobby_category.map(LobbyCategory::key),
             "cards": action_bounds(Screen::Cards),
             "mines": action_bounds(Screen::Mines),
             "blackjack": action_bounds(Screen::Blackjack),

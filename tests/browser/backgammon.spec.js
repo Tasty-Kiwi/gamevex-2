@@ -1,3 +1,4 @@
+import { revealLobbyGame } from './lobby.js';
 import { expect, test } from '@playwright/test';
 
 const canvas = '#gamevex';
@@ -88,17 +89,8 @@ async function touchAction(page, key) {
 }
 
 async function clickLobbyAction(page, key) {
-  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const data = await actions(page);
-    if (Array.isArray(data[key]) && data[key].length === 4) return clickBounds(page, data[key]);
-    const old = data.lobbyScroll || 0;
-    if (old >= (data.lobbyMaxScroll || 0)) break;
-    await page.mouse.move(190, 360);
-    await page.mouse.wheel(0, 420);
-    await expect.poll(async () => (await actions(page)).lobbyScroll || 0).not.toBe(old);
-  }
-  throw new Error(`Lobby action ${key} did not become visible`);
+  const activate = (bounds) => clickBounds(page, bounds);
+  await activate(await revealLobbyGame(page, key, activate));
 }
 
 async function openBackgammon(page) {

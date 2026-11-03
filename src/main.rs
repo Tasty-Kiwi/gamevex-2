@@ -33,7 +33,7 @@ use bevy::{
     window::{PrimaryWindow, WindowCloseRequested, WindowEvent, WindowFocused, WindowResolution},
 };
 use gamevex_core::{Command as GameCommand, cards::CardLab, *};
-use presentation::{Action, Screen, ViewLayout};
+use presentation::{Action, LobbyCategory, Screen, ViewLayout};
 use rendering::ArcadeRenderPlugin;
 
 #[derive(Resource)]
@@ -52,6 +52,7 @@ pub(crate) struct Arcade {
     pub pan: Vec2,
     pub settings_scroll: f32,
     pub lobby_scroll: f32,
+    pub(crate) lobby_category: Option<LobbyCategory>,
     pub cursor: Option<Vec2>,
     pub card_positions: [Vec2; 5],
     pub drag_offset: Vec2,
@@ -134,6 +135,7 @@ impl Arcade {
             pan: Vec2::ZERO,
             settings_scroll: 0.0,
             lobby_scroll: 0.0,
+            lobby_category: None,
             cursor: None,
             card_positions: [Vec2::splat(-1000.0); 5],
             drag_offset: Vec2::ZERO,
@@ -252,6 +254,10 @@ impl Arcade {
         }
         self.mahjong_ui.feedback.clear();
         self.patience_ui.feedback.clear();
+        if screen == Screen::Lobby && self.screen != Screen::Settings {
+            self.lobby_category = None;
+            self.lobby_scroll = 0.0;
+        }
         self.screen = screen;
         if patience_app::is_family(screen) {
             self.patience_ui.can_finish = self.patience_game().can_auto_finish();
@@ -394,6 +400,20 @@ impl Arcade {
         };
         match action {
             Action::Open(screen) => self.open(screen),
+            Action::LobbyCategory(category) => {
+                if self.screen == Screen::Lobby {
+                    let previous = self.lobby_category;
+                    self.lobby_category = category;
+                    self.lobby_scroll = 0.0;
+                    self.focus = if category.is_some() {
+                        3
+                    } else {
+                        2 + previous
+                            .and_then(|c| LobbyCategory::ALL.iter().position(|entry| *entry == c))
+                            .unwrap_or(0)
+                    };
+                }
+            }
             Action::Back => {
                 if self.screen == Screen::Settings {
                     let target = self.settings_return;
@@ -747,6 +767,8 @@ impl Arcade {
         self.roulette_ui = Default::default();
         self.modal = None;
         self.screen = Screen::Lobby;
+        self.lobby_category = None;
+        self.lobby_scroll = 0.0;
         self.settings_return = Screen::Lobby;
         self.focus = 0;
         self.cell = 0;
@@ -1116,6 +1138,7 @@ fn handle_pointer_input(
                     state.save.sudoku.game.difficulty,
                 )
             && layout.surface == Some(state.screen)
+            && layout.lobby_category == state.lobby_category
             && layout.modal == state.modal.is_some();
         if let WindowEvent::TouchInput(event) = event {
             touch.handle(
@@ -1301,7 +1324,10 @@ fn handle_input(
         wheel.clear();
         return;
     }
-    if layout.surface != Some(state.screen) || layout.modal != state.modal.is_some() {
+    if layout.surface != Some(state.screen)
+        || layout.modal != state.modal.is_some()
+        || layout.lobby_category != state.lobby_category
+    {
         wheel.clear();
         return;
     }
@@ -1346,6 +1372,8 @@ fn handle_input(
             state.lab.cancel_drag();
             state.patience_ui.drag = None;
             state.patience_ui.motion.clear();
+        } else if state.screen == Screen::Lobby && state.lobby_category.is_some() {
+            state.act(Action::LobbyCategory(None));
         } else if state.screen != Screen::Lobby {
             state.act(Action::Back);
         }
@@ -1867,6 +1895,7 @@ mod tests {
             pan: Vec2::ZERO,
             settings_scroll: 0.0,
             lobby_scroll: 0.0,
+            lobby_category: None,
             cursor: None,
             card_positions: [Vec2::ZERO; 5],
             drag_offset: Vec2::ZERO,
@@ -3535,7 +3564,7 @@ mod tests {
     }
 
     #[test]
-    fn lobby_scroll_preserves_all_games_and_reveals_keyboard_focus() {
+    fn lobby_categories_cover_all_games_and_keep_keyboard_focus_visible() {
         for (width, height) in [(1280, 720), (390, 740), (360, 560)] {
             let mut app = App::new();
             app.insert_resource(test_arcade())
@@ -3552,40 +3581,48 @@ mod tests {
                 PrimaryWindow,
             ));
             app.update();
-            let layout = app.world().resource::<ViewLayout>();
-            let games: Vec<_> = layout
-                .hits
-                .iter()
-                .enumerate()
-                .filter(
-                    |(_, h)| matches!(h.action, Action::Open(screen) if !matches!(screen, Screen::Settings | Screen::Lobby)),
-                )
-                .collect();
-            assert_eq!(games.len(), 14);
-            let first = games[0].0;
-            let last = games.last().unwrap().0;
-            assert!(matches!(
-                games.last().unwrap().1.action,
-                Action::Open(Screen::Backgammon)
-            ));
-            assert_eq!(games.last().unwrap().1.rect.height(), 0.0);
-            {
-                let mut state = app.world_mut().resource_mut::<Arcade>();
-                state.keyboard = true;
-                state.focus = last;
-            }
-            app.update();
-            let layout = app.world().resource::<ViewLayout>();
-            let clip = layout.lobby_clip.unwrap();
-            assert_eq!(layout.hits[last].rect.height(), 76.0);
-            for hit in &layout.hits[first..] {
-                if hit.rect.height() > 0.0 {
-                    assert!(hit.rect.min.y >= clip.min.y && hit.rect.max.y <= clip.max.y);
+            let grid = &app.world().resource::<ViewLayout>().hits;
+            assert_eq!(
+                grid.iter()
+                    .filter(|h| matches!(h.action, Action::LobbyCategory(Some(_))))
+                    .count(),
+                4
+            );
+            let mut games = Vec::new();
+            for category in LobbyCategory::ALL {
+                app.world_mut()
+                    .resource_mut::<Arcade>()
+                    .act(Action::LobbyCategory(Some(category)));
+                app.update();
+                let layout = app.world().resource::<ViewLayout>();
+                let mut last = 0;
+                for (i, hit) in layout.hits.iter().enumerate() {
+                    if let Action::Open(screen) = hit.action
+                        && !matches!(screen, Screen::Settings | Screen::Lobby)
+                    {
+                        assert!(!games.contains(&screen));
+                        games.push(screen);
+                        last = i;
+                    }
                 }
+                assert!(last > 0);
+                {
+                    let mut state = app.world_mut().resource_mut::<Arcade>();
+                    state.keyboard = true;
+                    state.focus = last;
+                }
+                app.update();
+                assert_eq!(
+                    app.world().resource::<ViewLayout>().hits[last]
+                        .rect
+                        .height(),
+                    76.0
+                );
             }
-            assert!(app.world().resource::<Arcade>().lobby_scroll > 0.0);
-            app.world_mut().resource_mut::<Arcade>().focus = first;
-            app.update();
+            assert_eq!(games.len(), 14);
+            app.world_mut()
+                .resource_mut::<Arcade>()
+                .act(Action::LobbyCategory(None));
             assert_eq!(app.world().resource::<Arcade>().lobby_scroll, 0.0);
         }
     }

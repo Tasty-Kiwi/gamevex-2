@@ -8,6 +8,7 @@ mod settings;
 
 pub(super) use cards::{card_face, card_face_with_emphasis, card_hit_bounds, cards, rects_overlap};
 pub(super) use dialog::dialog;
+pub(crate) use lobby::LobbyCategory;
 pub(super) use lobby::lobby;
 pub(super) use mines::mines;
 pub(super) use settings::settings;

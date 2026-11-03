@@ -1,3 +1,4 @@
+import { revealLobbyGame } from './lobby.js';
 import { expect, test } from '@playwright/test';
 
 const canvas = '#gamevex';
@@ -104,36 +105,10 @@ async function openPatience(page, family = 'Solitaire') {
 }
 
 async function clickLobbyAction(page, key) {
-  await expect.poll(async () => (await interaction(page)).screen).toBe('Lobby');
-  await resetLobbyScroll(page);
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const bounds = (await actions(page))[key];
-    if (Array.isArray(bounds) && bounds.length === 4) return clickBounds(page, bounds);
-    const state = await page.locator(canvas).evaluate((el) => {
-      const data = JSON.parse(el.dataset.actionBounds || '{}');
-      return { scroll: data.lobbyScroll || 0, max: data.lobbyMaxScroll || 0 };
-    });
-    if (state.scroll >= state.max) throw new Error(`Lobby action ${key} is not present in the lobby`);
-    await page.mouse.move(190, 360);
-    await page.mouse.wheel(0, 420);
-    await expect.poll(async () => page.locator(canvas).evaluate((el) =>
-      (JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0))).not.toBe(state.scroll);
-  }
-  throw new Error(`Lobby action ${key} did not become visible after scrolling`);
+  const activate = (bounds) => clickBounds(page, bounds);
+  await activate(await revealLobbyGame(page, key, activate));
 }
 
-async function resetLobbyScroll(page) {
-  for (let i = 0; i < 16; i++) {
-    const scroll = await page.locator(canvas).evaluate((el) =>
-      JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0);
-    if (scroll <= 0) return;
-    await page.mouse.move(190, 360);
-    await page.mouse.wheel(0, -420);
-    await expect.poll(async () => page.locator(canvas).evaluate((el) =>
-      JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).toBeLessThan(scroll);
-  }
-  throw new Error('Could not return lobby scroll to the top');
-}
 
 
 // Install after the old document's pagehide save, once only, so subsequent
@@ -548,10 +523,10 @@ test('FreeCell move and undo feedback plays once and does not replay after reloa
  const afterReload=(await audioStatus(page)).played;
  await clickLobbyAction(page,'freecell');
  await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('FreeCell');
- await expect.poll(async()=> (await audioStatus(page)).played).toBe(afterReload+1); // Lobby click only.
+ await expect.poll(async()=> (await audioStatus(page)).played).toBe(afterReload+2); // Category and game navigation clicks only.
  expect((await tableFeedback(page)).events).toHaveLength(0);
  await page.waitForTimeout(500);
- expect((await audioStatus(page)).played).toBe(afterReload+1);
+ expect((await audioStatus(page)).played).toBe(afterReload+2);
 });
 
 test('FreeCell Undo feedback expires across slow application frames',async({page})=>{
@@ -603,17 +578,22 @@ test.describe('Phone card selection',()=>{
   await expect.poll(async()=> (await view(page)).dragActive).toBe(false);
   expect(gameplay((await save(page)).freecell)).toEqual(gameplay(before));
  });
- test('canceling a touch on the lobby entry and swiping reveals Spider',async({page})=>{
+ test('a canceled category tap stays on the grid and a swipe reveals Roulette',async({page})=>{
+  await page.setViewportSize({ width: 360, height: 560 });
   await page.goto('/?qa=fresh&diagnostics');
   await expect.poll(async()=>page.locator(canvas).evaluate(el=>el.dataset.ready==='true'),{timeout:30_000}).toBe(true);
-  const firstGame=center((await actions(page)).mines);
-  await cancelTouch(page,firstGame);
+  const category=center((await actions(page)).categories.highLimit);
+  await cancelTouch(page,category);
   await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('Lobby');
+  expect((await actions(page)).lobbyCategory).toBeNull();
+  await touchSurface(page, category.x, category.y);
+  await expect.poll(async () => (await actions(page)).lobbyCategory).toBe('highLimit');
   const before=(await actions(page)).lobbyScroll;
   const clip=(await actions(page)).lobbyClip;
   await dragTouch(page,{x:clip[0]+clip[2]/2,y:clip[1]+clip[3]*0.85},{x:clip[0]+clip[2]/2,y:clip[1]+clip[3]*0.2});
   await expect.poll(async()=>(await actions(page)).lobbyScroll).toBeGreaterThan(before);
-  await clickLobbyAction(page,'spider');
-  await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('Spider');
+  const roulette = center((await actions(page)).roulette);
+  await touchSurface(page, roulette.x, roulette.y);
+  await expect.poll(async()=>interaction(page).then(i=>i.screen)).toBe('Roulette');
  });
 });

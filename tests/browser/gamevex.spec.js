@@ -1,3 +1,4 @@
+import { revealLobbyGame } from './lobby.js';
 import { expect, test } from '@playwright/test';
 
 const canvas = '#gamevex';
@@ -26,50 +27,11 @@ async function openReady(page) {
 }
 
 async function clickLobbyAction(page, key, touch = false) {
-  await resetLobbyScroll(page);
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
-    if (Array.isArray(bounds[key]) && bounds[key].length === 4) {
-      const p = center(bounds[key]);
-      return touch ? touchSurface(page, p.x, p.y) : clickSurface(page, p.x, p.y);
-    }
-    if (!(await scrollLobby(page, bounds))) break;
-  }
-  throw new Error(`Lobby action ${key} did not become visible after scrolling`);
-}
-
-async function scrollLobby(page, data = null) {
-  const current = data || await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
-  if ((current.lobbyScroll || 0) >= (current.lobbyMaxScroll || 0)) return false;
-  const old = current.lobbyScroll || 0;
-  await page.mouse.move(190, 360);
-  await page.mouse.wheel(0, 420);
-  await expect.poll(async () => page.locator(canvas).evaluate((el) =>
-    JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).not.toBe(old);
-  return true;
-}
-
-async function resetLobbyScroll(page) {
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const data = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
-    const old = data.lobbyScroll || 0;
-    if (old <= 0) return;
-    await page.mouse.move(190, 360);
-    await page.mouse.wheel(0, -420);
-    await expect.poll(async () => page.locator(canvas).evaluate((el) =>
-      JSON.parse(el.dataset.actionBounds || '{}').lobbyScroll || 0)).toBeLessThan(old);
-  }
-  throw new Error('Could not return lobby scroll to the top');
-}
-
-async function revealLobbyAction(page, key) {
-  await resetLobbyScroll(page);
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const bounds = await page.locator(canvas).evaluate((el) => JSON.parse(el.dataset.actionBounds || '{}'));
-    if (Array.isArray(bounds[key]) && bounds[key].length === 4) return bounds[key];
-    if (!(await scrollLobby(page, bounds))) break;
-  }
-  throw new Error(`Lobby action ${key} did not become visible after scrolling`);
+  const activate = (bounds) => {
+    const { x, y } = center(bounds);
+    return touch ? touchSurface(page, x, y) : clickSurface(page, x, y);
+  };
+  await activate(await revealLobbyGame(page, key, activate));
 }
 
 async function enterCards(page) {
@@ -842,7 +804,10 @@ test.describe('touch input regressions', () => {
 
   test('a canceled touch on Sudoku entry does not open the game', async ({ page }) => {
     await openReady(page);
-    const entry = center(await revealLobbyAction(page, 'sudoku'));
+    const entry = center(await revealLobbyGame(page, 'sudoku', (bounds) => {
+      const { x, y } = center(bounds);
+      return touchSurface(page, x, y);
+    }));
     await cancelTouch(page, entry);
     await expect.poll(async () => page.locator(canvas).evaluate(async (el) => {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
