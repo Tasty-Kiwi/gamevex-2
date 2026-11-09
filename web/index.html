@@ -18,14 +18,35 @@
       main { position: relative; width: 100%; height: 100%; min-height: 560px; }
       /* Keyboard focus is drawn on the active control inside the canvas. */
       canvas { display: block; width: 100% !important; height: 100% !important; background: #020408; outline: none; user-select: none; -webkit-user-select: none; touch-action: none; }
-      #status { position: absolute; inset: 35% 8% auto; padding: 2rem; background: #081428; border: 1px solid #00d4ff; color: #74e7f4; font-size: .9rem; pointer-events: none; }
-      #status.error { color: #ff9eae; white-space: pre-wrap; }
+      @font-face { font-family: Oxanium; src: url('./assets/fonts/Oxanium.ttf') format('truetype'); font-display: swap; }
+      #status { position: absolute; inset: 0; padding: 0 clamp(16px, 4vw, 52px); overflow: auto; pointer-events: none; color: #def0ff; font-family: Oxanium, ui-monospace, monospace; background-color: #020408; background-image: linear-gradient(#14384a38 1px, transparent 1px), linear-gradient(90deg, #14384a38 1px, transparent 1px); background-size: 64px 64px; }
+      #status[hidden] { display: none; }
+      .loading-header { position: relative; height: 77px; border-bottom: 1px solid #00d4ff; }
+      .loading-header::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 78px; height: 4px; background: #ffaa00; }
+      .loading-title { margin: 0; padding-top: 22px; color: #00d4ff; font-size: 25px; font-weight: 500; line-height: 1.2; }
+      .loading-panel { width: min(100%, 620px); margin: clamp(60px, 18vh, 180px) auto 40px; padding: 24px 24px 25px; border: 1px solid #14384a; border-left: 5px solid #00d4ff; background: #060e16; }
+      .loading-heading { margin: 0 0 10px; font-size: 27px; font-weight: 500; }
+      .loading-message { margin: 0 0 24px; color: #6394ad; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+      .loading-track { height: 12px; border: 1px solid #14384a; background: #020408; overflow: hidden; }
+      .loading-fill { width: 35%; height: 100%; background: repeating-linear-gradient(90deg, #00d4ff 0 14px, #060e16 14px 18px); animation: loading-sweep 1.8s ease-in-out infinite alternate; }
+      #status.error { pointer-events: auto; }
+      #status.error .loading-message { color: #ffb3c1; white-space: pre-wrap; }
+      #status.error .loading-panel { border-left-color: #ff3366; }
+      @keyframes loading-sweep { from { transform: translateX(0); } to { transform: translateX(186%); } }
+      @media (prefers-reduced-motion: reduce) { .loading-fill { animation: none; } }
     </style>
   </head>
   <body>
     <main aria-label="GameVex Rust arcade">
       <canvas id="gamevex" tabindex="0" aria-label="GameVex arcade game surface"></canvas>
-      <p id="status" role="status" aria-live="polite">Checking browser graphics support…</p>
+      <div id="status" role="status" aria-live="polite">
+        <header class="loading-header"><h1 class="loading-title">GAMEVEX</h1></header>
+        <div class="loading-panel">
+          <h2 class="loading-heading">Loading</h2>
+          <p class="loading-message" id="status-message">Checking browser graphics support…</p>
+          <div class="loading-track" role="progressbar" aria-label="Loading GameVex"><div class="loading-fill"></div></div>
+        </div>
+      </div>
     </main>
     <script type="module" src="./loader.js"></script>
   </body>

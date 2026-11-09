@@ -4,6 +4,8 @@ import "./pwa.js";
 const startupStartedAt = performance.now();
 const canvas = document.querySelector("#gamevex");
 const status = document.querySelector("#status");
+const statusMessage = document.querySelector("#status-message");
+const progress = status.querySelector('[role="progressbar"]');
 const recoveryParameter = "__gamevex_fallback";
 const recoveryReasons = new Set(["adapter-unavailable", "device-unavailable", "device-lost", "gpu-error", "startup-failed", "startup-timeout"]);
 const entryUrl = new URL(location.href);
@@ -25,7 +27,9 @@ if (recovering) canvas.dataset.fallbackReason = recoveryReason;
 function showError(title, detail) {
   status.hidden = false;
   status.classList.add("error");
-  status.textContent = `${title}\n${detail}`;
+  progress.hidden = true;
+  status.querySelector(".loading-heading").textContent = "Error";
+  statusMessage.textContent = `${title}\n${detail}`;
 }
 
 function describeError(error) {
@@ -100,7 +104,7 @@ function failGraphics(error, reason = "startup-failed") {
   if (graphicsBackend === "webgpu" && graphicsBackends.includes("webgl2")) {
     console.warn("WebGPU failed; starting GameVex with WebGL2.", error);
     status.hidden = false;
-    status.textContent = "Switching to compatible graphics…";
+    statusMessage.textContent = "Switching to compatible graphics…";
     if (webgpuStarted) {
       transitioning = true;
       const retryUrl = new URL(location.href);
@@ -219,7 +223,7 @@ async function startBackend() {
     observeWebGPUDevices(navigator.gpu);
     webgpuStarted = true;
   }
-  status.textContent = `Starting GameVex · ${graphicsBackend === "webgl2" ? "WebGL2" : "WebGPU"}…`;
+  statusMessage.textContent = `Starting GameVex · ${graphicsBackend === "webgl2" ? "WebGL2" : "WebGPU"}…`;
   startupTimer = setTimeout(() => failGraphics(new Error("The graphics renderer did not finish starting."), "startup-timeout"), 120_000);
   const { default: initialize } = await import(`./pkg/${graphicsBackend}/gamevex_app.js`);
   canvas.dataset.saveWriter = String(await acquireSaveWriter());
