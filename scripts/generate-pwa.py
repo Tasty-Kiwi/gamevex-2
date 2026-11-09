@@ -11,7 +11,8 @@ backends = sys.argv[1:] or ["webgpu", "webgl2"]
 if any(backend not in ("webgpu", "webgl2") for backend in backends):
     raise SystemExit("Unknown browser backend")
 (WEB / "backend.js").write_text(f"export const graphicsBackends = {json.dumps(backends)};\n")
-assets = ["index.html", "loader.js", "backend.js", "pwa.js", "manifest.webmanifest"]
+assets = ["index.html", "loader.js", "backend.js", "pwa.js", "manifest.webmanifest",
+          "assets/fonts/Oxanium.ttf"]
 for backend in backends:
     assets += [f"pkg/{backend}/gamevex_app.js", f"pkg/{backend}/gamevex_app_bg.wasm"]
 assets += sorted(str(path.relative_to(WEB)) for path in (WEB / "icons").glob("*.png"))

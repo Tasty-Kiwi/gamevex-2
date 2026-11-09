@@ -15,7 +15,7 @@ async function clickBounds(page, bounds) {
 }
 
 async function hideWebGPU(page) {
-  await page.addInitScript(() => Object.defineProperty(navigator, 'gpu', { get: () => undefined }));
+  await page.addInitScript(() => Object.defineProperty(navigator, 'gpu', { configurable: true, get: () => undefined }));
 }
 
 async function updateWorker(page) {
