@@ -28,7 +28,7 @@ pub fn load() -> Result<Option<String>, String> {
             }
             return Ok(Some(corrupt.into()));
         }
-        return storage.get_item(key).map_err(js_error);
+        storage.get_item(key).map_err(js_error)
     }
     #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
     {
@@ -90,7 +90,7 @@ pub fn store(contents: &str) -> Result<(), String> {
             .local_storage()
             .map_err(js_error)?
             .ok_or_else(|| "browser local storage is unavailable".to_owned())?;
-        return storage.set_item(storage_key(), contents).map_err(js_error);
+        storage.set_item(storage_key(), contents).map_err(js_error)
     }
     #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
     {
@@ -106,11 +106,10 @@ pub fn store(contents: &str) -> Result<(), String> {
 pub fn description() -> String {
     #[cfg(target_arch = "wasm32")]
     {
-        let label = match qa_mode() {
+        match qa_mode() {
             Some(mode) => format!("Browser local storage ({QA_STORAGE_KEY}; QA: {mode})"),
             None => format!("Browser local storage ({STORAGE_KEY})"),
-        };
-        return label;
+        }
     }
     #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
     {
@@ -128,10 +127,10 @@ pub fn description() -> String {
 /// The normal application URL never mirrors session contents into the DOM.
 pub fn diagnostics_save(json: &str) {
     #[cfg(target_arch = "wasm32")]
-    if diagnostics_enabled() {
-        if let Some(canvas) = canvas_element() {
-            let _ = canvas.set_attribute("data-session", json);
-        }
+    if diagnostics_enabled()
+        && let Some(canvas) = canvas_element()
+    {
+        let _ = canvas.set_attribute("data-session", json);
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -187,10 +186,10 @@ pub fn install_lifecycle_saves() {
 pub fn visible() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        return web_sys::window()
+        web_sys::window()
             .and_then(|w| w.document())
             .map(|d| !d.hidden())
-            .unwrap_or(false);
+            .unwrap_or(false)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -202,10 +201,10 @@ pub fn visible() -> bool {
 pub fn lifecycle_epoch() -> u64 {
     #[cfg(target_arch = "wasm32")]
     {
-        return canvas_element()
+        canvas_element()
             .and_then(|canvas| canvas.get_attribute("data-lifecycle-epoch"))
             .and_then(|value| value.parse().ok())
-            .unwrap_or(0);
+            .unwrap_or(0)
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -299,7 +298,7 @@ fn storage_key() -> &'static str {
 
 #[cfg(target_arch = "wasm32")]
 thread_local! {
-    static LIFECYCLE_SNAPSHOT: std::cell::RefCell<Option<gamevex_core::Save>> = std::cell::RefCell::new(None);
+    static LIFECYCLE_SNAPSHOT: std::cell::RefCell<Option<gamevex_core::Save>> = const { std::cell::RefCell::new(None) };
     static LIFECYCLE_LISTENERS: std::cell::RefCell<Vec<wasm_bindgen::closure::Closure<dyn FnMut()>>> = std::cell::RefCell::new(Vec::new());
 }
 

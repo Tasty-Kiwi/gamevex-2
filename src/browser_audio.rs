@@ -168,13 +168,15 @@ mod wasm {
         active_casino: bool,
     }
 
+    type EventListener = Closure<dyn FnMut(web_sys::Event)>;
+
     thread_local! {
         static AUDIO: RefCell<Audio> = RefCell::new(Audio {
             volume: 1.0,
             active_casino: true,
             ..Audio::default()
         });
-        static LISTENERS: RefCell<Vec<Closure<dyn FnMut(web_sys::Event)>>> = const { RefCell::new(Vec::new()) };
+        static LISTENERS: RefCell<Vec<EventListener>> = const { RefCell::new(Vec::new()) };
     }
 
     pub fn install() {
@@ -211,12 +213,12 @@ mod wasm {
             if audio.context.is_none() {
                 audio.context = AudioContext::new().ok();
             }
-            if let Some(context) = audio.context.as_ref() {
-                if context.state() == AudioContextState::Suspended {
-                    // Browser policy resolves/rejects this promise asynchronously.
-                    // A later cue can play after it becomes Running; cues are never queued.
-                    let _ = context.resume();
-                }
+            if let Some(context) = audio.context.as_ref()
+                && context.state() == AudioContextState::Suspended
+            {
+                // Browser policy resolves/rejects this promise asynchronously.
+                // A later cue can play after it becomes Running; cues are never queued.
+                let _ = context.resume();
             }
         });
     }
@@ -311,11 +313,11 @@ mod wasm {
                 if buffer.copy_to_channel(&samples, 0).is_err() {
                     return false;
                 }
-                if audio.buffers.len() >= MAX_CACHED_CUES {
-                    if let Some(oldest) = audio.buffer_order.first().copied() {
-                        audio.buffer_order.remove(0);
-                        audio.buffers.remove(&oldest);
-                    }
+                if audio.buffers.len() >= MAX_CACHED_CUES
+                    && let Some(oldest) = audio.buffer_order.first().copied()
+                {
+                    audio.buffer_order.remove(0);
+                    audio.buffers.remove(&oldest);
                 }
                 audio.buffer_order.push(key);
                 audio.buffers.insert(key, buffer.clone());
