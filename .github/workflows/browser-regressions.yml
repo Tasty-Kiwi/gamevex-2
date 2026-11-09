@@ -12,16 +12,15 @@ concurrency:
 
 jobs:
   build-web:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: macos-validation
+          shared-key: wasm-validation
       - name: Install pinned wasm-bindgen CLI
         run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - name: Build WebAssembly app
