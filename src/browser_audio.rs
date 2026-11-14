@@ -4,7 +4,6 @@
 //! This module creates and resumes one context directly in a canvas gesture
 //! handler, then plays the app's short PCM cues from cached AudioBuffers.
 
-#[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Status {
     pub running: bool,
@@ -12,7 +11,6 @@ pub struct Status {
     pub cached: usize,
 }
 
-#[cfg(target_arch = "wasm32")]
 pub use wasm::{install, play, status, update};
 
 const SAMPLE_RATE: u32 = 22_050;
@@ -135,7 +133,6 @@ fn gcd(mut a: u32, mut b: u32) -> u32 {
     a
 }
 
-#[cfg(target_arch = "wasm32")]
 mod wasm {
     use super::{Status, pcm16_mono_values, resample_pcm16};
     use std::{cell::RefCell, collections::HashMap};
@@ -421,11 +418,9 @@ mod wasm {
     }
 }
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(test)]
 mod tests {
-    use super::{pcm16_mono_values, resample_pcm16};
-    use bevy::audio::{AudioSource, Decodable};
-    use rodio::source::UniformSourceIterator;
+    use super::pcm16_mono_values;
 
     fn wav(samples: &[i16]) -> Vec<u8> {
         let data_len = (samples.len() * 2) as u32;
@@ -459,34 +454,5 @@ mod tests {
         let mut wrong_rate = wav(&[1]);
         wrong_rate[24..28].copy_from_slice(&44_100u32.to_le_bytes());
         assert_eq!(pcm16_mono_values(&wrong_rate), None);
-    }
-
-    #[test]
-    fn resampling_matches_rodio_for_every_generated_cue_and_legacy_tone() {
-        let mut waves: Vec<(&str, Vec<u8>)> = crate::casino_audio::ALL
-            .into_iter()
-            .map(|cue| ("cue", crate::casino_audio::synthesize(cue)))
-            .collect();
-        waves.extend(
-            [160.0, 440.0, 650.0, 1040.0].map(|frequency| ("tone", crate::tone(frequency))),
-        );
-
-        for (label, wav) in waves {
-            let samples = pcm16_mono_values(&wav).expect("generated PCM WAV is valid");
-            for target_rate in [22_050, 44_100, 48_000] {
-                let actual: Vec<f32> = resample_pcm16(&samples, 22_050, target_rate)
-                    .expect("supported sample rate")
-                    .into_iter()
-                    .map(|sample| sample as f32 / 32768.0)
-                    .collect();
-                let source = AudioSource {
-                    bytes: wav.clone().into(),
-                };
-                let decoder = source.decoder();
-                let expected: Vec<f32> =
-                    UniformSourceIterator::<_, f32>::new(decoder, 1, target_rate).collect();
-                assert_eq!(actual, expected, "{label} at {target_rate} Hz");
-            }
-        }
     }
 }

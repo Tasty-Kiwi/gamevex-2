@@ -11,13 +11,9 @@ webgl2 = ["bevy/webgl2"]
 
 [dependencies]
 gamevex-core = { path = "crates/gamevex-core" }
-bevy = { version = "=0.17.3", default-features = false, features = ["std", "async_executor", "bevy_asset", "bevy_audio", "bevy_color", "bevy_core_pipeline", "bevy_camera", "bevy_image", "bevy_mesh", "bevy_render", "bevy_shader", "bevy_sprite", "bevy_sprite_render", "bevy_text", "bevy_window", "bevy_winit", "bevy_log", "default_font", "multi_threaded", "wav", "png"] }
+bevy = { version = "=0.17.3", default-features = false, features = ["std", "async_executor", "bevy_asset", "bevy_color", "bevy_core_pipeline", "bevy_camera", "bevy_image", "bevy_mesh", "bevy_render", "bevy_shader", "bevy_sprite", "bevy_sprite_render", "bevy_text", "bevy_window", "bevy_winit", "bevy_log", "default_font", "multi_threaded", "png"] }
 serde_json.workspace = true
 
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-rodio = { version = "=0.20.1", default-features = false, features = ["wav"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "=0.2.129"
 web-sys = { version = "=0.3.106", features = ["Window", "Storage", "Document", "VisibilityState", "HtmlCanvasElement", "Element", "EventTarget", "Location", "Performance", "BaseAudioContext", "Event", "AudioContext", "AudioContextState", "AudioBuffer", "AudioBufferSourceNode", "AudioNode", "AudioDestinationNode", "GainNode", "AudioParam"] }
 

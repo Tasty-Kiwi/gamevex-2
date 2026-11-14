@@ -1,6 +1,10 @@
+#[cfg(not(target_arch = "wasm32"))]
+compile_error!(
+    "gamevex-app is browser-only; use scripts/build-web.sh. Run core tests with cargo test -p gamevex-core."
+);
+
 mod arcade_input;
 mod backgammon_app;
-#[cfg(any(target_arch = "wasm32", test))]
 mod browser_audio;
 mod casino_audio;
 mod casino_feedback;
@@ -26,7 +30,6 @@ mod touch_input;
 
 use arcade_input::{handle_input, handle_pointer_input, pointer_pressed};
 use bevy::{
-    audio::{AudioSink, AudioSinkPlayback, AudioSource, Volume},
     input::{
         ButtonState,
         mouse::{MouseScrollUnit, MouseWheel},
@@ -660,32 +663,18 @@ impl Arcade {
 }
 
 fn fresh_seed() -> u64 {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos() as u64
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        (web_sys::window()
-            .and_then(|w| w.performance())
-            .map(|p| p.now())
-            .unwrap_or(1.0)
-            * 1_000_000.0) as u64
-    }
+    (web_sys::window()
+        .and_then(|w| w.performance())
+        .map(|p| p.now())
+        .unwrap_or(1.0)
+        * 1_000_000.0) as u64
 }
 
 fn main() {
-    #[cfg(target_os = "macos")]
-    let backend = Backends::METAL;
-    #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
+    #[cfg(feature = "webgpu")]
     let backend = Backends::BROWSER_WEBGPU;
-    #[cfg(all(target_arch = "wasm32", not(feature = "webgpu")))]
+    #[cfg(not(feature = "webgpu"))]
     let backend = Backends::GL;
-    #[cfg(all(not(target_os = "macos"), not(target_arch = "wasm32")))]
-    let backend = Backends::PRIMARY;
     App::new()
         .insert_resource(Arcade::load())
         .init_resource::<ViewLayout>()
@@ -735,7 +724,6 @@ fn main() {
 }
 
 fn diagnostics(adapter: Option<Res<RenderAdapterInfo>>, mut state: ResMut<Arcade>) {
-    #[cfg(target_arch = "wasm32")]
     browser_audio::install();
     if let Some(adapter) = adapter {
         state.backend = format!(
@@ -759,8 +747,8 @@ fn diagnostics(adapter: Option<Res<RenderAdapterInfo>>, mut state: ResMut<Arcade
 
 #[derive(Resource)]
 struct SoundBank {
-    casino: std::collections::HashMap<casino_audio::SoundCue, Handle<AudioSource>>,
-    legacy: std::collections::HashMap<u32, Handle<AudioSource>>,
+    casino: std::collections::HashMap<casino_audio::SoundCue, Vec<u8>>,
+    legacy: std::collections::HashMap<u32, Vec<u8>>,
     played: u64,
     last: String,
 }
@@ -776,12 +764,6 @@ impl Default for SoundBank {
         }
     }
 }
-#[derive(Component)]
-struct SoundVoice {
-    cue: Option<casino_audio::SoundCue>,
-    gain: f32,
-}
-
 fn cue_priority(cue: Option<casino_audio::SoundCue>) -> u8 {
     use casino_audio::SoundCue::*;
     match cue {
@@ -792,13 +774,7 @@ fn cue_priority(cue: Option<casino_audio::SoundCue>) -> u8 {
     }
 }
 
-fn play_sound(
-    mut commands: Commands,
-    mut sources: ResMut<Assets<AudioSource>>,
-    mut state: ResMut<Arcade>,
-    mut bank: ResMut<SoundBank>,
-    mut voices: Query<(Entity, &SoundVoice, Option<&mut AudioSink>)>,
-) {
+fn play_sound(mut state: ResMut<Arcade>, mut bank: ResMut<SoundBank>) {
     let cue_screen = matches!(
         state.screen,
         Screen::Blackjack
@@ -812,19 +788,8 @@ fn play_sound(
     ) || patience_app::is_family(state.screen);
     let enabled =
         state.audio_started && !state.save.settings.muted && state.save.settings.volume > 0.0;
-    #[cfg(target_arch = "wasm32")]
+
     browser_audio::update(state.save.settings.volume, !enabled, cue_screen);
-    let mut active = Vec::new();
-    for (entity, voice, sink) in &mut voices {
-        if !enabled || (voice.cue.is_some() && !cue_screen) {
-            commands.entity(entity).despawn();
-        } else {
-            if let Some(mut sink) = sink {
-                sink.set_volume(Volume::Linear(state.save.settings.volume * voice.gain));
-            }
-            active.push((entity, cue_priority(voice.cue)));
-        }
-    }
     let mut requests: Vec<_> = state
         .casino_feedback
         .take_sounds()
@@ -855,75 +820,35 @@ fn play_sound(
     requests.sort_by_key(|(cue, _)| std::cmp::Reverse(cue_priority(*cue)));
     if enabled {
         for (cue, frequency) in requests {
-            #[cfg(not(target_arch = "wasm32"))]
-            if active.len() >= MAX_AUDIO_VOICES {
-                let (i, (_, lowest)) = active
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, (_, p))| p)
-                    .unwrap();
-                if *lowest >= cue_priority(cue) {
-                    continue;
-                }
-                commands.entity(active.remove(i).0).despawn();
-            }
             let source = if let Some(cue) = cue {
                 bank.casino
                     .entry(cue)
-                    .or_insert_with(|| {
-                        sources.add(AudioSource {
-                            bytes: casino_audio::synthesize(cue).into(),
-                        })
-                    })
-                    .clone()
+                    .or_insert_with(|| casino_audio::synthesize(cue))
             } else {
                 bank.legacy
                     .entry(frequency.to_bits())
-                    .or_insert_with(|| {
-                        sources.add(AudioSource {
-                            bytes: tone(frequency).into(),
-                        })
-                    })
-                    .clone()
+                    .or_insert_with(|| tone(frequency))
             };
             let gain = if cue.is_some() { CASINO_GAIN } else { 0.12 };
-            #[cfg(target_arch = "wasm32")]
+
             if !browser_audio::play(
                 cue.map_or(frequency.to_bits(), |c| c as u32),
-                &sources.get(&source).unwrap().bytes,
+                source,
                 gain,
                 cue_priority(cue),
                 cue.is_some(),
             ) {
                 continue;
             }
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                let entity = commands
-                    .spawn((
-                        AudioPlayer::new(source),
-                        PlaybackSettings {
-                            volume: Volume::Linear(state.save.settings.volume * gain),
-                            ..PlaybackSettings::DESPAWN
-                        },
-                        SoundVoice { cue, gain },
-                    ))
-                    .id();
-                active.push((entity, cue_priority(cue)));
-            }
             bank.played += 1;
             bank.last = cue.map_or_else(|| "Ui".to_owned(), |cue| format!("{cue:?}"));
         }
     }
     if platform::diagnostics_enabled() {
-        #[cfg(target_arch = "wasm32")]
         let (voice_count, cached, running, backend) = {
             let status = browser_audio::status();
             (status.voices, status.cached, status.running, "WebAudio")
         };
-        #[cfg(not(target_arch = "wasm32"))]
-        let (voice_count, cached, running, backend) =
-            (active.len(), bank.casino.len(), enabled, "BevyAudio");
         platform::diagnostics_attribute(
             "data-audio",
             &serde_json::json!({
@@ -1791,137 +1716,6 @@ mod tests {
             }
         }
         assert!(MAX_AUDIO_VOICES as f32 * (peak * CASINO_GAIN).max(0.12) < 0.95);
-    }
-
-    #[test]
-    fn casino_audio_requires_gesture_caches_samples_caps_voices_and_mutes_immediately() {
-        let mut app = App::new();
-        let mut state = test_arcade();
-        state.screen = Screen::Baccarat;
-        app.insert_resource(state)
-            .insert_resource(Assets::<AudioSource>::default())
-            .init_resource::<SoundBank>()
-            .add_systems(Update, play_sound);
-        app.world_mut()
-            .resource_mut::<Arcade>()
-            .act(Action::Baccarat(baccarat::Command::Select(
-                baccarat::BetSide::Banker,
-            )));
-        app.update();
-        assert_eq!(app.world().resource::<SoundBank>().played, 0);
-        app.world_mut().resource_mut::<Arcade>().audio_started = true;
-        app.update();
-        assert_eq!(app.world().resource::<SoundBank>().played, 0);
-        for i in 0..20 {
-            let side = if i % 2 == 0 {
-                baccarat::BetSide::Player
-            } else {
-                baccarat::BetSide::Banker
-            };
-            app.world_mut()
-                .resource_mut::<Arcade>()
-                .act(Action::Baccarat(baccarat::Command::Select(side)));
-            app.update();
-        }
-        assert_eq!(
-            app.world_mut()
-                .query::<&SoundVoice>()
-                .iter(app.world())
-                .count(),
-            4
-        );
-        assert_eq!(app.world().resource::<SoundBank>().casino.len(), 1);
-        assert_eq!(app.world().resource::<Assets<AudioSource>>().len(), 1);
-        let played = app.world().resource::<SoundBank>().played;
-        app.world_mut().resource_mut::<Arcade>().save.settings.muted = true;
-        app.world_mut()
-            .resource_mut::<Arcade>()
-            .act(Action::Baccarat(baccarat::Command::Select(
-                baccarat::BetSide::Tie,
-            )));
-        app.update();
-        assert_eq!(
-            app.world_mut()
-                .query::<&SoundVoice>()
-                .iter(app.world())
-                .count(),
-            0
-        );
-        assert_eq!(app.world().resource::<SoundBank>().played, played);
-        {
-            let mut state = app.world_mut().resource_mut::<Arcade>();
-            state.save.settings.muted = false;
-            state.save.settings.volume = 0.0;
-            state.act(Action::Baccarat(baccarat::Command::Select(
-                baccarat::BetSide::Player,
-            )));
-        }
-        app.update();
-        assert_eq!(app.world().resource::<SoundBank>().played, played);
-        assert_eq!(
-            app.world_mut()
-                .query::<&SoundVoice>()
-                .iter(app.world())
-                .count(),
-            0
-        );
-    }
-
-    #[test]
-    fn table_audio_obeys_gesture_mute_volume_and_does_not_replay_dropped_cues() {
-        for screen in [Screen::FreeCell, Screen::Mahjong] {
-            let mut app = App::new();
-            let mut state = test_arcade();
-            state.screen = screen;
-            app.insert_resource(state)
-                .insert_resource(Assets::<AudioSource>::default())
-                .init_resource::<SoundBank>()
-                .add_systems(Update, play_sound);
-            let emit = |app: &mut App, kind| {
-                let mut s = app.world_mut().resource_mut::<Arcade>();
-                if screen == Screen::Mahjong {
-                    s.mahjong_ui
-                        .feedback
-                        .emit(kind, &[table_feedback::Anchor::Tile(0)]);
-                } else {
-                    s.patience_ui.feedback.emit(
-                        kind,
-                        &[table_feedback::Anchor::Pile(patience::Pile::Cell(0))],
-                    );
-                }
-            };
-            emit(&mut app, table_feedback::EffectKind::Move);
-            app.update();
-            assert_eq!(app.world().resource::<SoundBank>().played, 0);
-            app.world_mut().resource_mut::<Arcade>().audio_started = true;
-            app.update();
-            assert_eq!(app.world().resource::<SoundBank>().played, 0);
-            emit(&mut app, table_feedback::EffectKind::Move);
-            app.update();
-            assert_eq!(app.world().resource::<SoundBank>().played, 1);
-            app.world_mut().resource_mut::<Arcade>().save.settings.muted = true;
-            emit(&mut app, table_feedback::EffectKind::Win);
-            app.update();
-            assert_eq!(app.world().resource::<SoundBank>().played, 1);
-            assert_eq!(
-                app.world_mut()
-                    .query::<&SoundVoice>()
-                    .iter(app.world())
-                    .count(),
-                0
-            );
-            app.world_mut().resource_mut::<Arcade>().save.settings.muted = false;
-            app.update();
-            assert_eq!(app.world().resource::<SoundBank>().played, 1);
-            app.world_mut()
-                .resource_mut::<Arcade>()
-                .save
-                .settings
-                .volume = 0.0;
-            emit(&mut app, table_feedback::EffectKind::Hint);
-            app.update();
-            assert_eq!(app.world().resource::<SoundBank>().played, 1);
-        }
     }
 
     #[test]
@@ -3407,7 +3201,7 @@ mod tests {
     }
 }
 
-// Developer keys capture the actual rendered surface and frame timings.
+// Browser developer key for measuring actual foreground frame timings.
 #[derive(Resource, Default)]
 struct PerformanceCapture {
     frames: Vec<f64>,
@@ -3415,47 +3209,12 @@ struct PerformanceCapture {
 }
 
 fn capture_tools(
-    _commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time<Real>>,
     state: Res<Arcade>,
     windows: Query<&Window, With<PrimaryWindow>>,
     mut capture: ResMut<PerformanceCapture>,
 ) {
-    if keys.just_pressed(KeyCode::F12) {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            use bevy::render::view::screenshot::{Screenshot, save_to_disk};
-            let mut commands = _commands;
-            let name = match state.screen {
-                Screen::Lobby => "lobby",
-                Screen::Manual => "manual",
-                Screen::Mines => "minesweeper",
-                Screen::Cards => "card-lab",
-                Screen::Settings => "settings",
-                Screen::Blackjack => "blackjack",
-                Screen::Baccarat => "baccarat",
-                Screen::Sudoku => "sudoku",
-                Screen::Mahjong => "mahjong",
-                Screen::Solitaire => "solitaire",
-                Screen::FreeCell => "freecell",
-                Screen::Spider => "spider",
-                Screen::Hearts => "hearts",
-                Screen::Cribbage => "cribbage",
-                Screen::Holdem => "holdem",
-                Screen::Roulette => "roulette",
-                Screen::TicTacToe => "tictactoe",
-                Screen::Connect4 => "connect4",
-                Screen::Backgammon => "backgammon",
-            };
-            let folder = std::path::Path::new("docs/screenshots");
-            if std::fs::create_dir_all(folder).is_ok() {
-                commands
-                    .spawn(Screenshot::primary_window())
-                    .observe(save_to_disk(folder.join(format!("{name}.png"))));
-            }
-        }
-    }
     if keys.just_pressed(KeyCode::F9) {
         capture.frames.clear();
         capture.active = true;

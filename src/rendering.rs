@@ -270,7 +270,7 @@ pub struct ArcadeRenderPlugin;
 
 impl Plugin for ArcadeRenderPlugin {
     fn build(&self, app: &mut App) {
-        // Embed the interface font so native and WASM builds work offline.
+        // Embed the interface font so browser builds work offline.
         let font =
             Font::try_from_bytes(include_bytes!("../assets/fonts/Oxanium-Medium.ttf").to_vec())
                 .expect("bundled Oxanium font must be valid");

@@ -341,9 +341,9 @@ test('Baccarat settles, persists, and starts the next round with the same balanc
 });
 
 for (const rate of [44_100, 48_000]) {
-  test(`button beep matches native PCM at ${rate} Hz`, async ({ page }) => {
+  test(`button beep matches reference PCM at ${rate} Hz`, async ({ page }) => {
     const { readFile } = await import('node:fs/promises');
-    const reference = JSON.parse(await readFile(new URL('../fixtures/native-button-beep.json', import.meta.url), 'utf8')).rates[rate];
+    const reference = JSON.parse(await readFile(new URL('../fixtures/button-beep-reference.json', import.meta.url), 'utf8')).rates[rate];
     await page.addInitScript((rate) => {
       const Context = window.AudioContext;
       window.AudioContext = class extends Context {
@@ -357,8 +357,7 @@ for (const rate of [44_100, 48_000]) {
         for (const byte of new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength)) {
           hash = Math.imul(hash ^ byte, 16777619) >>> 0;
         }
-        // Bevy also keeps a silent stereo output stream alive. Capture the
-        // app's mono cue buffers, not that backend's 2048-frame stream blocks.
+        // Inspect the app's mono cue buffers.
         if (this.numberOfChannels === 1) window.__qaAudioBuffers.push({ rate: this.sampleRate, length: this.length, hash });
       };
     }, rate);

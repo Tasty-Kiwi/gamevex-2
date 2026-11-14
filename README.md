@@ -1,8 +1,8 @@
 # GameVex
 
-A local-first Rust arcade prototype. The workspace lives here; the existing GameVex web application remains separate.
+A local-first, browser-only Rust arcade prototype. The workspace lives here; the existing GameVex web application remains separate.
 
-Play at **https://tasty-kiwi.github.io/gamevex-2/** in a desktop browser with WebGPU support. On `main`, successful Rust checks, release builds, and browser smoke tests publish `web/` to GitHub Pages. The full browser regression suite runs on demand through the **Browser regressions** workflow. Both workflows can be run manually from GitHub Actions.
+Play at **https://tasty-kiwi.github.io/gamevex-2/** in a browser with WebGPU or WebGL2 support. On `main`, successful Rust checks, release builds, and browser smoke tests publish `web/` to GitHub Pages. The full browser regression suite runs on demand through the **Browser regressions** workflow. Both workflows can be run manually from GitHub Actions.
 
 ## Architecture
 
@@ -12,13 +12,13 @@ Cargo manifests, the lockfile, documentation, scripts, web files, and assets liv
 - The root `gamevex-app` package (`src/main.rs` and its sibling modules) owns Bevy rendering, input, audio, and platform integration. The ordinary Rust game state is authoritative; Bevy entities present that state.
 - `src/presentation/` separates the shared header, card drawing, lobby, settings, dialogs, Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Hearts, Cribbage, Texas Hold'em, Roulette, Backgammon, and solitaire-family views.
 - `web/` contains the browser entry point and generated WebAssembly package. `scripts/build-web.sh` copies `assets/` into `web/assets/` when that source directory exists.
-- Native saves use a dedicated application-support namespace. Browser saves use their own namespaced local-storage key, separate from the existing TypeScript app.
+- Saves use a namespaced localStorage key, separate from the existing TypeScript app.
 
 The update flow is input → command → rules update → domain events → presentation. Pointer events retain their received order and per-event position, including fast presses/releases within a single frame. Presentation buffers update before Bevy lays out text and propagates transforms. Animations do not determine game results.
 
 ## Prerequisites
 
-- Rust and Cargo.
+- Rust and Cargo. The app targets `wasm32-unknown-unknown` only; the pure game core can be tested on the host. With rustup, install the target using `rustup target add wasm32-unknown-unknown`.
 - For the browser build, an LLD WebAssembly linker (`wasm-ld` or compatible `rust-lld`) and wasm-bindgen CLI 0.2.129, matching the `wasm-bindgen` crate in `gamevex-app`:
 
   ```sh
@@ -36,12 +36,11 @@ The update flow is input → command → rules update → domain events → pres
 From this directory:
 
 ```sh
-scripts/run-native.sh
 scripts/build-web.sh
 scripts/serve-web.sh
 ```
 
-Then open `http://localhost:18435`. Set `GAMEVEX_PORT` to choose another port. Use an origin separate from the original GameVex app: its offline service worker can otherwise serve cached pages instead of this application. The browser loader reports a visible setup error when the page is not in a secure context or the selected graphics backend is unavailable. `scripts/build-all.sh` builds the native release and browser release in sequence.
+Then open `http://localhost:18435`. Set `GAMEVEX_PORT` to choose another port. Use an origin separate from the original GameVex app: its offline service worker can otherwise serve cached pages instead of this application. The browser loader reports a visible setup error when the page is not in a secure context or the selected graphics backend is unavailable.
 
 ## Install and use offline
 
@@ -57,7 +56,7 @@ The normal `scripts/build-web.sh` build packages both WebGPU and WebGL2. GameVex
 
 If WebGPU fails after its runtime starts, GameVex restarts the page once with WebGL2. This gives Bevy a fresh canvas and releases the old event loop and save lock. Recovery covers initialization and download failures, startup timeouts, uncaught graphics errors, device creation failures, device loss, and uncaptured GPU errors. Saved progress reloads through the existing save system; a running game returns to the lobby after recovery. Query parameters and the URL fragment are preserved. If WebGL2 also fails, the page shows an error instead of repeatedly restarting. A later manual reload tries WebGPU again.
 
-The PWA precaches both runtime packages so automatic fallback also works offline after the initial cache completes. That increases the initial offline download. Normal game startup imports only the selected runtime. Native macOS continues to use Metal.
+The PWA precaches both runtime packages so automatic fallback also works offline after the initial cache completes. That increases the initial offline download. Normal game startup imports only the selected runtime.
 
 For backend-specific QA, `GAMEVEX_WEB_BACKEND=webgpu scripts/build-web.sh` or `GAMEVEX_WEB_BACKEND=webgl2 scripts/build-web.sh` builds only that backend. Run `scripts/build-web.sh` again to restore the automatic dual-backend build. Bevy requires independent WASM packages because its WebGPU feature overrides WebGL2 at compile time.
 
@@ -136,7 +135,7 @@ Connect 4 uses a 7×6 board with animated disc drops and highlighted winning lin
 
 Both casino cabinets show persistent outcome panels with the round’s net credit change. Wins send out green sparks and rings; natural Blackjack and winning Tie bets use a larger gold celebration. Losses pulse red, pushes use a cyan diamond, and an empty bankroll gets its own result. Individual hands and Baccarat lanes show their outcomes, while action badges call out Double, Split, Insurance, Surrender, and Bust. Transient effects finish within two seconds; reduced motion keeps the static outcome colors and labels. Restoring a completed round shows its result without replaying celebrations or sounds.
 
-Sixteen synthesized casino cues cover chips, dealing, arriving cards, the dealer reveal, player actions, busts, wins, naturals, pushes, losses, and bankruptcy. Card and result sounds follow the visible animation. Cached audio sources and a four-voice limit keep playback bounded; result sounds take priority over card sounds. Mute and volume update active playback immediately. Browser playback uses one gesture-unlocked Web Audio context; native playback uses Bevy audio. The browser resamples PCM with the native rodio interpolation before playback, keeping button beeps and game cues consistent across backends. No audio assets are fetched. A short [sound preview](docs/audio/casino-preview.wav) contains Bet, Card, Double, Win, Natural, Push, Loss, and Bust in that order.
+Sixteen synthesized casino cues cover chips, dealing, arriving cards, the dealer reveal, player actions, busts, wins, naturals, pushes, losses, and bankruptcy. Card and result sounds follow the visible animation. Cached audio sources and a four-voice limit keep playback bounded; result sounds take priority over card sounds. Mute and volume update active playback immediately. Playback uses one gesture-unlocked Web Audio context. PCM resampling preserves the existing button beeps and game cues. No audio assets are fetched. A short [sound preview](docs/audio/casino-preview.wav) contains Bet, Card, Double, Win, Natural, Push, Loss, and Bust in that order.
 
 Solitaire, FreeCell, Spider, and Mahjong add short selection pulses, move trails, match sparks, legal-drop accents, invalid-action feedback, undo/shuffle badges, and win fountains. Completed Spider runs and full foundations receive a gold flourish. Eleven distinct synthesized table cues cover paper-like card moves, woody tile picks and matches, deals, undo, hints, shuffles, errors, completed runs, and wins. Mute and volume use the shared audio controls; reduced motion keeps static highlights and badges without moving particles. Feedback expires, stays out of saved games, and clears on navigation or focus loss. The [table sound preview](docs/audio/table-preview.wav) plays Move, Tile match, Undo, Hint, Run, and Win in order.
 
@@ -148,25 +147,26 @@ Phone touch uses the same curved-screen picking as the mouse. Tap buttons and ce
 
 Settings offers five authored color themes: Cyan, Amber, Emerald, Violet, and Paper. Choose a theme directly from the preview grid; the selected theme is saved with the session. Paper uses light ivory surfaces and dark markings. All themes share the bundled medium-weight interface font and preserve the two card suit color groups. The picker uses three columns on desktop and two on narrow windows, with scrolling for the remaining settings.
 
-Native saves are atomically replaced at `~/Library/Application Support/GameVex Rust Demo/session-v1.json`. A temporary file is written and synced before rename; the parent directory is synced too. Set `GAMEVEX_SAVE_DIR` to isolate native test sessions. Browser saves use `gamevex.rust-demo.v1` in localStorage. Neither target reads or migrates the original GameVex saves.
+Saves use `gamevex.rust-demo.v1` in localStorage. This key is preserved for existing browser sessions. The app does not read or migrate the original GameVex saves.
 
-Version 14 stores shared settings plus independent Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, Spider, Hearts, Cribbage, Backgammon, Connect 4, and Tic-tac-toe sessions, and the Hold’em and Roulette bankrolls. Existing version-1 through version-13 saves migrate automatically, preserving settings, boards, records, casino rounds, and balances while initializing missing cabinets. The storage key and filename retain their original `v1` suffix so existing saves can be found. Loading checks size, version, settings ranges, cell counts, adjacency, first-reveal protection, terminal-state invariants, and timer bounds. Invalid saves are protected from automatic replacement. Settings always offers Reset saved data; its confirmation replaces settings, records, all saved games, and all casino bankrolls with defaults and returns to the lobby. Cancel preserves the saved session. Older saves load added monitor and palette settings with defaults. Storage failures keep the session playable in memory and show a persistent status message. Retry save attempts another write after a write failure. If startup cannot read an existing save, reload after resolving the storage issue or use Reset saved data to explicitly replace it. Browser tabs use a per-save Web Lock. A second tab plays in memory and can take ownership by reloading after the first tab closes.
+Version 14 stores shared settings plus independent Minesweeper, Blackjack, Baccarat, Sudoku, Mahjong, Solitaire, FreeCell, Spider, Hearts, Cribbage, Backgammon, Connect 4, and Tic-tac-toe sessions, and the Hold’em and Roulette bankrolls. Existing version-1 through version-13 saves migrate automatically, preserving settings, boards, records, casino rounds, and balances while initializing missing cabinets. The storage key retains its original `v1` suffix so existing saves can be found. Loading checks size, version, settings ranges, cell counts, adjacency, first-reveal protection, terminal-state invariants, and timer bounds. Invalid saves are protected from automatic replacement. Settings always offers Reset saved data; its confirmation replaces settings, records, all saved games, and all casino bankrolls with defaults and returns to the lobby. Cancel preserves the saved session. Older saves load added monitor and palette settings with defaults. Storage failures keep the session playable in memory and show a persistent status message. Retry save attempts another write after a write failure. If startup cannot read an existing save, reload after resolving the storage issue or use Reset saved data to explicitly replace it. Browser tabs use a per-save Web Lock. A second tab plays in memory and can take ownership by reloading after the first tab closes.
 
-Minesweeper fields and casino shoes generated from a seed now use the native shuffle sequence on both targets. Replaying an older browser seed can generate a different layout.
+Minesweeper fields and casino shoes generated from a seed now use the same deterministic shuffle sequence as existing saves. Replaying an older browser seed can generate a different layout.
 
 Meaningful actions save immediately, active games save at five-second intervals, and foreground/visibility/close transitions save too. Browser lifecycle listeners synchronously flush a staged domain snapshot on blur, pagehide, and visibilitychange. No wall-clock timestamp is used to add time after reopening: only active foreground play advances the timer. A process crash can still lose progress since the last successful write. Card Lab is deliberately transient.
 
-## Native bundle and verification tools
+## Build and verification
 
-`scripts/package-macos.sh` builds an unsigned local application at `target/GameVex Rust.app`; all fonts and shaders it needs are embedded. `scripts/run-native.sh` runs from the workspace so screenshots have a predictable destination. Native F12 captures the current screen under `docs/screenshots/`. F9 measures 300 actual frame intervals and logs mean/p95 time with adapter, display preset, effects, window size, and DPI. These developer keys do not change game results.
+In the browser, F9 measures 300 foreground frame intervals and logs timing, adapter, display preset, effects, window size, and DPI to the developer console.
 
 Run the checks from this directory:
 
 ```sh
 cargo fmt --all -- --check
-cargo test --workspace --locked
-cargo clippy --workspace --all-targets --locked -- -D warnings
-scripts/build-all.sh
+cargo test -p gamevex-core --locked
+cargo clippy --workspace --target wasm32-unknown-unknown --no-default-features --features webgpu --locked -- -D warnings
+cargo clippy --workspace --target wasm32-unknown-unknown --no-default-features --features webgl2 --locked -- -D warnings
+scripts/build-web.sh
 ```
 
 The browser regression harness requires Node.js and the built web package:
@@ -180,7 +180,7 @@ npm run test:browser
 
 Use `npm run test:browser:smoke -- --workers=1` for the automatic smoke cases: card input/navigation, Blackjack settlement and save/reload, Sudoku editing and save/reload, PWA installability with offline save recovery, and graphics fallback both before and after runtime initialization. `npm run test:browser -- --workers=1` always runs the complete suite, including these cases.
 
-CI runs on pull requests and pushes to `main`, avoiding duplicate branch-push runs. It checks formatting, runs the core game tests on Ubuntu, lints the WebGPU and WebGL2 WASM targets, and builds both browser backends in release mode. Browser smoke cases then run against that exact web artifact. Successful runs on `main` deploy the artifact to GitHub Pages. Native macOS packaging is available locally through `scripts/package-macos.sh` and is no longer part of CI. Newer updates cancel superseded build and smoke jobs; active Pages deployments are allowed to finish. The existing `browser-regressions` CI check name is retained for branch protection, but it now reports the smoke suite.
+CI runs on pull requests and pushes to `main`, avoiding duplicate branch-push runs. It checks formatting, runs the core game tests on Ubuntu, lints the WebGPU and WebGL2 WASM targets, and builds both browser backends in release mode. Browser smoke cases then run against that exact web artifact. Successful runs on `main` deploy the artifact to GitHub Pages. Newer updates cancel superseded build and smoke jobs; active Pages deployments are allowed to finish. The existing `browser-regressions` CI check name is retained for branch protection, but it now reports the smoke suite.
 
 To run every browser regression in GitHub Actions, open **Actions → Browser regressions → Run workflow**, select a branch, and start the run. Alternatively, use `gh workflow run browser-regressions.yml --ref main` (replace `main` to test another branch). Each run builds the selected revision's WASM artifact before executing the full suite on Ubuntu with software WebGPU and uploading failure screenshots/traces. It does not deploy. This workflow has no automatic or scheduled trigger; it becomes available for dispatch once its file is on the default branch.
 
@@ -194,4 +194,4 @@ See [the porting roster](PORTING.md) for the agreed queue: solitaire parity, Hea
 
 ## Limits
 
-GameVex targets macOS/Metal and desktop browsers with WebGPU-first rendering, automatic WebGL2 fallback, and an installable offline PWA. It has no accounts, networking, migration from the original TypeScript application, other games, or cloud storage. The lobby Manual includes Blackjack strategy and Baccarat draw and payout cheat sheets. The browser build must be served from localhost or HTTPS and needs WebGPU or WebGL2. The canvas has keyboard controls and visible focus, but it does not expose individual board cells or all virtual controls as a screen-reader accessibility tree. This is not a WCAG-conformance claim. The local Mac bundle is unsigned and not notarized. Very short browser viewports scroll the minimum-height application surface; touch input supports taps, card dragging, board swipes, and settings scrolling; physical phone compatibility still requires device testing.
+GameVex targets browsers through WebAssembly, with WebGPU-first rendering, automatic WebGL2 fallback, and an installable offline PWA. It has no accounts, networking, migration from the original TypeScript application, other games, or cloud storage. The lobby Manual includes Blackjack strategy and Baccarat draw and payout cheat sheets. The browser build must be served from localhost or HTTPS and needs WebGPU or WebGL2. The canvas has keyboard controls and visible focus, but it does not expose individual board cells or all virtual controls as a screen-reader accessibility tree. This is not a WCAG-conformance claim. Very short browser viewports scroll the minimum-height application surface; touch input supports taps, card dragging, board swipes, and settings scrolling; physical phone compatibility still requires device testing.

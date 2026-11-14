@@ -1,5 +1,7 @@
 # GameVex verification
 
+> Historical verification record: native/macOS app results below describe the former implementation. The current app is browser-only; use the build and test commands in the README.
+
 ## Backgammon port — 3 November 2026
 
 Backgammon completes the agreed game-port roster. The human plays cyan/White and moves first, matching the original UI; Easy and Hard CPU modes use the reference heuristics. The board supports legal-source/destination selection, maximum dice use, the higher-die rule, four moves for doubles, bar priority, hitting, and bearing off. Checker and hit-to-bar animations, animated dice, completion time, total wins, shared sounds, reduced motion, and rules are included. The neon board fits desktop and compact phone layouts.
