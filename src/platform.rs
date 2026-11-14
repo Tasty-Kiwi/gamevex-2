@@ -472,3 +472,27 @@ pub fn diagnostics_attribute(_name: &str, _json: &str) {
         let _ = canvas.set_attribute(_name, _json);
     }
 }
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+unsafe extern "C" {
+    #[wasm_bindgen(js_namespace = window, js_name = gamevexInstallAvailable)]
+    fn browser_install_available() -> bool;
+    #[wasm_bindgen(js_namespace = window, js_name = gamevexInstall)]
+    fn browser_install();
+}
+
+pub fn install_available() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        browser_install_available()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+pub fn install() {
+    #[cfg(target_arch = "wasm32")]
+    browser_install();
+}

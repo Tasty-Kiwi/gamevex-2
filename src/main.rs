@@ -229,6 +229,7 @@ impl Arcade {
             Some(440.0)
         };
         match action {
+            Action::Install => platform::install(),
             Action::Open(screen) => self.open(screen),
             Action::ManualTopic(topic) => {
                 if self.screen == Screen::Manual

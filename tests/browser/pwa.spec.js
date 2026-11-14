@@ -25,6 +25,32 @@ async function updateWorker(page) {
   });
 }
 
+test('install control appears only for an available browser prompt', async ({ page, site }) => {
+  await hideWebGPU(page);
+  await page.addInitScript(() => window.addEventListener('beforeinstallprompt', event => {
+    if (event.isTrusted) { event.preventDefault(); event.stopImmediatePropagation(); }
+  }));
+  await page.goto(site.url + '?qa=fresh&diagnostics');
+  const canvas = page.locator('#gamevex');
+  await expect(canvas).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+  await expect.poll(() => canvas.evaluate(el => JSON.parse(el.dataset.actionBounds).install)).toBeNull();
+  const offerInstall = () => page.evaluate(() => {
+    const event = new Event('beforeinstallprompt', { cancelable: true });
+    event.prompt = () => { window.installPromptCalls = (window.installPromptCalls || 0) + 1; return Promise.resolve(); };
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(await offerInstall()).toBe(true);
+  await expect.poll(() => canvas.evaluate(el => JSON.parse(el.dataset.actionBounds).install)).not.toBeNull();
+  await clickBounds(page, await canvas.evaluate(el => JSON.parse(el.dataset.actionBounds).install));
+  await expect.poll(() => page.evaluate(() => window.installPromptCalls)).toBe(1);
+  await expect.poll(() => canvas.evaluate(el => JSON.parse(el.dataset.actionBounds).install)).toBeNull();
+  await offerInstall();
+  await expect.poll(() => canvas.evaluate(el => JSON.parse(el.dataset.actionBounds).install)).not.toBeNull();
+  await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
+  await expect.poll(() => canvas.evaluate(el => JSON.parse(el.dataset.actionBounds).install)).toBeNull();
+});
+
 test('PWA manifest is installable and the arcade restores a save offline under a subpath', { tag: '@smoke' }, async ({ page, context, site }) => {
   const backend = /"(webgpu|webgl2)"/.exec(await readFile('web/backend.js', 'utf8'))[1];
   if (backend === 'webgl2') await hideWebGPU(page);
@@ -99,6 +125,8 @@ test('an update waits for all app windows to close and preserves unrelated cache
   site.revision = 2;
   await updateWorker(page);
   await expect.poll(() => page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration()).waiting))).toBe(true);
+  await expect(page.locator('#update-notice')).toBeVisible();
+  await expect(second.locator('#update-notice')).toBeVisible();
   expect(await page.evaluate(() => fetch('./pwa.js').then(r => r.text()))).toContain('// test revision 1');
   const fresh = await context.newPage();
   await page.close();
@@ -106,6 +134,7 @@ test('an update waits for all app windows to close and preserves unrelated cache
   await second.close();
   await fresh.goto(site.url);
   await offlineReady(fresh);
+  await expect(fresh.locator('#update-notice')).toBeHidden();
   await expect.poll(() => fresh.evaluate(() => fetch('./pwa.js').then(r => r.text()))).toContain('// test revision 2');
   const keys = await fresh.evaluate(() => caches.keys());
   expect(keys).toContain('unrelated-app');

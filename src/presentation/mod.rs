@@ -29,6 +29,7 @@ pub enum Screen {
 }
 #[derive(Clone, Copy)]
 pub enum Action {
+    Install,
     LobbyCategory(Option<LobbyCategory>),
     ManualTopic(Option<usize>),
     Open(Screen),
@@ -484,6 +485,7 @@ fn publish_diagnostics(state: &Arcade, layout: &ViewLayout, size: Vec2) {
             }
         }
         let bounds = serde_json::json!({
+            "install": layout.hits.iter().find_map(|hit| matches!(hit.action, Action::Install).then(|| [hit.rect.min.x, hit.rect.min.y, hit.rect.width(), hit.rect.height()])),
             "categories": categories,
             "categoriesBack": categories_back,
             "lobbyCategory": state.lobby_category.map(LobbyCategory::key),

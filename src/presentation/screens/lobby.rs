@@ -206,6 +206,17 @@ const ENTRIES: [(&str, &str, &str, EntryRole, Screen); 16] = [
 pub(crate) fn lobby(f: &mut Frame, s: &mut Arcade, l: &mut ViewLayout, m: f32, w: f32) {
     if s.lobby_category.is_none() {
         category_grid(f, s, l, m, w);
+        if platform::install_available() {
+            super::button(
+                f,
+                s,
+                l,
+                rect(m, f.size.y - 40.0, 140.0, 32.0),
+                "Install game",
+                Action::Install,
+                false,
+            );
+        }
         return;
     }
     let t = f.theme();
